@@ -5,9 +5,9 @@ import type {Detector, Finding, Prose} from '../types.ts';
 const ID = 'spaced-hyphen';
 
 /**
- * One or two hyphens with a space or a tab on both sides. The run stops at two
- * because a longer one between spaces is markdown furniture far more often than
- * it is a dash, and the furniture is what the guards below are for.
+ * One or two hyphens with a space or a tab on both sides. A spaced run of three
+ * reads as a dash as well, but the corpus contains none, so the rule stops at
+ * the two forms the prose it is measured against actually uses.
  */
 const SPACED_HYPHEN = /[ \t]-{1,2}[ \t]/g;
 
