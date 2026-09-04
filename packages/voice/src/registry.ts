@@ -10,6 +10,7 @@ import {notOnlyBut} from './detectors/not-only-but.ts';
 import {ruleOfThree} from './detectors/rule-of-three.ts';
 import {sentenceLengthUniformity} from './detectors/sentence-length-uniformity.ts';
 import {signposting} from './detectors/signposting.ts';
+import {spacedHyphen} from './detectors/spaced-hyphen.ts';
 import {throatClearing} from './detectors/throat-clearing.ts';
 import {titleCaseHeading} from './detectors/title-case-heading.ts';
 import {transitionStacking} from './detectors/transition-stacking.ts';
@@ -23,6 +24,7 @@ import type {Detector} from './types.ts';
 export const DETECTORS: readonly Detector[] = [
   emDash,
   enDashParenthetical,
+  spacedHyphen,
   curlyQuotes,
   negativeParallelism,
   notOnlyBut,

@@ -64,6 +64,7 @@ export const THRESHOLDS = Object.freeze({
 export const DEFAULT_DETECTORS: readonly string[] = Object.freeze([
   'em-dash',
   'en-dash-parenthetical',
+  'spaced-hyphen',
   'curly-quotes',
   'negative-parallelism',
   'not-only-but',

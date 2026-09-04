@@ -11,6 +11,7 @@ import {DETECTORS, DETECTORS_BY_ID} from '../src/registry.ts';
 const EXPECTED = [
   'em-dash',
   'en-dash-parenthetical',
+  'spaced-hyphen',
   'curly-quotes',
   'negative-parallelism',
   'not-only-but',

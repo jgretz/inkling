@@ -7,7 +7,7 @@ import type {CheckOptions, Finding} from './types.ts';
  * Runs the enabled detectors over a markdown document.
  *
  * The prose is extracted once and shared, which is what keeps this cheap enough
- * to run on a keystroke: fifteen detectors, one parse. Findings come back in
+ * to run on a keystroke: sixteen detectors, one parse. Findings come back in
  * document order, and an id in `options.detectors` that no detector answers to
  * simply selects nothing.
  */
