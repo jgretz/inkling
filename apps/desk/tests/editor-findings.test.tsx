@@ -21,7 +21,15 @@ const CLEAN = 'Plain prose with nothing wrong in it at all.';
  * exactly is the arrangement under test, the pick callback and the wrapper the
  * editor sits in, so the layout assertion below means something.
  */
-function Harness({source, marksOn = true}: {source: string; marksOn?: boolean}) {
+function Harness({
+  source,
+  marksOn = true,
+  path = 'drafts/a.md',
+}: {
+  source: string;
+  marksOn?: boolean;
+  path?: string;
+}) {
   const findings = useFindings(source);
   const [reveal, setReveal] = useState<Reveal | undefined>(undefined);
 
@@ -35,7 +43,7 @@ function Harness({source, marksOn = true}: {source: string; marksOn?: boolean}) 
     <div className="flex min-w-0 flex-1 flex-col">
       <div className="min-h-0 flex-1">
         <EditorPanel
-          path="drafts/a.md"
+          path={path}
           source={source}
           onChange={function () {}}
           onSelect={function () {}}
@@ -54,10 +62,12 @@ function marks(container: HTMLElement): HTMLElement[] {
   return [...container.querySelectorAll<HTMLElement>('.cm-voice-finding')];
 }
 
-/** The nth finding the fixture produces, which is what the assertions compare to. */
-function flagged(index: number): Finding {
-  const finding = check(MIXED)[index];
-  if (finding === undefined) throw new Error(`the fixture produced no finding at ${index}`);
+/** The fixture's finding for a rule, which is what the assertions compare to. */
+function flagged(ruleId: string): Finding {
+  const finding = check(MIXED).find(function (candidate) {
+    return candidate.ruleId === ruleId;
+  });
+  if (finding === undefined) throw new Error(`the fixture produced no ${ruleId} finding`);
   return finding;
 }
 
@@ -117,7 +127,7 @@ describe('findings in the editor', function () {
     if (entry === undefined) throw new Error('the expanded group listed no entry');
     fireEvent.click(entry);
 
-    const expected = flagged(1).range;
+    const expected = flagged('spaced-hyphen').range;
     expect({from: view.state.selection.main.from, to: view.state.selection.main.to}).toEqual({
       from: expected.start,
       to: expected.end,
@@ -139,8 +149,9 @@ describe('findings in the editor', function () {
   });
 
   it('should move again when the same entry is picked twice', function () {
-    // What the `seq` counter buys: two identical ranges are otherwise the same
-    // prop, and the second pick would do nothing.
+    // What the `seq` counter buys: the editor keys its reveal on the counter,
+    // so a pick that did not increment it would be the same request and the
+    // second click would leave the caret where the writer moved it.
     const {container} = render(<Harness source={MIXED} />);
     const view = EditorView.findFromDOM(container as HTMLElement);
     if (view === null) throw new Error('the editor view did not mount');
@@ -152,7 +163,18 @@ describe('findings in the editor', function () {
     view.dispatch({selection: {anchor: 0}});
     fireEvent.click(entry);
 
-    expect(view.state.selection.main.from).toBe(flagged(0).range.start);
+    expect(view.state.selection.main.from).toBe(flagged('em-dash').range.start);
+  });
+
+  it('should mark a newly opened document that happens to hold the same text', function () {
+    // Two documents with identical text share one memoised findings array, so
+    // the effect that dispatches them never fires for the second. The view
+    // created for it is decorated on the way up instead.
+    const {container, rerender} = render(<Harness source={MIXED} path="drafts/a.md" />);
+
+    rerender(<Harness source={MIXED} path="drafts/b.md" />);
+
+    expect(marks(container)).toHaveLength(2);
   });
 
   it('should cost no marks, no strip and no layout for a clean document', function () {
@@ -161,8 +183,11 @@ describe('findings in the editor', function () {
 
     expect(marks(clean.container)).toHaveLength(0);
     expect(clean.container.querySelector('section[aria-label="Voice findings"]')).toBeNull();
-    expect(clean.container.firstElementChild?.className).toBe(
-      marked.container.firstElementChild?.className ?? '',
-    );
+
+    // The strip is a sibling of the editor or it is nothing at all. Not an
+    // empty wrapper, not a border, not a row saying the document is clean:
+    // one child where there is nothing to say, two where there is.
+    expect(clean.container.firstElementChild?.children.length).toBe(1);
+    expect(marked.container.firstElementChild?.children.length).toBe(2);
   });
 });

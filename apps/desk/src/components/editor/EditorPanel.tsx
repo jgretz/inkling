@@ -8,9 +8,14 @@ import {inklingTheme} from './theme.ts';
 import {setFindings, voiceFindings} from './findings-marks.ts';
 
 /**
- * A request to show a range. `seq` is what makes it a request rather than a
- * position: picking the same finding twice has to move the editor twice, and two
- * identical ranges are otherwise indistinguishable.
+ * A request to show a range.
+ *
+ * `seq` is what makes it a request rather than a position, and the editor reads
+ * it: one reveal is honoured per counter value. Honouring one takes the caret
+ * and the scroll position away from wherever the writer left them, so a
+ * re-render that hands the same request back must not do that twice, while
+ * picking the same finding twice must move twice even though the range is
+ * identical. Callers increment on every pick.
  */
 export type Reveal = {
   range: Range;
@@ -165,7 +170,11 @@ export function EditorPanel({
         if (view.current === instance) instance.focus();
       });
     },
-    [reveal],
+    // The counter, not the request object. Honouring a reveal takes the caret,
+    // so the editor moves once per pick and never because a re-render happened
+    // to hand back an equal request. `seq` increases on every pick by contract,
+    // so `reveal.range` above cannot be read from a request this already ran.
+    [reveal?.seq],
   );
 
   return <div ref={host} className="selectable h-full min-w-0 overflow-hidden bg-ink-900" />;

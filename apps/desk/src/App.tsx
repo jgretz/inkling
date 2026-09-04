@@ -172,8 +172,9 @@ export function App() {
   const findings = useFindings(draft);
   const [reveal, setReveal] = useState<Reveal | undefined>(undefined);
 
-  // The counter is what makes picking the same finding twice move the editor
-  // twice: two identical ranges are otherwise the same prop.
+  // The counter increments on every pick because the editor honours one reveal
+  // per counter value. Without it, picking the same finding twice would be the
+  // same request and the second click would move nothing.
   const handlePick = useCallback(function (finding: Finding) {
     setReveal(function (current) {
       return {range: finding.range, seq: (current?.seq ?? 0) + 1};
