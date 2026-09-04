@@ -18,8 +18,8 @@ export const THRESHOLDS = Object.freeze({
    * a short note with a single list is left alone.
    *
    * Tuned against `bun scripts/voice-report.ts`. Over the nine files of
-   * `docs/*.md` and `examples/vault/` the budget raises 10 triplets and leaves
-   * at least 12 alone. Eight of the ten are in
+   * `docs/*.md` and `examples/vault/` the budget leaves 21 of the 31 matched
+   * triplets alone and raises 10. Eight of the ten are in
    * `examples/vault/personal-readme.md`, the real prose that replaced the
    * invented sample text these numbers used to be measured on: its 1,823 prose
    * words buy a budget of nine before one is reported, and all eight it does
