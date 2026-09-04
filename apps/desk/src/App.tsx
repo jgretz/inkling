@@ -5,7 +5,9 @@ import {isDesktop, loadSettings, saveSettings} from './lib/bridge.ts';
 import {DEFAULT_SETTINGS, parseSettings, type LayoutSettings} from './lib/settings.ts';
 import {stubTransport, type AgentContext} from './lib/agent.ts';
 import {useWorkspace} from './lib/use-workspace.ts';
+import {dataNotice} from './lib/workspace-state.ts';
 import {TitleBar} from './components/shell/TitleBar.tsx';
+import {StatusBar} from './components/shell/StatusBar.tsx';
 import {Splitter} from './components/shell/Splitter.tsx';
 import {EmptyState} from './components/shell/EmptyState.tsx';
 import {LibraryPanel} from './components/library/LibraryPanel.tsx';
@@ -252,14 +254,7 @@ export function App() {
         )}
       </main>
 
-      {workspace.error !== undefined && (
-        <div
-          role="status"
-          className="shrink-0 border-t border-red-900/50 bg-red-950/40 px-4 py-1.5 text-[12px] text-red-300"
-        >
-          {workspace.error}
-        </div>
-      )}
+      <StatusBar error={workspace.error} notice={dataNotice(workspace.data)} />
     </div>
   );
 }

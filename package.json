@@ -12,11 +12,12 @@
     "build": "bun run --filter '@inkling/desk-app' tauri build",
     "web": "bun run --filter '@inkling/desk-app' dev",
     "typecheck": "bun scripts/typecheck.ts",
-    "test": "bun test",
+    "test": "bun test --preload ./scripts/dom-setup.ts",
     "format": "prettier --write . && cargo fmt --manifest-path apps/desk/src-tauri/Cargo.toml",
     "format:check": "prettier --check . && cargo fmt --check --manifest-path apps/desk/src-tauri/Cargo.toml"
   },
   "devDependencies": {
+    "@happy-dom/global-registrator": "^20.14.0",
     "@types/bun": "latest",
     "prettier": "3.9.6",
     "typescript": "5.8.3"

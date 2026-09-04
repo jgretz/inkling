@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useMemo, useReducer, useRef} from 'react';
 import {summarize, type DocPath, type VaultPath} from '@inkling/vault';
-import {isoFromEpoch, listDocs, readDoc, writeDoc} from './bridge.ts';
+import {isoFromEpoch, listDocs, openVaultDb, readDoc, writeDoc} from './bridge.ts';
 import {
   INITIAL_WORKSPACE,
   isDirty,
@@ -66,6 +66,35 @@ export function useWorkspace(): Workspace {
       refresh();
     },
     [refresh],
+  );
+
+  // Opening the vault's database is a second, independent effect: the document
+  // list must not wait on it, and a database that will not open must not stop
+  // the vault from being read. There is no matching close on cleanup, because
+  // React runs the cleanup and the next effect body without awaiting either
+  // invoke; the Rust side swaps the connection under one lock instead.
+  useEffect(
+    function () {
+      if (vault === undefined) return;
+      let live = true;
+      openVaultDb(vault)
+        .then(function (status) {
+          if (!live) return;
+          if (status.kind === 'ready') {
+            dispatch({type: 'dataReady', schemaVersion: status.schemaVersion});
+          } else {
+            dispatch({type: 'dataUnavailable', message: status.message});
+          }
+        })
+        .catch(function (error) {
+          console.error('inkling: failed to open the vault database', error);
+          if (live) dispatch({type: 'dataUnavailable', message: message(error)});
+        });
+      return function () {
+        live = false;
+      };
+    },
+    [vault],
   );
 
   const chooseVault = useCallback(function (next: VaultPath) {
