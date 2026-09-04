@@ -48,7 +48,7 @@ Serialize anything that edits them, or plan for rebase conflicts.
 
 ---
 
-## Phase 1 — Voice checks
+## Phase 1: Voice checks
 
 The highest-value work that depends on nothing. It gives the app a fast feedback
 loop that no amount of model latency can spoil, and it is the one feature that
@@ -73,7 +73,7 @@ against the quote anchor, so a deliberate rule break stays quiet through edits.
 Done when a suppressed finding stays suppressed after the surrounding paragraph
 is rewritten.
 
-## Phase 2 — Groups and documents
+## Phase 2: Groups and documents
 
 **2.1 The data directory.** Built in the first wave, not this one, because 1.3
 needs it. `.inkling/` inside the vault, SQLite at
@@ -92,7 +92,7 @@ right skeleton.
 **2.4 Name filtering.** One filter box over groups and documents. Deliberately
 not search.
 
-## Phase 3 — Context management
+## Phase 3: Context management
 
 **3.1 References.** A document or group holds references: other vault documents,
 web links, and notes. Metadata in SQLite, note bodies as markdown in the vault.
@@ -104,7 +104,7 @@ selection. It becomes the assembled cascade, with each entry's token estimate an
 where it was inherited from. Done when the strip accounts for every byte a turn
 would carry.
 
-## Phase 4 — The agent
+## Phase 4: The agent
 
 Waits on toryo `82bcbabe`.
 
@@ -147,7 +147,7 @@ rewritten.
 compact rules always, the long document only on the first turn of a session or
 when the checker is firing.
 
-## Phase 5 — Research inflow
+## Phase 5: Research inflow
 
 **5.1 Retrieval.** The agent fetches a URL inside its turn. Done when a pasted
 link comes back as something discussable.
@@ -157,7 +157,7 @@ it as a reference note. The page itself is never cached, which is also what
 keeps it from going stale. Done when a link becomes a note that survives the
 conversation that produced it.
 
-## Phase 6 — Output
+## Phase 6: Output
 
 **6.1 Export.** A clean markdown file, frontmatter stripped or kept by choice.
 
