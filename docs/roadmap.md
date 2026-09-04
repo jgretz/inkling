@@ -95,8 +95,13 @@ Waits on toryo `82bcbabe`.
 `createHttpClient`. The path is pinned rather than following `TORYO_HOME`,
 decided in toryo run `369e3146` for the same reason `crashDir` and
 `sequenceDraftsDir` are pinned: a Tauri capability is static JSON baked into the
-binary and cannot follow an environment variable. Re-read the file and retry once
-on an authorization failure, so a daemon restart does not require an app restart.
+binary and cannot follow an environment variable.
+
+Nothing rotates the token: the daemon mints one only when the file is absent or
+blank, and reads it per request. So re-read and retry once on an authorization
+failure, but distinguish the two causes. A changed file means retry and carry on.
+An absent one means every request will 401 forever, so stop and say the token is
+missing and the daemon needs restarting to mint a new one.
 
 Enqueue with the working directory at the vault root and `writeScope` naming
 exactly the files a turn may touch, so two conversations in two groups do not
