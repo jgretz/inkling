@@ -13,13 +13,38 @@ const ID = 'rule-of-three';
 const NOT_A_CLAUSE =
   '(?!(?:so|but|because|which|that|when|while|if|then|however|and|or|nor|although|though|since|unless)\\b)';
 
+/**
+ * A match may not begin inside a word. Without this the engine fails
+ * `NOT_A_CLAUSE` at the `W` of `When`, slides one character, and matches at
+ * `hen`, reporting a span that starts mid-word.
+ */
+const START = "(?<![\\p{L}\\p{N}'’-])";
+
+const WORD = "[\\p{L}\\p{N}'’-]+";
+
 /** One to four words, which is as long as a list item gets before it is a clause. */
-const ITEM = `${NOT_A_CLAUSE}[\\p{L}\\p{N}'’-]+(?:[ \\t]+[\\p{L}\\p{N}'’-]+){0,3}`;
+const ITEM = `${START}${NOT_A_CLAUSE}${WORD}(?:[ \\t]+${WORD}){0,3}`;
+
+/**
+ * The middle item, when no comma separates it from `and`. Its boundaries are
+ * the only ones the pattern knows exactly, a comma on the left and `and` on the
+ * right, so its length is the one honest signal that `A, B and C` is a list
+ * rather than `A, B-and-C`. Two words keeps `drafts, references and notes` and
+ * drops `get what you need, express your thoughts and opinions`, where the
+ * comma is a clause boundary and the `and` joins a compound inside the
+ * predicate.
+ *
+ * One false positive knowingly survives this guard: `a bridge between
+ * developers and stakeholders, technical teams and business leadership`, whose
+ * middle item is two words. Telling it from a real list needs part-of-speech
+ * knowledge this package does not have.
+ */
+const SHORT = `${START}${NOT_A_CLAUSE}${WORD}(?:[ \\t]+${WORD}){0,1}`;
 
 /** At least one space, and at most one line break, so a triplet may wrap. */
 const GAP = '(?:[ \\t]+\\n?[ \\t]*|\\n[ \\t]*)';
 
-const TRIPLET = new RegExp(`${ITEM},${GAP}${ITEM},?${GAP}and${GAP}${ITEM}`, 'giu');
+const TRIPLET = new RegExp(`${ITEM},${GAP}(?:${ITEM},|${SHORT})${GAP}and${GAP}${ITEM}`, 'giu');
 
 /**
  * Function words the last item runs on into. The match is a highlight in the

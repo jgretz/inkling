@@ -81,7 +81,7 @@ export type Sentence = {
 /**
  * A document prepared for detection: the original source, the reduced text
  * detectors match against, and everything needed to get back from one to the
- * other. Built once per `check` so fifteen detectors do not each re-parse.
+ * other. Built once per `check` so sixteen detectors do not each re-parse.
  */
 export type Prose = {
   source: string;

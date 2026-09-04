@@ -27,6 +27,23 @@ describe('negative-parallelism', function () {
     expect(findings('The token is not there, and it never was.')).toEqual([]);
   });
 
+  it('should flag the contracted copula', function () {
+    expect(findings("It's not a scheduler, but a queue with a worker on the end.")).toHaveLength(1);
+  });
+
+  it('should flag an explicit intensifier with no copula in front of it', function () {
+    expect(findings('We shipped not merely a checker, but a habit.')).toHaveLength(1);
+  });
+
+  /** A copula and an intensifier in the same sentence is still one finding. */
+  it('should raise one finding when both shapes cover the same words', function () {
+    expect(findings("It's not just a tool, but a habit.")).toHaveLength(1);
+  });
+
+  it('should not flag ordinary concession after a modal', function () {
+    expect(findings('We will not always agree, but I commit to listening.')).toEqual([]);
+  });
+
   it('should not flag inside a fenced code block', function () {
     const source = ['```ts', 'const x = "not a scheduler, but a queue";', '```'].join('\n');
 
