@@ -35,6 +35,11 @@ describe('negative-parallelism', function () {
     expect(findings('We shipped not merely a checker, but a habit.')).toHaveLength(1);
   });
 
+  /** A copula and an intensifier in the same sentence is still one finding. */
+  it('should raise one finding when both shapes cover the same words', function () {
+    expect(findings("It's not just a tool, but a habit.")).toHaveLength(1);
+  });
+
   it('should not flag ordinary concession after a modal', function () {
     expect(findings('We will not always agree, but I commit to listening.')).toEqual([]);
   });

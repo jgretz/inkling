@@ -196,6 +196,11 @@ export const SIGNPOSTING: readonly PhraseRule[] = [
  * concession, and `We will not always agree, but I commit to listening` is a
  * sentence meaning what it says. Kept out of the `not only` detector by a
  * lookahead, so a sentence never gets flagged twice for the same words.
+ *
+ * The copula and the intensifier are one alternation rather than two entries in
+ * this table for the same reason: `matchPhrases` runs every entry over the whole
+ * text, so `It's not just a tool, but a habit` would raise two findings over the
+ * same words if they were split.
  */
 export const NEGATIVE_PARALLELISM: readonly PhraseRule[] = [
   {
