@@ -9,7 +9,14 @@ describe('check', function () {
       return finding.range.start;
     });
 
-    expect(starts).toEqual([...starts].sort((a, b) => a - b));
+    // Asserted first: sorted-equals-itself is true of an empty list, so without
+    // this the ordering guard survives a `check` that returns nothing at all.
+    expect(starts.length).toBeGreaterThan(1);
+    expect(starts).toEqual(
+      [...starts].sort(function (a, b) {
+        return a - b;
+      }),
+    );
   });
 
   it('should run only the detectors named in options', function () {
