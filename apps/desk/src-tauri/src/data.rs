@@ -75,6 +75,12 @@ fn open_connection(vault: &Path) -> rusqlite::Result<Connection> {
 /// database will not open still lists and edits its documents, and refusing to
 /// open it at all would be the worse failure. `settings.rs` degrades the same
 /// way when its file is unreadable.
+///
+/// The serialised shape is a contract with `VaultDbStatus` in
+/// `src/lib/bridge.ts`, which is a hand-written mirror rather than a generated
+/// one. `serialises_to_the_shape_the_frontend_reads` pins it, because dropping
+/// a `rename_all` here would leave the frontend reading `undefined` with every
+/// other test still green.
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum VaultDbStatus {
@@ -89,7 +95,12 @@ pub enum VaultDbStatus {
 #[derive(Default)]
 pub struct VaultDb(Mutex<Option<Connection>>);
 
-fn prepare(vault: &Path) -> Result<(Connection, i32), String> {
+/// Everything between "there is a vault" and "there is a usable connection".
+///
+/// Split out so [`VaultDb::open`] holds the lock across one expression and every
+/// failure in here lands in the same `Unavailable` message. Each error names the
+/// step it came from, because that message is what the writer reads.
+fn open_and_migrate(vault: &Path) -> Result<(Connection, i32), String> {
     ensure_data_dir(vault).map_err(|error| format!("{}: {error}", data_dir(vault).display()))?;
     let mut conn = open_connection(vault).map_err(|error| error.to_string())?;
     let version = migrate(&mut conn)?;
@@ -124,7 +135,7 @@ impl VaultDb {
             }
         }
 
-        match prepare(vault) {
+        match open_and_migrate(vault) {
             Ok((conn, schema_version)) => {
                 *slot = Some(conn);
                 Ok(VaultDbStatus::Ready { schema_version })
@@ -252,7 +263,55 @@ mod tests {
 
         let status = db.open(vault.path()).expect("should not be an Err");
 
-        assert!(matches!(status, VaultDbStatus::Unavailable { .. }));
+        // The message carries SQLite's own words, not a generic stand-in: it is
+        // the only thing the writer gets to act on.
+        let VaultDbStatus::Unavailable { message } = status else {
+            panic!("a corrupt database should be unavailable, not ready");
+        };
+        assert!(
+            message.contains("schema version") && message.contains("not a database"),
+            "should name the step and the cause, got {message:?}"
+        );
+        assert!(
+            db.with(|_| ()).is_none(),
+            "no connection should be left open"
+        );
+    }
+
+    #[test]
+    fn should_report_unavailable_when_the_data_directory_cannot_be_created() {
+        let vault = tempdir().expect("should make a temp dir");
+        // A file where the directory needs to go, so `create_dir_all` fails.
+        fs::write(data_dir(vault.path()), b"in the way").expect("should write");
+        let db = VaultDb::default();
+
+        let status = db.open(vault.path()).expect("should not be an Err");
+
+        let VaultDbStatus::Unavailable { message } = status else {
+            panic!("an uncreatable data directory should be unavailable, not ready");
+        };
+        assert!(
+            message.contains(".inkling"),
+            "should name the path it failed on, got {message:?}"
+        );
+    }
+
+    /// `bridge.ts` mirrors this shape by hand. If serde stops producing it, the
+    /// frontend reads `undefined` and nothing else in either suite notices.
+    #[test]
+    fn serialises_to_the_shape_the_frontend_reads() {
+        let ready = serde_json::to_string(&VaultDbStatus::Ready { schema_version: 1 })
+            .expect("should serialise");
+        let unavailable = serde_json::to_string(&VaultDbStatus::Unavailable {
+            message: "file is not a database".to_string(),
+        })
+        .expect("should serialise");
+
+        assert_eq!(ready, r#"{"kind":"ready","schemaVersion":1}"#);
+        assert_eq!(
+            unavailable,
+            r#"{"kind":"unavailable","message":"file is not a database"}"#
+        );
     }
 
     #[test]
