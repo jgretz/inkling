@@ -90,12 +90,19 @@ would carry.
 
 Waits on toryo `82bcbabe`.
 
-**4.1 Dispatch transport.** Replace `stubTransport`. Read the token through a
-Tauri fs scope, construct the HTTP client, enqueue with the working directory at
-the vault root and `writeScope` naming exactly the files a turn may touch, so two
-conversations in two groups do not block each other. Stream over Server-Sent
-Events. Daemon down shows an error. Done when a turn round-trips and the panel
-streams it.
+**4.1 Dispatch transport.** Replace `stubTransport`. Read the token from
+`$HOME/.toryo/daemon-token` through a Tauri fs scope and pass it to
+`createHttpClient`. The path is pinned rather than following `TORYO_HOME`,
+decided in toryo run `369e3146` for the same reason `crashDir` and
+`sequenceDraftsDir` are pinned: a Tauri capability is static JSON baked into the
+binary and cannot follow an environment variable. Re-read the file and retry once
+on an authorization failure, so a daemon restart does not require an app restart.
+
+Enqueue with the working directory at the vault root and `writeScope` naming
+exactly the files a turn may touch, so two conversations in two groups do not
+block each other. Stream over Server-Sent Events; `/events` is deliberately
+ungated, so plain `EventSource` works. Daemon down shows an error. Done when a
+turn round-trips and the panel streams it.
 
 **4.2 Sessions.** Several conversations per document, persisted in SQLite, one
 turn record per round trip with the pre-turn snapshot. Resume a pending turn on
