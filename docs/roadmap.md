@@ -20,6 +20,22 @@ six follow it.
 Phase four can start on `82bcbabe` alone. Resume makes it good rather than
 possible.
 
+## In flight
+
+| Run        | Item                     |
+| ---------- | ------------------------ |
+| `5784c7d9` | 1.1 voice detectors      |
+| `a24743da` | 2.1 vault data directory |
+
+They are independent and run in parallel. 2.1 is pulled forward out of phase two
+because 1.3 stores suppressions in SQLite and therefore cannot start without it.
+The phase numbering records what each item is, not the order it is built in.
+
+1.2 and 1.3 are deliberately not queued yet. 1.1 ends by reporting finding counts
+per rule over real prose, and that report is what decides whether findings carry
+a severity and whether the banned-words rule ships enabled. Writing their briefs
+before that data arrives would commit to answers we agreed to defer.
+
 ## Shared files
 
 These are touched by nearly every task and are where parallel work collides.
@@ -50,15 +66,17 @@ including its false-positive edges, and no dependency on React or Tauri.
 findings strip that lists them with counts by rule. Clicking a finding scrolls to
 it. Done when typing a banned construction marks it within a keystroke.
 
-**1.3 Voice rule sets.** Markdown files that cascade root, group, document, with
-a document able to suppress an inherited rule. Suppressions persist in SQLite
+**1.3 Voice rule sets.** Depends on 1.1 and on 2.1, which is where the database
+it writes suppressions into arrives. Markdown files that cascade root, group,
+document, with a document able to suppress an inherited rule. Suppressions persist in SQLite
 against the quote anchor, so a deliberate rule break stays quiet through edits.
 Done when a suppressed finding stays suppressed after the surrounding paragraph
 is rewritten.
 
 ## Phase 2 — Groups and documents
 
-**2.1 The data directory.** `.inkling/` inside the vault, SQLite at
+**2.1 The data directory.** Built in the first wave, not this one, because 1.3
+needs it. `.inkling/` inside the vault, SQLite at
 `.inkling/inkling.db`, schema and migrations. Done when the app creates it on
 first open of a vault that lacks one, and an existing flat vault still opens.
 
