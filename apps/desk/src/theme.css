@@ -1,0 +1,89 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+
+/*
+ * Inkling's palette is warm and low contrast on purpose. The center panel is
+ * where a writer stares for hours, so it reads as paper rather than as an IDE.
+ * Every colour is a token here; nothing downstream hardcodes a hex.
+ */
+@theme {
+  --color-ink-950: #0f0e0d;
+  --color-ink-900: #161412;
+  --color-ink-850: #1c1917;
+  --color-ink-800: #24201d;
+  --color-ink-700: #322c28;
+  --color-ink-600: #4a423c;
+  --color-ink-400: #8a7f76;
+  --color-ink-300: #b3a89e;
+  --color-ink-200: #d9d0c6;
+  --color-ink-100: #efe8dd;
+  --color-ink-50: #faf6ee;
+
+  --color-accent: #e9b872;
+  --color-accent-muted: #a07f45;
+
+  --font-prose: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'SF Mono', 'JetBrains Mono', 'Menlo', ui-monospace, monospace;
+
+  /* Motion tiers. See ~/.claude/rules/motion.md. */
+  --motion-micro: 100ms;
+  --motion-standard: 200ms;
+  --motion-page: 300ms;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-ink-900);
+    color: var(--color-ink-100);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    /* The webview is a chrome-less window; text selection is opt-in per panel
+       so a drag on the shell moves the window instead of highlighting it. */
+    user-select: none;
+    cursor: default;
+    overflow: hidden;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-ink-700);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-ink-600);
+    background-clip: content-box;
+  }
+}
+
+@layer components {
+  /* Regions a writer reads or edits: selectable, with a text cursor. */
+  .selectable {
+    user-select: text;
+    cursor: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

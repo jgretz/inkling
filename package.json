@@ -1,0 +1,24 @@
+{
+  "name": "inkling",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run --filter '@inkling/desk-app' tauri dev",
+    "build": "bun run --filter '@inkling/desk-app' tauri build",
+    "web": "bun run --filter '@inkling/desk-app' dev",
+    "typecheck": "bun scripts/typecheck.ts",
+    "test": "bun test",
+    "format": "prettier --write . && cargo fmt --manifest-path apps/desk/src-tauri/Cargo.toml",
+    "format:check": "prettier --check . && cargo fmt --check --manifest-path apps/desk/src-tauri/Cargo.toml"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "prettier": "3.9.6",
+    "typescript": "5.8.3"
+  }
+}

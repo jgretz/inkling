@@ -1,0 +1,5 @@
+dist
+node_modules
+apps/desk/src-tauri/target
+apps/desk/src-tauri/gen
+bun.lock

@@ -1,0 +1,109 @@
+import {memo} from 'react';
+import type {ReactNode} from 'react';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open';
+import Columns from 'lucide-react/dist/esm/icons/columns-2';
+import Library from 'lucide-react/dist/esm/icons/library';
+import MessageSquare from 'lucide-react/dist/esm/icons/message-square';
+import type {LayoutSettings} from '../../lib/settings.ts';
+import type {SaveState} from '../../lib/workspace-state.ts';
+
+type TitleBarProps = {
+  title: string;
+  subtitle: string;
+  save: SaveState | undefined;
+  layout: LayoutSettings;
+  onToggle: (panel: 'libraryOpen' | 'previewOpen' | 'chatOpen') => void;
+};
+
+const SAVE_LABEL: Record<SaveState['kind'], string> = {
+  clean: 'Saved',
+  dirty: 'Unsaved',
+  saving: 'Saving…',
+  failed: 'Save failed',
+};
+
+type ToggleProps = {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+};
+
+const Toggle = memo(function Toggle({active, label, onClick, children}: ToggleProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      aria-label={label}
+      title={label}
+      className={`rounded-md p-1.5 transition-colors duration-100 ${
+        active ? 'bg-ink-700 text-ink-100' : 'text-ink-400 hover:bg-ink-800 hover:text-ink-200'
+      }`}
+    >
+      {children}
+    </button>
+  );
+});
+
+/**
+ * The window's own chrome. `titleBarStyle: Overlay` hides the system bar, so
+ * this strip is both the app header and the window's drag region; the left pad
+ * clears the traffic lights.
+ */
+export function TitleBar({title, subtitle, save, layout, onToggle}: TitleBarProps) {
+  return (
+    <header
+      data-tauri-drag-region
+      className="flex h-11 shrink-0 items-center gap-3 border-b border-ink-800 bg-ink-950 pl-20 pr-3"
+    >
+      <div data-tauri-drag-region className="flex min-w-0 flex-1 items-baseline gap-2">
+        <span className="truncate text-[13px] font-medium text-ink-100">{title}</span>
+        <span className="truncate text-[11px] text-ink-400">{subtitle}</span>
+      </div>
+
+      {save !== undefined && (
+        <span
+          className={`text-[11px] tabular-nums ${
+            save.kind === 'failed' ? 'text-red-400' : 'text-ink-400'
+          }`}
+          title={save.kind === 'failed' ? save.message : undefined}
+        >
+          {SAVE_LABEL[save.kind]}
+        </span>
+      )}
+
+      <div className="flex items-center gap-0.5">
+        <Toggle
+          active={layout.libraryOpen}
+          label="Toggle library"
+          onClick={function () {
+            onToggle('libraryOpen');
+          }}
+        >
+          <Library size={15} />
+        </Toggle>
+        <Toggle
+          active={layout.previewOpen}
+          label="Toggle preview"
+          onClick={function () {
+            onToggle('previewOpen');
+          }}
+        >
+          <BookOpen size={15} />
+        </Toggle>
+        <Toggle
+          active={layout.chatOpen}
+          label="Toggle agent"
+          onClick={function () {
+            onToggle('chatOpen');
+          }}
+        >
+          <MessageSquare size={15} />
+        </Toggle>
+        <span className="mx-1 h-4 w-px bg-ink-800" />
+        <Columns size={15} className="text-ink-600" aria-hidden />
+      </div>
+    </header>
+  );
+}

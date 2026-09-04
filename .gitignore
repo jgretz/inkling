@@ -1,0 +1,14 @@
+node_modules
+dist
+*.tsbuildinfo
+.DS_Store
+.env
+.env.*
+!.env.example
+WORKING.md
+apps/desk/src-tauri/target
+apps/desk/src-tauri/gen
+
+# Platform icon sets tauri generates but a macOS-only app never bundles.
+apps/desk/src-tauri/icons/ios
+apps/desk/src-tauri/icons/android
