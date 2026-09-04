@@ -22,6 +22,11 @@
   --color-accent: #e9b872;
   --color-accent-muted: #a07f45;
 
+  /* The underline under a voice finding, and the same underline hovered. Kept
+     clear of --color-accent, which is already the caret and every link. */
+  --color-voice-mark: #6f645a;
+  --color-voice-mark-strong: #b08d5a;
+
   --font-prose: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
   --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
   --font-mono: 'SF Mono', 'JetBrains Mono', 'Menlo', ui-monospace, monospace;

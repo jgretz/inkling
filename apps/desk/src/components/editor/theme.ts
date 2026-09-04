@@ -36,6 +36,38 @@ const paint = EditorView.theme(
     '.cm-activeLine': {backgroundColor: 'transparent'},
     '.cm-gutters': {display: 'none'},
     '&.cm-focused': {outline: 'none'},
+
+    // A voice finding: an underline and nothing else. `text-decoration-line`
+    // rather than `border-bottom` so it wraps with the text across a line break,
+    // and nothing here touches metrics, so marking a run cannot reflow the
+    // paragraph a writer is typing into.
+    '.cm-voice-finding': {
+      textDecorationLine: 'underline',
+      textDecorationStyle: 'solid',
+      textDecorationColor: 'var(--color-voice-mark)',
+      textDecorationThickness: '1px',
+      textUnderlineOffset: '3px',
+      textDecorationSkipInk: 'auto',
+    },
+    '.cm-voice-finding:hover': {textDecorationColor: 'var(--color-voice-mark-strong)'},
+
+    '.cm-tooltip, .cm-tooltip-hover': {
+      backgroundColor: 'var(--color-ink-850)',
+      border: '1px solid var(--color-ink-700)',
+      borderRadius: '6px',
+      color: 'var(--color-ink-200)',
+    },
+    '.cm-voice-tooltip': {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '0.25rem',
+      maxWidth: '28rem',
+      padding: '0.5rem 0.625rem',
+      fontFamily: 'var(--font-ui)',
+      fontSize: '12px',
+      lineHeight: '1.45',
+    },
+    '.cm-voice-tooltip-rule': {color: 'var(--color-ink-400)'},
   },
   {dark: true},
 );

@@ -4,7 +4,8 @@ import BookOpen from 'lucide-react/dist/esm/icons/book-open';
 import Columns from 'lucide-react/dist/esm/icons/columns-2';
 import Library from 'lucide-react/dist/esm/icons/library';
 import MessageSquare from 'lucide-react/dist/esm/icons/message-square';
-import type {LayoutSettings} from '../../lib/settings.ts';
+import SpellCheck from 'lucide-react/dist/esm/icons/spell-check';
+import type {LayoutSettings, ToggleKey} from '../../lib/settings.ts';
 import type {SaveState} from '../../lib/workspace-state.ts';
 
 type TitleBarProps = {
@@ -12,7 +13,7 @@ type TitleBarProps = {
   subtitle: string;
   save: SaveState | undefined;
   layout: LayoutSettings;
-  onToggle: (panel: 'libraryOpen' | 'previewOpen' | 'chatOpen') => void;
+  onToggle: (key: ToggleKey) => void;
 };
 
 const SAVE_LABEL: Record<SaveState['kind'], string> = {
@@ -100,6 +101,15 @@ export function TitleBar({title, subtitle, save, layout, onToggle}: TitleBarProp
           }}
         >
           <MessageSquare size={15} />
+        </Toggle>
+        <Toggle
+          active={layout.marksOn}
+          label="Toggle voice marks"
+          onClick={function () {
+            onToggle('marksOn');
+          }}
+        >
+          <SpellCheck size={15} />
         </Toggle>
         <span className="mx-1 h-4 w-px bg-ink-800" />
         <Columns size={15} className="text-ink-600" aria-hidden />

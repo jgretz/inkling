@@ -17,6 +17,7 @@
     "@codemirror/state": "^6.7.1",
     "@codemirror/view": "^6.43.9",
     "@inkling/vault": "workspace:*",
+    "@inkling/voice": "workspace:*",
     "@lezer/highlight": "^1.2.1",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",

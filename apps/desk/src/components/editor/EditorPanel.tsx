@@ -3,7 +3,19 @@ import {EditorState, type Extension} from '@codemirror/state';
 import {EditorView, drawSelection, highlightActiveLine, keymap} from '@codemirror/view';
 import {defaultKeymap, history, historyKeymap} from '@codemirror/commands';
 import {markdown, markdownLanguage} from '@codemirror/lang-markdown';
+import type {Finding, Range} from '@inkling/voice';
 import {inklingTheme} from './theme.ts';
+import {setFindings, voiceFindings} from './findings-marks.ts';
+
+/**
+ * A request to show a range. `seq` is what makes it a request rather than a
+ * position: picking the same finding twice has to move the editor twice, and two
+ * identical ranges are otherwise indistinguishable.
+ */
+export type Reveal = {
+  range: Range;
+  seq: number;
+};
 
 type EditorPanelProps = {
   /** Identifies the buffer. A change here swaps the document wholesale. */
@@ -13,19 +25,34 @@ type EditorPanelProps = {
   /** Fires with the selected text, or an empty string when nothing is selected. */
   onSelect: (selection: string) => void;
   onSave: () => void;
+  findings: readonly Finding[];
+  /** Whether findings are underlined. The strip lists them either way. */
+  marksOn: boolean;
+  reveal: Reveal | undefined;
 };
 
 /**
  * The raw markdown editor.
  *
  * CodeMirror owns its own DOM, so React's job here is only to create the view
- * once per document and push external changes in. Two rules keep the two models
- * from fighting: the update listener ignores changes CodeMirror did not
- * originate from the user, and the effect that syncs `source` in compares
- * against the current document before dispatching, so a round trip through the
- * parent does not reset the cursor.
+ * once per document and push external changes in. Three rules keep the two
+ * models from fighting: the update listener ignores changes CodeMirror did not
+ * originate from the user; the effect that syncs `source` in compares against
+ * the current document before dispatching, so a round trip through the parent
+ * does not reset the cursor; and findings arrive as a dispatched effect, never
+ * by re-creating the view, so marking a document cannot cost the writer their
+ * cursor, their scroll position or their undo history.
  */
-export function EditorPanel({path, source, onChange, onSelect, onSave}: EditorPanelProps) {
+export function EditorPanel({
+  path,
+  source,
+  onChange,
+  onSelect,
+  onSave,
+  findings,
+  marksOn,
+  reveal,
+}: EditorPanelProps) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
 
@@ -33,6 +60,12 @@ export function EditorPanel({path, source, onChange, onSelect, onSave}: EditorPa
   // torn down whenever the parent re-renders with new function identities.
   const handlers = useRef({onChange, onSelect, onSave});
   handlers.current = {onChange, onSelect, onSave};
+
+  // Same reason, and one more: a new view has to be decorated at creation. The
+  // effect below fires only when `findings` changes identity, which it does not
+  // when two documents happen to hold identical text.
+  const marks = useRef({findings, marksOn});
+  marks.current = {findings, marksOn};
 
   useEffect(
     function () {
@@ -64,6 +97,7 @@ export function EditorPanel({path, source, onChange, onSelect, onSave}: EditorPa
         EditorView.lineWrapping,
         markdown({base: markdownLanguage, codeLanguages: []}),
         inklingTheme,
+        voiceFindings(),
         listener,
         saveKey,
         keymap.of([...defaultKeymap, ...historyKeymap]),
@@ -74,6 +108,9 @@ export function EditorPanel({path, source, onChange, onSelect, onSave}: EditorPa
         parent,
       });
       view.current = instance;
+      instance.dispatch({
+        effects: setFindings.of(marks.current.marksOn ? marks.current.findings : []),
+      });
 
       return function () {
         instance.destroy();
@@ -95,6 +132,40 @@ export function EditorPanel({path, source, onChange, onSelect, onSave}: EditorPa
       instance.dispatch({changes: {from: 0, to: current.length, insert: source}});
     },
     [source],
+  );
+
+  // Declared after the `source` sync above so the document is already current
+  // when the findings computed from it arrive.
+  useEffect(
+    function () {
+      const instance = view.current;
+      if (instance === null) return;
+      instance.dispatch({effects: setFindings.of(marksOn ? findings : [])});
+    },
+    [findings, marksOn],
+  );
+
+  useEffect(
+    function () {
+      const instance = view.current;
+      if (instance === null || reveal === undefined) return;
+      const length = instance.state.doc.length;
+      const from = Math.max(0, Math.min(reveal.range.start, length));
+      const to = Math.max(from, Math.min(reveal.range.end, length));
+      instance.dispatch({
+        selection: {anchor: from, head: to},
+        effects: EditorView.scrollIntoView(from, {y: 'center'}),
+      });
+
+      // Focus after the update cycle rather than inside it. `focus()` makes
+      // CodeMirror write the DOM selection, and doing that while the dispatch
+      // above is still measuring re-enters its own update. The guard is for the
+      // document being closed in between.
+      queueMicrotask(function () {
+        if (view.current === instance) instance.focus();
+      });
+    },
+    [reveal],
   );
 
   return <div ref={host} className="selectable h-full min-w-0 overflow-hidden bg-ink-900" />;

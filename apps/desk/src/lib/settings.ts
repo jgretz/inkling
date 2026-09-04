@@ -15,16 +15,22 @@ export type LayoutSettings = {
   libraryOpen: boolean;
   previewOpen: boolean;
   chatOpen: boolean;
+  /** Whether voice findings are underlined in the editor. */
+  marksOn: boolean;
   /** Panel widths in pixels; the editor takes whatever is left. */
   libraryWidth: number;
   previewWidth: number;
   chatWidth: number;
 };
 
+/** Everything the title bar can flip. */
+export type ToggleKey = 'libraryOpen' | 'previewOpen' | 'chatOpen' | 'marksOn';
+
 export const DEFAULT_LAYOUT: LayoutSettings = {
   libraryOpen: true,
   previewOpen: true,
   chatOpen: true,
+  marksOn: true,
   libraryWidth: 240,
   previewWidth: 420,
   chatWidth: 380,
@@ -71,6 +77,7 @@ export function parseSettings(raw: unknown): Settings {
       libraryOpen: asBoolean(layout['libraryOpen'], DEFAULT_LAYOUT.libraryOpen),
       previewOpen: asBoolean(layout['previewOpen'], DEFAULT_LAYOUT.previewOpen),
       chatOpen: asBoolean(layout['chatOpen'], DEFAULT_LAYOUT.chatOpen),
+      marksOn: asBoolean(layout['marksOn'], DEFAULT_LAYOUT.marksOn),
       libraryWidth: asWidth(layout['libraryWidth'], DEFAULT_LAYOUT.libraryWidth),
       previewWidth: asWidth(layout['previewWidth'], DEFAULT_LAYOUT.previewWidth),
       chatWidth: asWidth(layout['chatWidth'], DEFAULT_LAYOUT.chatWidth),

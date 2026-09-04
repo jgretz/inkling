@@ -1,0 +1,110 @@
+import {autoCleanup} from './setup.ts';
+import {describe, expect, it, mock} from 'bun:test';
+import {fireEvent, render} from '@testing-library/react';
+import {check, type Finding} from '@inkling/voice';
+import {FindingsStrip} from '../src/components/findings/FindingsStrip.tsx';
+
+autoCleanup();
+
+const MIXED = 'A sentence — with an em dash and a hyphen - too.';
+
+function noop() {}
+
+describe('FindingsStrip', function () {
+  it('should render nothing at all for a document with no findings', function () {
+    const {container} = render(<FindingsStrip findings={[]} onPick={noop} />);
+
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('should count the findings and the rules they came from', function () {
+    const findings = check(MIXED);
+    const {getByText} = render(<FindingsStrip findings={findings} onPick={noop} />);
+
+    expect(findings.length).toBe(2);
+    expect(getByText('2 findings in 2 rules')).toBeDefined();
+  });
+
+  it('should say "1 finding in 1 rule" rather than pluralize blindly', function () {
+    const {getByText} = render(
+      <FindingsStrip findings={check('A sentence — with an em dash.')} onPick={noop} />,
+    );
+
+    expect(getByText('1 finding in 1 rule')).toBeDefined();
+  });
+
+  it('should start every group collapsed', function () {
+    const {getAllByRole} = render(<FindingsStrip findings={check(MIXED)} onPick={noop} />);
+
+    const groups = getAllByRole('button');
+
+    expect(groups.length).toBe(2);
+    groups.forEach(function (group) {
+      expect(group.getAttribute('aria-expanded')).toBe('false');
+    });
+  });
+
+  it('should list a rule label and its count on each group header', function () {
+    const {getByText} = render(<FindingsStrip findings={check(MIXED)} onPick={noop} />);
+
+    expect(getByText('Em dash')).toBeDefined();
+    expect(getByText('Spaced hyphen')).toBeDefined();
+  });
+
+  it('should reveal the entries of a group when it is expanded', function () {
+    const {getByText, queryByText} = render(
+      <FindingsStrip findings={check(MIXED)} onPick={noop} />,
+    );
+    const explain =
+      'use a colon if the second half explains the first, a comma for an aside, or a full stop.';
+
+    expect(queryByText(explain)).toBeNull();
+
+    fireEvent.click(getByText('Em dash'));
+
+    expect(getByText(explain)).toBeDefined();
+  });
+
+  it('should toggle groups independently', function () {
+    const {getByText} = render(<FindingsStrip findings={check(MIXED)} onPick={noop} />);
+
+    fireEvent.click(getByText('Em dash'));
+    fireEvent.click(getByText('Spaced hyphen'));
+
+    const headers = [getByText('Em dash'), getByText('Spaced hyphen')];
+
+    headers.forEach(function (header) {
+      expect(header.closest('button')?.getAttribute('aria-expanded')).toBe('true');
+    });
+  });
+
+  it('should hand the picked finding to onPick', function () {
+    const onPick = mock(function (_finding: Finding) {});
+    const findings = check(MIXED);
+    const {getByText, getAllByRole} = render(<FindingsStrip findings={findings} onPick={onPick} />);
+
+    fireEvent.click(getByText('Spaced hyphen'));
+    const entry = getAllByRole('button').at(-1);
+    if (entry === undefined) throw new Error('the expanded group listed no entry');
+    fireEvent.click(entry);
+
+    expect(onPick).toHaveBeenCalledWith(findings[1]);
+  });
+
+  it('should show the anchor context around a quote that is one character', function () {
+    // The reason the strip reads the anchor rather than the quote: a spaced
+    // hyphen's quote is `-`, which identifies nothing on its own.
+    const {getByText, container} = render(<FindingsStrip findings={check(MIXED)} onPick={noop} />);
+
+    fireEvent.click(getByText('Spaced hyphen'));
+
+    expect(container.textContent).toContain('and a hyphen');
+  });
+
+  it('should name itself for a screen reader without announcing changes', function () {
+    const {getByRole, container} = render(<FindingsStrip findings={check(MIXED)} onPick={noop} />);
+
+    expect(getByRole('region', {name: 'Voice findings'})).toBeDefined();
+    expect(container.querySelector('[aria-live]')).toBeNull();
+  });
+});
