@@ -22,19 +22,25 @@ possible.
 
 ## In flight
 
-| Run        | Item                     |
-| ---------- | ------------------------ |
-| `5784c7d9` | 1.1 voice detectors      |
-| `a24743da` | 2.1 vault data directory |
+| Run        | Item                                 | Waits on |
+| ---------- | ------------------------------------ | -------- |
+| `0c1d4c6b` | 1.1b detector fixes                  | nothing  |
+| `a4df40bf` | 1.2 findings in the editor           | 1.1b     |
+| `0f335217` | 1.3 voice rule sets and suppressions | 1.2      |
 
-They are independent and run in parallel. 2.1 is pulled forward out of phase two
-because 1.3 stores suppressions in SQLite and therefore cannot start without it.
-The phase numbering records what each item is, not the order it is built in.
+Serialized rather than parallel: 1.2 builds the findings strip and 1.3 adds the
+dismiss affordance to it, so they would collide in the same files.
 
-1.2 and 1.3 are deliberately not queued yet. 1.1 ends by reporting finding counts
-per rule over real prose, and that report is what decides whether findings carry
-a severity and whether the banned-words rule ships enabled. Writing their briefs
-before that data arrives would commit to answers we agreed to defer.
+1.1 and 2.1 are merged. 2.1 was pulled forward out of phase two because 1.3
+stores suppressions in the database it creates. The phase numbering records what
+each item is, not the order it is built in.
+
+1.1b exists because 1.1's detectors were tuned against specification prose
+written by someone thinking about the rules, which never breaks them. Against
+1,867 words of real writing in `examples/vault/personal-readme.md` they showed
+two bugs in `rule-of-three`, a false positive in `negative-parallelism`, and one
+missing rule: the spaced hyphen, which appears 43 times in that file and was
+caught zero times.
 
 ## Shared files
 
