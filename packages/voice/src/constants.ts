@@ -17,10 +17,13 @@ export const THRESHOLDS = Object.freeze({
    * only on the triplets past the budget, and the budget is never below one, so
    * a short note with a single list is left alone.
    *
-   * Tuned against `bun scripts/voice-report.ts`. Over the eight files of
-   * `docs/*.md` and `examples/vault/` the budget leaves 11 of the 16 matched
-   * triplets alone and raises 5, all of them real lists. The two files in
-   * `examples/vault/` match none.
+   * Tuned against `bun scripts/voice-report.ts`. Over the nine files of
+   * `docs/*.md` and `examples/vault/` the budget raises 10 triplets and leaves
+   * at least 12 alone. Eight of the ten are in
+   * `examples/vault/personal-readme.md`, the real prose that replaced the
+   * invented sample text these numbers used to be measured on: its 1,823 prose
+   * words buy a budget of nine before one is reported, and all eight it does
+   * report are real lists.
    */
   wordsPerTriplet: 200,
 
@@ -29,9 +32,10 @@ export const THRESHOLDS = Object.freeze({
    * worth flagging, from AI-Writing-Rules. Two in a row is a writer joining an
    * argument; three is a template.
    *
-   * Tuned against `bun scripts/voice-report.ts`: across all 3,011 prose words
-   * of the corpus, not one sentence opens with a connective, so the corpus says
-   * nothing about where the line belongs and the prior art's three stands.
+   * Tuned against `bun scripts/voice-report.ts`: across all 5,263 prose words
+   * of the corpus, `examples/vault/personal-readme.md` included, not one
+   * sentence opens with a connective, so the corpus says nothing about where
+   * the line belongs and the prior art's three stands.
    */
   connectiveRun: 3,
 
@@ -40,12 +44,15 @@ export const THRESHOLDS = Object.freeze({
    * sentence word counts have a standard deviation below this fraction of their
    * mean is metronomic. Below four sentences the statistic says nothing.
    *
-   * Tuned against `bun scripts/voice-report.ts`. The corpus has eight
-   * qualifying paragraphs, at ratios 0.15, 0.24, 0.26, 0.41, 0.44, 0.58, 0.68
-   * and 0.74, so this line raises three of them. Three in eight is a lot for
-   * prose written by hand, and eight paragraphs is too thin a sample to move a
-   * published threshold on: left at the prior art's 0.4, and reported to 1.2
-   * with the counts rather than quietly tightened.
+   * Tuned against `bun scripts/voice-report.ts`. The corpus has fifteen
+   * qualifying paragraphs, at ratios 0.15, 0.24, 0.26, 0.27, 0.35, 0.36, 0.38,
+   * 0.39, 0.41, 0.44, 0.51, 0.58, 0.60, 0.68 and 0.74, so this line raises
+   * eight of them. `examples/vault/personal-readme.md` supplies seven of the
+   * fifteen and five of the eight raised, which is what moved these numbers.
+   * Eight in fifteen is a lot for prose written by hand, and fifteen paragraphs
+   * is still too thin a sample to move a published threshold on: left at the
+   * prior art's 0.4, and reported to 1.2 with the counts rather than quietly
+   * tightened.
    */
   uniformityRatio: 0.4,
   uniformityMinSentences: 4,
