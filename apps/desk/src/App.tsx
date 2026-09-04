@@ -1,9 +1,16 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {open} from '@tauri-apps/plugin-dialog';
 import type {DocPath, VaultPath} from '@inkling/vault';
+import type {Finding} from '@inkling/voice';
 import {isDesktop, loadSettings, saveSettings} from './lib/bridge.ts';
-import {DEFAULT_SETTINGS, parseSettings, type LayoutSettings} from './lib/settings.ts';
+import {
+  DEFAULT_SETTINGS,
+  parseSettings,
+  type LayoutSettings,
+  type ToggleKey,
+} from './lib/settings.ts';
 import {stubTransport, type AgentContext} from './lib/agent.ts';
+import {useFindings} from './lib/use-findings.ts';
 import {useWorkspace} from './lib/use-workspace.ts';
 import {dataNotice} from './lib/workspace-state.ts';
 import {TitleBar} from './components/shell/TitleBar.tsx';
@@ -12,7 +19,8 @@ import {Splitter} from './components/shell/Splitter.tsx';
 import {EmptyState} from './components/shell/EmptyState.tsx';
 import {LibraryPanel} from './components/library/LibraryPanel.tsx';
 import {PreviewPanel} from './components/preview/PreviewPanel.tsx';
-import {EditorPanel} from './components/editor/EditorPanel.tsx';
+import {EditorPanel, type Reveal} from './components/editor/EditorPanel.tsx';
+import {FindingsStrip} from './components/findings/FindingsStrip.tsx';
 import {ChatPanel} from './components/chat/ChatPanel.tsx';
 
 /** Last path segment of the vault directory, which is what a writer named it. */
@@ -86,9 +94,9 @@ export function App() {
     [chooseVault],
   );
 
-  const handleToggle = useCallback(function (panel: keyof LayoutSettings & `${string}Open`) {
+  const handleToggle = useCallback(function (key: ToggleKey) {
     setLayout(function (current) {
-      return {...current, [panel]: !current[panel]};
+      return {...current, [key]: !current[key]};
     });
   }, []);
 
@@ -161,6 +169,18 @@ export function App() {
   const draft = workspace.open?.draft ?? '';
   const title = openPath === undefined ? 'Inkling' : (titles.get(openPath) ?? openPath);
 
+  const findings = useFindings(draft);
+  const [reveal, setReveal] = useState<Reveal | undefined>(undefined);
+
+  // The counter increments on every pick because the editor honours one reveal
+  // per counter value. Without it, picking the same finding twice would be the
+  // same request and the second click would move nothing.
+  const handlePick = useCallback(function (finding: Finding) {
+    setReveal(function (current) {
+      return {range: finding.range, seq: (current?.seq ?? 0) + 1};
+    });
+  }, []);
+
   return (
     <div className="flex h-full flex-col">
       <TitleBar
@@ -225,14 +245,20 @@ export function App() {
               </>
             )}
 
-            <div className="min-w-0 flex-1">
-              <EditorPanel
-                path={workspace.open.path}
-                source={draft}
-                onChange={workspace.editDraft}
-                onSelect={setSelection}
-                onSave={workspace.saveNow}
-              />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <div className="min-h-0 flex-1">
+                <EditorPanel
+                  path={workspace.open.path}
+                  source={draft}
+                  onChange={workspace.editDraft}
+                  onSelect={setSelection}
+                  onSave={workspace.saveNow}
+                  findings={findings}
+                  marksOn={layout.marksOn}
+                  reveal={reveal}
+                />
+              </div>
+              <FindingsStrip findings={findings} onPick={handlePick} />
             </div>
           </>
         )}

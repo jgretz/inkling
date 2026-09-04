@@ -36,6 +36,14 @@ describe('parseSettings', function () {
     expect(result.layout.previewOpen).toBe(false);
   });
 
+  it('should turn voice marks on for a settings file written before they existed', function () {
+    expect(parseSettings({layout: {chatOpen: false}}).layout.marksOn).toBe(true);
+  });
+
+  it('should keep voice marks off when they were turned off', function () {
+    expect(parseSettings({layout: {marksOn: false}}).layout.marksOn).toBe(false);
+  });
+
   it('should treat an empty vault string as no vault', function () {
     expect(parseSettings({vault: ''}).vault).toBeUndefined();
   });

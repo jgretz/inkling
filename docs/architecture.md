@@ -7,6 +7,7 @@ apps/desk/            the Tauri desktop app
   src/                React frontend
     lib/              state, settings, the Rust boundary, the agent boundary
     components/       one directory per panel
+      findings/       the voice findings strip, under the editor
   src-tauri/          the Rust half
     src/vault.rs      filesystem commands, path containment
     src/settings.rs   one JSON file in the platform config dir
@@ -14,6 +15,7 @@ apps/desk/            the Tauri desktop app
     src/migrations.rs the schema history, as data
     migrations/       one .sql file per migration
 packages/vault/       markdown parsing and document summaries, pure
+packages/voice/       the sixteen voice detectors and `check`, pure
 examples/vault/       a small vault to develop against
 scripts/              repo tooling
 ```
