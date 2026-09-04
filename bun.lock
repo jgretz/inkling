@@ -5,6 +5,7 @@
     "": {
       "name": "inkling",
       "devDependencies": {
+        "@happy-dom/global-registrator": "^20.14.0",
         "@types/bun": "latest",
         "prettier": "3.9.6",
         "typescript": "5.8.3",

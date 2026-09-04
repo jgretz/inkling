@@ -165,7 +165,11 @@ pub fn delete_doc(vault: String, path: String) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::resolve;
+    use super::{list_docs, resolve};
+    use crate::data::VaultDb;
+    use std::fs;
+    use std::path::Path;
+    use tempfile::tempdir;
 
     #[test]
     fn resolve_rejects_parent_traversal() {
@@ -187,5 +191,36 @@ mod tests {
         let resolved = resolve("/vault", "drafts/on-writing.md").expect("should resolve");
 
         assert_eq!(resolved.to_string_lossy(), "/vault/drafts/on-writing.md");
+    }
+
+    fn doc_paths(vault: &Path) -> Vec<String> {
+        let mut paths: Vec<String> = list_docs(vault.to_string_lossy().into_owned())
+            .expect("should list")
+            .into_iter()
+            .map(|doc| doc.path)
+            .collect();
+        paths.sort();
+        paths
+    }
+
+    /// `is_ignored_dir` already skips any dotted directory, so the data
+    /// directory cannot reach the document list. This pins that, because
+    /// `.inkling/` is the first thing inkling itself puts inside a vault.
+    #[test]
+    fn list_docs_ignores_the_data_directory() {
+        let vault = tempdir().expect("should make a temp dir");
+        fs::write(vault.path().join("a.md"), "# a\n").expect("should write");
+        fs::create_dir_all(vault.path().join("drafts")).expect("should make a dir");
+        fs::write(vault.path().join("drafts/b.md"), "# b\n").expect("should write");
+        // Markdown, so only the dotted-directory skip can keep it out.
+        fs::create_dir_all(vault.path().join(".inkling")).expect("should make a dir");
+        fs::write(vault.path().join(".inkling/notes.md"), "# not prose\n").expect("should write");
+
+        let before = doc_paths(vault.path());
+        VaultDb::default().open(vault.path()).expect("should open");
+        let after = doc_paths(vault.path());
+
+        assert_eq!(before, vec!["a.md", "drafts/b.md"]);
+        assert_eq!(after, vec!["a.md", "drafts/b.md"]);
     }
 }

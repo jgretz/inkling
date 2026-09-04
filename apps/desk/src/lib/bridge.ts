@@ -48,6 +48,19 @@ export function deleteDoc(vault: VaultPath, path: DocPath): Promise<void> {
   return invoke<void>('delete_doc', {vault, path});
 }
 
+/** What `src-tauri/src/data.rs` reports about the vault's database. */
+export type VaultDbStatus =
+  {kind: 'ready'; schemaVersion: number} | {kind: 'unavailable'; message: string};
+
+/**
+ * Opens (creating and migrating as needed) the database in the vault's
+ * `.inkling/` directory. Rejects only when the vault root is not a directory;
+ * every other failure comes back as an `unavailable` status.
+ */
+export function openVaultDb(vault: VaultPath): Promise<VaultDbStatus> {
+  return invoke<VaultDbStatus>('open_vault_db', {vault});
+}
+
 export function loadSettings(): Promise<unknown> {
   return invoke<unknown>('load_settings');
 }

@@ -40,7 +40,7 @@ collapsible library sits left of the preview.
 | Run the desktop app         | `bun run dev`                                                                            |
 | Frontend only, in a browser | `bun run web`                                                                            |
 | Typecheck every workspace   | `bun run typecheck`                                                                      |
-| Tests                       | `bun test` (Rust: `cargo test --manifest-path apps/desk/src-tauri/Cargo.toml`)           |
+| Tests                       | `bun run test` (Rust: `cargo test --manifest-path apps/desk/src-tauri/Cargo.toml`)       |
 | Format                      | `bun run format`                                                                         |
 | Bundle a `.app`             | `bun run build`                                                                          |
 | Regenerate the icon         | `bun scripts/make-icon.ts && cd apps/desk && bunx tauri icon src-tauri/icons/source.png` |

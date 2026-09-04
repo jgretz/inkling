@@ -6,6 +6,11 @@ dist
 .env.*
 !.env.example
 WORKING.md
+
+# A vault's data directory. Running the app against `examples/vault/` creates
+# one; the writer's own vaults are outside this repository.
+.inkling/
+
 apps/desk/src-tauri/target
 apps/desk/src-tauri/gen
 

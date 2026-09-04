@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import type {DocPath, DocSummary, VaultPath} from '@inkling/vault';
 import {
+  dataNotice,
   INITIAL_WORKSPACE,
   isDirty,
   sortDocs,
@@ -137,5 +138,49 @@ describe('workspaceReducer', function () {
 
     expect(next.error).toBeUndefined();
     expect(next.loading).toBe(true);
+  });
+
+  it('should reopen the database when a new vault is chosen', function () {
+    const ready = workspaceReducer(opened('body'), {type: 'dataReady', schemaVersion: 1});
+
+    const next = workspaceReducer(ready, {type: 'vaultChosen', vault: '/other' as VaultPath});
+
+    expect(next.data).toEqual({kind: 'opening'});
+  });
+
+  it('should store the schema version when the database opens', function () {
+    const next = workspaceReducer(INITIAL_WORKSPACE, {type: 'dataReady', schemaVersion: 1});
+
+    expect(next.data).toEqual({kind: 'ready', schemaVersion: 1});
+  });
+
+  it('should keep the documents readable when the database is unavailable', function () {
+    const state = opened('body');
+
+    const next = workspaceReducer(state, {
+      type: 'dataUnavailable',
+      message: 'file is not a database',
+    });
+
+    expect(next.data).toEqual({kind: 'unavailable', message: 'file is not a database'});
+    expect(next.docs).toBe(state.docs);
+    expect(next.open).toBe(state.open);
+  });
+});
+
+describe('dataNotice', function () {
+  it('should say nothing when the database is ready', function () {
+    expect(dataNotice({kind: 'ready', schemaVersion: 1})).toBeUndefined();
+  });
+
+  it('should say nothing while the database is still opening', function () {
+    expect(dataNotice({kind: 'opening'})).toBeUndefined();
+  });
+
+  it('should name the failure and the recovery when the database is unavailable', function () {
+    const notice = dataNotice({kind: 'unavailable', message: 'file is not a database'});
+
+    expect(notice).toContain('file is not a database');
+    expect(notice).toContain('.inkling');
   });
 });

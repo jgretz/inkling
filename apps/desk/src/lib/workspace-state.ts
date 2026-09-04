@@ -19,6 +19,18 @@ export type OpenDoc = {
   save: SaveState;
 };
 
+/**
+ * The vault's database, as the effect layer reports it.
+ *
+ * Declared here rather than imported from `bridge.ts` so the reducer's import
+ * graph stays free of Tauri and the filesystem. `use-workspace.ts` is what
+ * bridges the two shapes.
+ */
+export type VaultData =
+  | {kind: 'opening'}
+  | {kind: 'ready'; schemaVersion: number}
+  | {kind: 'unavailable'; message: string};
+
 export type WorkspaceState = {
   vault: VaultPath | undefined;
   docs: DocSummary[];
@@ -32,6 +44,8 @@ export type WorkspaceState = {
   /** Set while a vault scan or a document load is in flight. */
   loading: boolean;
   error: string | undefined;
+  /** Whether everything inkling stores beyond the prose is available. */
+  data: VaultData;
 };
 
 export type WorkspaceAction =
@@ -44,7 +58,9 @@ export type WorkspaceAction =
   | {type: 'saveSucceeded'; path: DocPath; source: string}
   | {type: 'saveFailed'; path: DocPath; message: string}
   | {type: 'loadingStarted'}
-  | {type: 'failed'; message: string};
+  | {type: 'failed'; message: string}
+  | {type: 'dataReady'; schemaVersion: number}
+  | {type: 'dataUnavailable'; message: string};
 
 export const INITIAL_WORKSPACE: WorkspaceState = {
   vault: undefined,
@@ -53,6 +69,7 @@ export const INITIAL_WORKSPACE: WorkspaceState = {
   open: undefined,
   loading: false,
   error: undefined,
+  data: {kind: 'opening'},
 };
 
 /** Most recently touched first, which is the order a writer looks for work in. */
@@ -64,6 +81,18 @@ export function sortDocs(docs: DocSummary[]): DocSummary[] {
 
 export function isDirty(open: OpenDoc): boolean {
   return open.draft !== open.saved;
+}
+
+/**
+ * What to tell the writer when the vault's database will not open, or
+ * `undefined` when there is nothing to say.
+ *
+ * It names the recovery, because deleting `.inkling/` is the whole recovery
+ * story: everything in there is regenerable, and none of it is their prose.
+ */
+export function dataNotice(data: VaultData): string | undefined {
+  if (data.kind !== 'unavailable') return undefined;
+  return `${data.message}. Anything inkling stores beyond your writing is unavailable in this vault. Deleting its .inkling folder resets it.`;
 }
 
 /**
@@ -132,6 +161,14 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
     })
     .with({type: 'failed'}, function ({message}) {
       return {...state, loading: false, error: message};
+    })
+    .with({type: 'dataReady'}, function ({schemaVersion}) {
+      return {...state, data: {kind: 'ready', schemaVersion}};
+    })
+    .with({type: 'dataUnavailable'}, function ({message}) {
+      // The vault still lists and edits. Only what inkling stores beside the
+      // prose is missing, so nothing else in the state changes.
+      return {...state, data: {kind: 'unavailable', message}};
     })
     .exhaustive();
 }

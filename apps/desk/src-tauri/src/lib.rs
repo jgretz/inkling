@@ -1,3 +1,5 @@
+mod data;
+mod migrations;
 mod settings;
 mod vault;
 
@@ -7,6 +9,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .manage(data::VaultDb::default())
         .invoke_handler(tauri::generate_handler![
             vault::list_docs,
             vault::read_doc,
@@ -15,6 +18,7 @@ pub fn run() {
             vault::delete_doc,
             settings::load_settings,
             settings::save_settings,
+            data::open_vault_db,
         ])
         .run(tauri::generate_context!())
         .expect("error while running inkling");
