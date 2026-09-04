@@ -110,14 +110,38 @@ export type PhraseRule = {
   explain: string;
 };
 
-/** One rule. Registered as data; `run` is pure over the prepared prose. */
-export type Detector = {
-  id: string;
-  run: (prose: Prose) => Finding[];
+/**
+ * The numbers a writer may move, per document, through a rule set.
+ *
+ * `anchorContext` is deliberately absent: it is the anchoring implementation
+ * rather than a voice judgment, and letting it vary would change the shape of
+ * every anchor and so the identity of every stored suppression.
+ */
+export type VoiceThresholds = {
+  wordsPerTriplet: number;
+  connectiveRun: number;
+  uniformityRatio: number;
+  uniformityMinSentences: number;
+  titleCaseMinWords: number;
 };
 
-/** The only lever on `check`. Everything else is 1.3's problem. */
+/**
+ * One rule. Registered as data; `run` is pure over the prepared prose and the
+ * thresholds in force for this document.
+ *
+ * Only four detectors read a threshold. The other twelve declare a
+ * one-parameter function, which satisfies this signature: a function that
+ * ignores an argument is assignable to one that is passed it.
+ */
+export type Detector = {
+  id: string;
+  run: (prose: Prose, thresholds: VoiceThresholds) => Finding[];
+};
+
+/** The levers on `check`, both of them resolved from a rule set cascade. */
 export type CheckOptions = {
   /** Detector ids to run. Defaults to `DEFAULT_DETECTORS`. */
   detectors?: readonly string[];
+  /** Overrides, merged over `DEFAULT_VOICE_THRESHOLDS` key by key. */
+  thresholds?: Partial<VoiceThresholds>;
 };

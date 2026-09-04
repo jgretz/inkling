@@ -147,11 +147,10 @@ impl VaultDb {
     /// Runs a closure against the open connection, or returns `None` when there
     /// is none.
     ///
-    /// This is the read path roadmap items 1.3, 3.1 and 4.2 use, so it has no
-    /// caller in the app yet. It is not decoration: it is the only way to
-    /// observe which vault's data the connection is actually pointing at, which
-    /// is what the vault-switch isolation test asserts.
-    #[allow(dead_code)]
+    /// This is the read path every stored-data command goes through: `voice.rs`
+    /// today, roadmap items 3.1 and 4.2 next. `None` is a real answer rather
+    /// than an error, because a writer who has not chosen a vault yet has no
+    /// connection and that is not a failure.
     pub fn with<T>(&self, f: impl FnOnce(&Connection) -> T) -> Option<T> {
         let slot = self
             .0
@@ -205,7 +204,7 @@ mod tests {
 
         let status = db.open(vault.path()).expect("should open");
 
-        assert_eq!(status, VaultDbStatus::Ready { schema_version: 1 });
+        assert_eq!(status, VaultDbStatus::Ready { schema_version: 2 });
         assert!(db_path(vault.path()).is_file());
         let ignore = fs::read_to_string(data_dir(vault.path()).join(".gitignore"))
             .expect("should write a gitignore");
@@ -221,8 +220,8 @@ mod tests {
         insert_probe(&db, "a");
         let second = db.open(vault.path()).expect("should reopen");
 
-        assert_eq!(first, VaultDbStatus::Ready { schema_version: 1 });
-        assert_eq!(second, VaultDbStatus::Ready { schema_version: 1 });
+        assert_eq!(first, VaultDbStatus::Ready { schema_version: 2 });
+        assert_eq!(second, VaultDbStatus::Ready { schema_version: 2 });
         assert_eq!(probe(&db), Some("a".to_string()));
     }
 
@@ -300,14 +299,14 @@ mod tests {
     /// frontend reads `undefined` and nothing else in either suite notices.
     #[test]
     fn serialises_to_the_shape_the_frontend_reads() {
-        let ready = serde_json::to_string(&VaultDbStatus::Ready { schema_version: 1 })
+        let ready = serde_json::to_string(&VaultDbStatus::Ready { schema_version: 2 })
             .expect("should serialise");
         let unavailable = serde_json::to_string(&VaultDbStatus::Unavailable {
             message: "file is not a database".to_string(),
         })
         .expect("should serialise");
 
-        assert_eq!(ready, r#"{"kind":"ready","schemaVersion":1}"#);
+        assert_eq!(ready, r#"{"kind":"ready","schemaVersion":2}"#);
         assert_eq!(
             unavailable,
             r#"{"kind":"unavailable","message":"file is not a database"}"#

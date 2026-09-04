@@ -1,8 +1,7 @@
-import {THRESHOLDS} from '../constants.ts';
 import {findingAt, spansMask} from '../prose.ts';
 import {contentStart} from '../sentences.ts';
 import {TITLE_CASE_COMMON_WORDS} from '../words.ts';
-import type {Detector, Finding, ProseBlock, Prose} from '../types.ts';
+import type {Detector, Finding, ProseBlock, Prose, VoiceThresholds} from '../types.ts';
 
 /** Stated once: the registry key and the id every finding carries. */
 const ID = 'title-case-heading';
@@ -22,9 +21,9 @@ const EXPLAIN = 'use sentence case: capitalise the first word and any proper nou
  * capitalised for a reason the checker has no way to argue with, and a rule
  * that flags them is a rule that gets switched off.
  */
-function isTitleCase(heading: string): boolean {
+function isTitleCase(heading: string, minWords: number): boolean {
   const words = [...heading.matchAll(WORD)];
-  if (words.length < THRESHOLDS.titleCaseMinWords) return false;
+  if (words.length < minWords) return false;
 
   return words.slice(1).some(function (match) {
     const word = match[0];
@@ -32,12 +31,16 @@ function isTitleCase(heading: string): boolean {
   });
 }
 
-function headingFinding(prose: Prose, block: ProseBlock): Finding | undefined {
+function headingFinding(
+  prose: Prose,
+  block: ProseBlock,
+  thresholds: VoiceThresholds,
+): Finding | undefined {
   const start = contentStart(prose.text, block);
   const heading = prose.text.slice(start, block.end).trimEnd();
   const end = start + heading.length;
 
-  if (!isTitleCase(heading)) return undefined;
+  if (!isTitleCase(heading, thresholds.titleCaseMinWords)) return undefined;
   if (spansMask(prose, start, end)) return undefined;
 
   return findingAt(prose, ID, start, end, EXPLAIN);
@@ -45,13 +48,13 @@ function headingFinding(prose: Prose, block: ProseBlock): Finding | undefined {
 
 export const titleCaseHeading: Detector = {
   id: ID,
-  run: function (prose) {
+  run: function (prose, thresholds) {
     return prose.blocks
       .filter(function (block) {
         return block.kind === 'heading';
       })
       .flatMap(function (block) {
-        const finding = headingFinding(prose, block);
+        const finding = headingFinding(prose, block, thresholds);
         return finding === undefined ? [] : [finding];
       });
   },

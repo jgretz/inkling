@@ -2,6 +2,7 @@ mod data;
 mod migrations;
 mod settings;
 mod vault;
+mod voice;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -19,6 +20,9 @@ pub fn run() {
             settings::load_settings,
             settings::save_settings,
             data::open_vault_db,
+            voice::list_suppressions,
+            voice::add_suppression,
+            voice::remove_suppression,
         ])
         .run(tauri::generate_context!())
         .expect("error while running inkling");

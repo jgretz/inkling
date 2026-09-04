@@ -1,6 +1,5 @@
-import {THRESHOLDS} from '../constants.ts';
 import {findingAt} from '../prose.ts';
-import type {Detector, Finding, Prose, ProseBlock} from '../types.ts';
+import type {Detector, Finding, Prose, ProseBlock, VoiceThresholds} from '../types.ts';
 
 /** Stated once: the registry key and the id every finding carries. */
 const ID = 'sentence-length-uniformity';
@@ -23,7 +22,12 @@ function spread(counts: number[]): number {
   return Math.sqrt(variance) / mean;
 }
 
-function uniformParagraph(prose: Prose, block: ProseBlock, index: number): Finding | undefined {
+function uniformParagraph(
+  prose: Prose,
+  block: ProseBlock,
+  index: number,
+  thresholds: VoiceThresholds,
+): Finding | undefined {
   if (block.kind !== 'paragraph') return undefined;
 
   const counts = prose.sentences
@@ -34,8 +38,8 @@ function uniformParagraph(prose: Prose, block: ProseBlock, index: number): Findi
       return sentence.words;
     });
 
-  if (counts.length < THRESHOLDS.uniformityMinSentences) return undefined;
-  if (spread(counts) >= THRESHOLDS.uniformityRatio) return undefined;
+  if (counts.length < thresholds.uniformityMinSentences) return undefined;
+  if (spread(counts) >= thresholds.uniformityRatio) return undefined;
 
   return findingAt(prose, ID, block.start, block.end, EXPLAIN);
 }
@@ -49,9 +53,9 @@ function uniformParagraph(prose: Prose, block: ProseBlock, index: number): Findi
  */
 export const sentenceLengthUniformity: Detector = {
   id: ID,
-  run: function (prose) {
+  run: function (prose, thresholds) {
     return prose.blocks.flatMap(function (block, index) {
-      const finding = uniformParagraph(prose, block, index);
+      const finding = uniformParagraph(prose, block, index, thresholds);
       return finding === undefined ? [] : [finding];
     });
   },

@@ -50,4 +50,51 @@ describe('check', function () {
   it('should return nothing for an empty document', function () {
     expect(check('')).toEqual([]);
   });
+
+  it('should stop raising a triplet when the budget allows one per fewer words', function () {
+    // Two triplets in about twenty prose words. The default of one triplet per
+    // two hundred words buys a budget of one, so the second is raised; one per
+    // five words buys a budget of three, so neither is.
+    const source =
+      'We keep drafts, references and notes in one place. The desk shows a preview, an editor and a chat.';
+
+    const strict = check(source, {detectors: ['rule-of-three']});
+    const relaxed = check(source, {detectors: ['rule-of-three'], thresholds: {wordsPerTriplet: 5}});
+
+    expect(strict.length).toBe(1);
+    expect(relaxed).toEqual([]);
+  });
+
+  it('should behave as it always has when no threshold is overridden', function () {
+    const source =
+      'We keep drafts, references and notes in one place. The desk shows a preview, an editor and a chat.';
+
+    expect(check(source, {detectors: ['rule-of-three'], thresholds: {}})).toEqual(
+      check(source, {detectors: ['rule-of-three']}),
+    );
+  });
+
+  it('should leave the thresholds no rule set mentioned at their defaults', function () {
+    const source = '## How To Ship A Draft';
+
+    // `titleCaseMinWords` is untouched by the override beside it, so the
+    // heading is still flagged.
+    const findings = check(source, {
+      detectors: ['title-case-heading'],
+      thresholds: {wordsPerTriplet: 10},
+    });
+
+    expect(findings.length).toBe(1);
+  });
+
+  it('should stop flagging a heading once it is shorter than the minimum', function () {
+    const source = '## How To Ship A Draft';
+
+    const findings = check(source, {
+      detectors: ['title-case-heading'],
+      thresholds: {titleCaseMinWords: 10},
+    });
+
+    expect(findings).toEqual([]);
+  });
 });

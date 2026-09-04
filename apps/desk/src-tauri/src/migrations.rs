@@ -18,11 +18,18 @@ pub struct Migration {
     pub sql: &'static str,
 }
 
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "meta",
-    sql: include_str!("../migrations/0001_meta.sql"),
-}];
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "meta",
+        sql: include_str!("../migrations/0001_meta.sql"),
+    },
+    Migration {
+        version: 2,
+        name: "voice_suppression",
+        sql: include_str!("../migrations/0002_voice_suppression.sql"),
+    },
+];
 
 /// Applies every migration the database has not seen, returning the version it
 /// ends on.
@@ -68,7 +75,7 @@ mod tests {
 
         // Appending a migration updates this line on purpose: the catalog is
         // the one place a reviewer can see the whole schema history.
-        assert_eq!(catalog, vec![(1, "meta")]);
+        assert_eq!(catalog, vec![(1, "meta"), (2, "voice_suppression")]);
     }
 
     #[test]
@@ -86,7 +93,7 @@ mod tests {
         let first = migrate(&mut conn).expect("should migrate");
         let second = migrate(&mut conn).expect("should re-run without applying anything");
 
-        assert_eq!(first, 1);
-        assert_eq!(second, 1);
+        assert_eq!(first, 2);
+        assert_eq!(second, 2);
     }
 }

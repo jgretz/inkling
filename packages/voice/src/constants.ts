@@ -1,16 +1,24 @@
-/**
- * Every tunable number in one place, so 1.3 has a single thing to make
- * configurable and a reader can see what the checker's judgment actually rests
- * on. No detector inlines one of these numbers into a regular expression.
- */
-export const THRESHOLDS = Object.freeze({
-  /**
-   * Characters of context an anchor keeps on each side. Long enough to tell
-   * two occurrences of a short quote apart in a paragraph, short enough that a
-   * suppression survives an edit a sentence away.
-   */
-  anchorContext: 32,
+import type {VoiceThresholds} from './types.ts';
 
+/**
+ * Characters of context an anchor keeps on each side. Long enough to tell two
+ * occurrences of a short quote apart in a paragraph, short enough that a
+ * suppression survives an edit a sentence away.
+ *
+ * Not part of `VoiceThresholds` and not settable in a rule set: it decides the
+ * shape of every anchor, and so the identity of every suppression already
+ * stored against one.
+ */
+const ANCHOR_CONTEXT = 32;
+
+/**
+ * Every number a rule set may move, with the corpus tuning that chose it.
+ *
+ * A detector reads these off its second parameter rather than importing them,
+ * so a document that sets `wordsPerTriplet: 400` changes what `check` raises
+ * without any module-level state moving underneath the next document.
+ */
+export const DEFAULT_VOICE_THRESHOLDS: VoiceThresholds = Object.freeze({
   /**
    * Triplet budget, from AI-Writing-Rules: more than one `A, B and C` per two
    * hundred words reads as a pattern rather than a choice. Findings are raised
@@ -59,6 +67,20 @@ export const THRESHOLDS = Object.freeze({
 
   /** Words a heading needs before Title Case is a style choice rather than a name. */
   titleCaseMinWords: 3,
+});
+
+/**
+ * Every tunable number in one place, so a reader can see what the checker's
+ * judgment actually rests on. No detector inlines one of these numbers into a
+ * regular expression.
+ *
+ * Kept as one object because `anchor.ts` reads `anchorContext` off it, and
+ * because the full set is what a reader wants to see at once. The five
+ * configurable ones have exactly one source of truth, above.
+ */
+export const THRESHOLDS = Object.freeze({
+  anchorContext: ANCHOR_CONTEXT,
+  ...DEFAULT_VOICE_THRESHOLDS,
 });
 
 /**

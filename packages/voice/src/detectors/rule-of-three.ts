@@ -1,6 +1,5 @@
-import {THRESHOLDS} from '../constants.ts';
 import {findingAt, spansMask} from '../prose.ts';
-import type {Detector, Finding, Prose} from '../types.ts';
+import type {Detector, Finding, Prose, VoiceThresholds} from '../types.ts';
 
 /** Stated once: the registry key and the id every finding carries. */
 const ID = 'rule-of-three';
@@ -64,11 +63,11 @@ const EXPLAIN =
  * a single list is left alone, and only the triplets past the budget are
  * raised.
  */
-function overBudget(prose: Prose): Finding[] {
+function overBudget(prose: Prose, thresholds: VoiceThresholds): Finding[] {
   const words = prose.sentences.reduce(function (total, sentence) {
     return total + sentence.words;
   }, 0);
-  const budget = Math.max(1, Math.floor(words / THRESHOLDS.wordsPerTriplet));
+  const budget = Math.max(1, Math.floor(words / thresholds.wordsPerTriplet));
 
   return [...prose.text.matchAll(TRIPLET)]
     .map(function (match) {

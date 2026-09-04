@@ -21,7 +21,8 @@ more.
 
 Groups are directories, so the hierarchy needs no storage of its own. Groups
 organize; tags, when they arrive, will cut across. Both voice and references
-cascade downward, and a document may suppress an inherited rule.
+cascade downward, and the nearest level to the document has the last word on any
+rule it names.
 
 ## Where things live
 
@@ -56,6 +57,50 @@ every keystroke, at no model cost, and they need neither an agent nor a network.
 
 That second half is what gives inkling a fast feedback loop regardless of how
 slow a model turn is.
+
+### Rule sets
+
+Both halves live in one file, `voice.md`, sitting in the directory it governs.
+Its YAML frontmatter turns rules on and off and moves thresholds; its body is
+the guidance prose. One file, because the guidance and the configuration are the
+same decision written twice otherwise.
+
+```markdown
+---
+rules:
+  em-dash: off
+thresholds:
+  wordsPerTriplet: 300
+---
+
+Short sentences. Never open with throat clearing.
+```
+
+The cascade is the vault root, then each directory on the way down, then the
+document's own `voice:` frontmatter key. **The last level to mention a rule or a
+threshold wins it**, in both directions: a document may turn a rule back on that
+its group turned off, exactly as it may move a threshold its group moved. A file
+the writer can read has to mean what it says at every level.
+
+`on` and `off` mean what a writer expects, though YAML 1.2 hands them over as
+strings rather than booleans. Anything else a rule is set to is reported in the
+status bar and ignored, never read as "off": a typo that silently disabled a
+rule would be indistinguishable from a rule someone meant to disable.
+
+### Dismissals
+
+A finding the writer disagrees with is dismissed, and the dismissal is stored
+against the finding's quote anchor rather than its offsets. Rewriting the
+paragraph around it moves every offset and changes nothing: the quote plus the
+text either side of it is what identifies the passage.
+
+A dismissal is kept until the writer restores it, which they do from the
+Dismissed group at the end of the findings strip. Two things end one instead:
+deleting the flagged text, since what was judged no longer exists, and rewriting
+its surroundings past recognition.
+
+Dismissing is one finding at one place. Turning a rule off everywhere is what
+the rule set is for.
 
 Prior art is [AI-Writing-Rules](https://github.com/Abdulkader-Safi/AI-Writing-Rules),
 which splits the same way: rules injected at session start, detectors run after
