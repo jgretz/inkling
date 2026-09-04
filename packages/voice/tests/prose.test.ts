@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import {extract, findingAt, sentenceAt, spansMask, toSourceOffset} from '../src/prose.ts';
 
-/** What survived masking, with the single spaces collapsed for readability. */
+/** The text detectors see: everything masked stands in as a single space. */
 function reduced(source: string): string {
   return extract(source).text;
 }

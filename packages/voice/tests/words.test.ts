@@ -6,7 +6,16 @@ import {
   SIGNPOSTING,
   THROAT_CLEARING,
 } from '../src/words.ts';
-import type {PhraseRule} from '../src/types.ts';
+import type {BannedWord, PhraseRule} from '../src/types.ts';
+
+/** Named so a failure prints the offending pattern rather than `[object Object]`. */
+function sourceOf(rule: PhraseRule): string {
+  return rule.pattern.source;
+}
+
+function wordOf(entry: BannedWord): string {
+  return entry.word;
+}
 
 /** The tables `matchPhrases` runs, which calls `matchAll` and needs the g flag. */
 const SCANNED: ReadonlyArray<readonly PhraseRule[]> = [
@@ -21,7 +30,7 @@ describe('phrase tables', function () {
       return !rule.pattern.global;
     });
 
-    expect(notGlobal.map((rule) => rule.pattern.source)).toEqual([]);
+    expect(notGlobal.map(sourceOf)).toEqual([]);
   });
 
   it('should anchor every opener to the start of a sentence', function () {
@@ -29,13 +38,17 @@ describe('phrase tables', function () {
       return !rule.pattern.source.startsWith('^');
     });
 
-    expect(unanchored.map((rule) => rule.pattern.source)).toEqual([]);
+    expect(unanchored.map(sourceOf)).toEqual([]);
   });
 
   it('should give every rule an explain that tells the writer what to do', function () {
     const rules = [...SCANNED.flat(), ...BANNED_OPENERS, ...BANNED_WORDS];
 
-    expect(rules.filter((rule) => rule.explain.trim().length === 0)).toEqual([]);
+    const silent = rules.filter(function (rule) {
+      return rule.explain.trim().length === 0;
+    });
+
+    expect(silent).toEqual([]);
   });
 });
 
@@ -50,14 +63,14 @@ describe('BANNED_WORDS', function () {
       }
     });
 
-    expect(broken.map((entry) => entry.word)).toEqual([]);
+    expect(broken.map(wordOf)).toEqual([]);
   });
 
   it('should keep every literal-context pattern non-global, since it is reused', function () {
-    const global = BANNED_WORDS.filter(function (entry) {
+    const stateful = BANNED_WORDS.filter(function (entry) {
       return entry.literalContext?.global === true;
     });
 
-    expect(global.map((entry) => entry.word)).toEqual([]);
+    expect(stateful.map(wordOf)).toEqual([]);
   });
 });

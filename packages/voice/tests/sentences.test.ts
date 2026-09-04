@@ -77,12 +77,20 @@ describe('sentencesOf', function () {
   it('should count words per sentence', function () {
     const text = 'Three words here. Two words.';
 
-    expect(sentencesOf(text, blocksOf(text)).map((s) => s.words)).toEqual([3, 2]);
+    const counts = sentencesOf(text, blocksOf(text)).map(function (sentence) {
+      return sentence.words;
+    });
+
+    expect(counts).toEqual([3, 2]);
   });
 
   it('should tag each sentence with the block it belongs to', function () {
     const text = '# Title\n\nA sentence.';
 
-    expect(sentencesOf(text, blocksOf(text)).map((s) => s.blockIndex)).toEqual([0, 1]);
+    const indexes = sentencesOf(text, blocksOf(text)).map(function (sentence) {
+      return sentence.blockIndex;
+    });
+
+    expect(indexes).toEqual([0, 1]);
   });
 });

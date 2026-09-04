@@ -28,7 +28,11 @@ const EXPECTED = [
 
 describe('DETECTORS', function () {
   it('should register exactly these ids, in this order', function () {
-    expect(DETECTORS.map((detector) => detector.id)).toEqual(EXPECTED);
+    const ids = DETECTORS.map(function (detector) {
+      return detector.id;
+    });
+
+    expect(ids).toEqual(EXPECTED);
   });
 
   it('should index every registered detector by its id', function () {
