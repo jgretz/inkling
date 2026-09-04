@@ -211,9 +211,6 @@ function DismissedGroup({entries, open, onToggle, onPick, onRestore}: DismissedG
   );
 }
 
-/** The key the open-group list uses for the dismissed group, which has no rule id. */
-const DISMISSED = 'dismissed';
-
 /**
  * Every voice finding in the open document, grouped by rule.
  *
@@ -242,6 +239,10 @@ export function FindingsStrip({
   onRestore,
 }: FindingsStripProps) {
   const [openRules, setOpenRules] = useState<readonly string[]>([]);
+  // Its own flag rather than a sentinel in `openRules`, which holds rule ids:
+  // the dismissed group answers to no rule and would collide with one named
+  // after it.
+  const [dismissedOpen, setDismissedOpen] = useState(false);
 
   const groups = useMemo(
     function () {
@@ -260,12 +261,11 @@ export function FindingsStrip({
     });
   }, []);
 
-  const toggleDismissed = useCallback(
-    function () {
-      toggle(DISMISSED);
-    },
-    [toggle],
-  );
+  const toggleDismissed = useCallback(function () {
+    setDismissedOpen(function (open) {
+      return !open;
+    });
+  }, []);
 
   if (findings.length === 0 && suppressed.length === 0) return null;
 
@@ -297,7 +297,7 @@ export function FindingsStrip({
         {suppressed.length > 0 && (
           <DismissedGroup
             entries={suppressed}
-            open={openRules.includes(DISMISSED)}
+            open={dismissedOpen}
             onToggle={toggleDismissed}
             onPick={onPick}
             onRestore={onRestore}

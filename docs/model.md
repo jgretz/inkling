@@ -58,6 +58,11 @@ every keystroke, at no model cost, and they need neither an agent nor a network.
 That second half is what gives inkling a fast feedback loop regardless of how
 slow a model turn is.
 
+Prior art is [AI-Writing-Rules](https://github.com/Abdulkader-Safi/AI-Writing-Rules),
+which splits the same way: rules injected at session start, detectors run after
+each write. If its rule set ships as a default root voice it ships with
+attribution.
+
 ### Rule sets
 
 Both halves live in one file, `voice.md`, sitting in the directory it governs.
@@ -101,11 +106,6 @@ its surroundings past recognition.
 
 Dismissing is one finding at one place. Turning a rule off everywhere is what
 the rule set is for.
-
-Prior art is [AI-Writing-Rules](https://github.com/Abdulkader-Safi/AI-Writing-Rules),
-which splits the same way: rules injected at session start, detectors run after
-each write. If its rule set ships as a default root voice it ships with
-attribution.
 
 ## The agent
 

@@ -156,6 +156,21 @@ describe('FindingsStrip', function () {
     expect(getAllByText('Spaced hyphen').length).toBe(1);
   });
 
+  it('should toggle the dismissed group independently of the rule groups', function () {
+    const {getByText} = render(
+      <FindingsStrip findings={check(MIXED)} onPick={noop} suppressed={[dismissed(1)]} />,
+    );
+
+    fireEvent.click(getByText('Em dash'));
+
+    expect(getByText('Dismissed').closest('button')?.getAttribute('aria-expanded')).toBe('false');
+
+    fireEvent.click(getByText('Dismissed'));
+
+    expect(getByText('Dismissed').closest('button')?.getAttribute('aria-expanded')).toBe('true');
+    expect(getByText('Em dash').closest('button')?.getAttribute('aria-expanded')).toBe('true');
+  });
+
   it('should hand the restored entry to onRestore', function () {
     const onRestore = mock(function (_entry: DismissedFinding) {});
     const entry = dismissed(1);
