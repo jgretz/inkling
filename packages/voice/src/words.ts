@@ -189,14 +189,18 @@ export const SIGNPOSTING: readonly PhraseRule[] = [
 ];
 
 /**
- * The `not X, but Y` shape and its full-stop variant. Kept out of the
- * `not only` detector by a lookahead, so a sentence never gets flagged twice
- * for the same words.
+ * A false contrast on a predicate, and the two-sentence version of the same
+ * move. The negation has to sit on the predicate itself, either after a copula
+ * (`is not`, `it's not`) or behind an explicit intensifier (`not just`, `not
+ * merely`, `not simply`): a bare `not ... , but` after a modal is ordinary
+ * concession, and `We will not always agree, but I commit to listening` is a
+ * sentence meaning what it says. Kept out of the `not only` detector by a
+ * lookahead, so a sentence never gets flagged twice for the same words.
  */
 export const NEGATIVE_PARALLELISM: readonly PhraseRule[] = [
   {
     pattern:
-      /\bnot(?! only)\b(?:[ \t]+(?:just|merely|simply))?[ \t]+[^,.;:!?\n]{2,60},[ \t]*but\b/gi,
+      /(?:\b(?:is|are|was|were|be|been)|\b\p{L}+['’](?:s|re))[ \t]+not(?! only)\b[ \t]+[^,.;:!?\n]{2,60},[ \t]*but\b|\bnot[ \t]+(?:just|merely|simply)[ \t]+[^,.;:!?\n]{2,60},[ \t]*but\b/giu,
     explain: 'delete the negation and keep the positive half.',
   },
   {
