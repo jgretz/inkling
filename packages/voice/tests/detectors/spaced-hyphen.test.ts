@@ -61,6 +61,10 @@ describe('spaced-hyphen', function () {
     expect(findings('What | Command\n-- | --\nTest | bun test\n')).toEqual([]);
   });
 
+  it('should not flag a spaced thematic break', function () {
+    expect(findings('The draft ends here.\n\n- - -\n\nThe notes begin.\n')).toEqual([]);
+  });
+
   it('should not flag a numeric range', function () {
     expect(findings('The archive covers 2020 - 2024.')).toEqual([]);
   });
