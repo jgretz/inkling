@@ -14,10 +14,11 @@
  */
 
 import {Glob} from 'bun';
-import {check, extract} from '../packages/voice/src/index.ts';
-import {DETECTORS} from '../packages/voice/src/registry.ts';
+import {check, DETECTORS, extract} from '../packages/voice/src/index.ts';
 
-const root = new URL('..', import.meta.url).pathname;
+// `pathname` would leave a checkout under a path with a space percent-encoded,
+// and the glob below would then scan nothing at all.
+const root = Bun.fileURLToPath(new URL('..', import.meta.url));
 
 const ALL_DETECTORS = DETECTORS.map(function (detector) {
   return detector.id;
@@ -58,41 +59,72 @@ async function tally(corpus: Corpus): Promise<Tally> {
   return result;
 }
 
-function pad(value: string, width: number): string {
-  return value.padEnd(width);
-}
-
-function padStart(value: string, width: number): string {
-  return value.padStart(width);
-}
-
 const started = performance.now();
 const tallies = await Promise.all(CORPORA.map(tally));
 const elapsed = performance.now() - started;
 
-const idWidth = Math.max(...ALL_DETECTORS.map((id) => id.length), 'rule'.length);
-const columnWidth = Math.max(...CORPORA.map((corpus) => corpus.name.length));
-
-const header = [pad('rule', idWidth), ...CORPORA.map((c) => padStart(c.name, columnWidth))];
-process.stdout.write(`${header.join('  ')}\n`);
-process.stdout.write(
-  `${'-'.repeat(idWidth)}  ${CORPORA.map(() => '-'.repeat(columnWidth)).join('  ')}\n`,
+const labelWidth = Math.max(
+  ...ALL_DETECTORS.map(function (id) {
+    return id.length;
+  }),
+  'rule'.length,
 );
 
-for (const id of ALL_DETECTORS) {
-  const cells = tallies.map(function (result) {
-    return padStart(String(result.counts.get(id) ?? 0), columnWidth);
+const cellWidth = Math.max(
+  ...CORPORA.map(function (corpus) {
+    return corpus.name.length;
+  }),
+);
+
+/** One label plus one right-aligned cell per corpus, which every line here is. */
+function row(label: string, cells: readonly string[]): string {
+  const padded = cells.map(function (cell) {
+    return cell.padStart(cellWidth);
   });
-  process.stdout.write(`${pad(id, idWidth)}  ${cells.join('  ')}\n`);
+  return `${label.padEnd(labelWidth)}  ${padded.join('  ')}\n`;
 }
 
-process.stdout.write(
-  `${'-'.repeat(idWidth)}  ${CORPORA.map(() => '-'.repeat(columnWidth)).join('  ')}\n`,
-);
-process.stdout.write(
-  `${pad('files', idWidth)}  ${tallies.map((t) => padStart(String(t.files), columnWidth)).join('  ')}\n`,
-);
-process.stdout.write(
-  `${pad('words', idWidth)}  ${tallies.map((t) => padStart(String(t.words), columnWidth)).join('  ')}\n`,
-);
-process.stdout.write(`\nchecked in ${elapsed.toFixed(1)}ms\n`);
+/** The horizontal divider under the header and above the totals. */
+function divider(): string {
+  return row(
+    '-'.repeat(labelWidth),
+    CORPORA.map(function () {
+      return '-'.repeat(cellWidth);
+    }),
+  );
+}
+
+function counts(id: string): string[] {
+  return tallies.map(function (result) {
+    return String(result.counts.get(id) ?? 0);
+  });
+}
+
+const lines = [
+  row(
+    'rule',
+    CORPORA.map(function (corpus) {
+      return corpus.name;
+    }),
+  ),
+  divider(),
+  ...ALL_DETECTORS.map(function (id) {
+    return row(id, counts(id));
+  }),
+  divider(),
+  row(
+    'files',
+    tallies.map(function (result) {
+      return String(result.files);
+    }),
+  ),
+  row(
+    'words',
+    tallies.map(function (result) {
+      return String(result.words);
+    }),
+  ),
+  `\nchecked in ${elapsed.toFixed(1)}ms\n`,
+];
+
+process.stdout.write(lines.join(''));
