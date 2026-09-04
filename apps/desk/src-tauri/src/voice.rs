@@ -18,7 +18,7 @@ use crate::data::VaultDb;
 
 /// One dismissal, as the frontend reads it.
 ///
-/// The serialised shape is a contract with `Suppression` in
+/// The serialised shape is a contract with `StoredSuppression` in
 /// `src/lib/bridge.ts`, a hand-written mirror rather than a generated one, so
 /// `serialises_to_the_shape_the_frontend_reads` pins it. Tauri camel-cases
 /// command parameters on the way in as well: `doc_path` here is `docPath` in

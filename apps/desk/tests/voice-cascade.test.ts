@@ -144,12 +144,29 @@ describe('cascadeFor', function () {
     ]);
   });
 
-  it('should apply a voice.md that is itself the open document only once over', function () {
-    // Its own frontmatter arrives twice, as its directory's rule set and again
-    // as its own. Last-wins makes that idempotent rather than a special case.
+  it('should govern a voice.md by its own frontmatter when it is the open document', function () {
     const draft = ruleSet('rules:\n  em-dash: off', DRAFT);
 
     expect(ruleIds('drafts/voice.md', draft, {'drafts/voice.md': draft})).not.toContain('em-dash');
+  });
+
+  it('should read a rule set the writer is editing from the draft, not the last scan', function () {
+    // The one file a writer is most likely to watch for an effect. `sources`
+    // holds what the vault scan read, which is a save and a rescan behind.
+    const onDisk = ruleSet('rules:\n  em-dash: on', DRAFT);
+    const draft = ruleSet('rules:\n  em-dash: off', DRAFT);
+
+    expect(ruleIds('drafts/voice.md', draft, {'drafts/voice.md': onDisk})).not.toContain('em-dash');
+  });
+
+  it('should report a problem in an open rule set once, not once per level', function () {
+    const draft = ruleSet('rules:\n  em-dashes: off');
+
+    const {problems} = cascadeFor('drafts/voice.md' as DocPath, draft, sources({}));
+
+    expect(problems).toEqual([
+      'drafts/voice.md: rules.em-dashes: no rule by that name, so it would do nothing',
+    ]);
   });
 
   it('should ignore frontmatter keys that are not a rule set', function () {

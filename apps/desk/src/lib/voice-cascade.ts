@@ -65,9 +65,15 @@ function attribute(path: string, problems: readonly string[]): string[] {
  * rule off in their frontmatter should see it take effect as they type, not at
  * the next save.
  *
- * A document that is itself a `voice.md` has its own frontmatter applied twice,
- * once as its directory's rule set and once as its own. That is idempotent
- * under last-wins, so it is not special-cased.
+ * The same is true of a `voice.md` the writer has open: it governs its own
+ * directory, so it appears in its own cascade, and there too the draft wins over
+ * `sources`. Without that, editing a rule set in inkling's own editor would
+ * change nothing until the next full vault scan, which is the one place a writer
+ * is most likely to be watching for an effect.
+ *
+ * Its top-level `rules:` is what governs; the `voice:` key the document level
+ * reads is a different key and a `voice.md` will not normally carry one. So a
+ * rule set is applied once, not twice, and needs no special case.
  */
 export function cascadeFor(
   docPath: DocPath,
@@ -75,7 +81,7 @@ export function cascadeFor(
   sources: ReadonlyMap<DocPath, string>,
 ): {sets: VoiceRuleSet[]; problems: string[]} {
   const levels = ruleSetPathsFor(docPath).flatMap(function (path) {
-    const source = sources.get(path);
+    const source = path === docPath ? draft : sources.get(path);
     if (source === undefined) return [];
     const {frontmatter, body} = parseDoc(source);
     const parsed = parseRuleSet(frontmatter.extra, body);

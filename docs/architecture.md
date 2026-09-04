@@ -65,8 +65,9 @@ context picker work without a read per file.
 That is also what makes a voice rule set free to read. `lib/voice-cascade.ts`
 walks a document's ancestor directories, looks each `voice.md` up in the loaded
 sources and parses its frontmatter; no level of the cascade is a file read. The
-document's own level comes from the live draft instead, so turning a rule off in
-frontmatter takes effect as it is typed rather than at the next save.
+live draft wins over the scan wherever the two describe the same file, both for
+the document's own `voice:` key and for a `voice.md` the writer has open, so
+turning a rule off takes effect as it is typed rather than at the next scan.
 
 Path safety is one function. `resolve` in `src-tauri/src/vault.rs` rejects
 `..`, absolute components and non-markdown extensions before touching the disk,

@@ -22,8 +22,11 @@ possible.
 
 ## In flight
 
-Nothing is in flight. Phase one is done: 1.1, 1.1b, 1.2 and 1.3 are merged,
-along with 2.1.
+| Run        | Item                                 | Waits on |
+| ---------- | ------------------------------------ | -------- |
+| `0f335217` | 1.3 voice rule sets and suppressions | 1.2      |
+
+1.1, 1.1b, 1.2 and 2.1 are merged. 1.3 is the last of phase one, and lands it.
 
 2.1 was pulled forward out of phase two because 1.3 stores suppressions in the
 database it creates. The phase numbering records what each item is, not the
