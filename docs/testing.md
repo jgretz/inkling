@@ -24,6 +24,22 @@ tests have no `document` without it.
   markup rather than behavior.
 - Tauri wiring, Vite config, the icon script.
 
+## Render tests need a DOM, per file
+
+`bun test` has no DOM. A render suite gets one by calling `autoCleanup()` from
+`apps/desk/tests/setup.ts` at its top level, as its first import.
+
+Two rules that are not obvious and cost an afternoon each:
+
+- **Register per file and hand the globals back.** Registering happy-dom
+  replaces the globals wholesale, `fetch` among them, and every test file in a
+  run shares one process. A suite that leaves it registered breaks the next
+  suite that speaks HTTP for real, with an error naming a file that has nothing
+  to do with a DOM.
+- **Query off what `render()` returns, never off `screen`.** The global `screen`
+  binds `document.body` when the testing library is evaluated, which happens
+  before any registration, so it is bound to a document that no longer exists.
+
 ## Conventions
 
 Tests live in a `tests/` directory beside `src/`, mirroring its structure. Name
