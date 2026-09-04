@@ -10,15 +10,20 @@ Tauri 2 + React 19 + Vite 7 + Tailwind 4.
 
 Three panels over one document, left to right: the rendered markdown, the raw
 markdown editor, and an open conversation with an agent that can see both. A
-collapsible library sits left of the preview. See
-[`docs/architecture.md`](./docs/architecture.md).
+collapsible library sits left of the preview.
+
+- [`docs/model.md`](./docs/model.md) is what inkling is built around.
+- [`docs/roadmap.md`](./docs/roadmap.md) is the order it gets built in.
+- [`docs/turn-taking.md`](./docs/turn-taking.md) is who may write when.
+- [`docs/architecture.md`](./docs/architecture.md) is how the code is laid out.
 
 ## Rules
 
-1. **Files are the source of truth.** A vault is a directory of markdown files
-   that inkling reads and writes in place. There is no database and no import
-   step. Anything inkling stores that is not the writer's prose is a
-   convenience and must degrade to nothing.
+1. **Files are the source of truth.** A vault is the writer's own directory of
+   markdown, outside this repository, which inkling reads and writes in place.
+   Never assume git is involved at that end. Everything inkling stores that is
+   not the writer's prose lives under `.inkling/` in the vault and must be
+   regenerable or discardable.
 2. **The writer always knows what the agent can see.** Every byte in a turn's
    context is named in the context strip before it is sent. No hidden retrieval.
 3. **Pure logic in `packages/*`, effects in `apps/*`.** The reducer, the parser
