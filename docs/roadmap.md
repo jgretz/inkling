@@ -22,31 +22,22 @@ possible.
 
 ## In flight
 
-Nothing.
+| Run        | Item                         | Waits on |
+| ---------- | ---------------------------- | -------- |
+| `3ab6b706` | 6a export and rich clipboard | nothing  |
+| `27e06742` | 6b revisions                 | 6a       |
 
-Phases 1 and 2 are complete and merged, and so are 3 (`370adfa9`), 4a
-(`69034d50`) and 4b (`3d1ae893`): the turn is derived from focus with a pin over
-it, and both edit paths are built. 4c (`a02a1681`) is done and awaiting merge:
-both sides point at passages by quote anchor, and the editor reveals and tints
-what they name. Phase 4 is complete.
+Phases 1 through 4 are complete and merged.
 
-Phase 4 is split three ways rather than by its numbered items. 4a carries 4.1,
-4.2 and 4.5, because prompt assembly is where voice guidance lands and building
-it twice would be wasteful. 4b is 4.3 and 4c is 4.4. Everything is serialized:
-all three touch the chat panel and `App.tsx`, so parallel runs would collide.
+Phase 6 runs before phase 5, which is a change from the order written here.
+Until export exists, nothing written in inkling has ever left it: the only way
+out is opening the file in Finder, so the tool that helped write a piece plays no
+part in delivering it. Research inflow is an enhancement to a loop that already
+closes. Export is the loop closing at all.
 
-The toryo dependency is met. All four dispatch runs landed, and they delivered
-more than the roadmap assumed: `@toryo/dispatch-client/http` carries a
-**held-session** plane, not only resumable jobs. A session is a live process the
-app pushes messages into, so 4a is built on `openSession` and `postMessage`
-rather than one job per turn. Eviction is the lifecycle rather than an error: a
-410 carries a `resumeSessionId`, and re-opening with it is a resume.
-
-What 4a could not do is depend on that package. Nothing in toryo's `packages/` is
-published and every one of them is private with `workspace:*` dependencies, so
-`packages/toryo/` is a vendored, dependency-free copy of the held-session half
-instead. Publishing a browser-safe subset would collapse it into a dependency,
-and that is toryo's task rather than inkling's.
+Phase 5 is deliberately not queued. It is the last thing on the plan, and by the
+time it starts the app will have been used to write something real, which will
+say more about what retrieval should do than this document can.
 
 ## Shared files
 
@@ -166,6 +157,8 @@ compact rules always, each level's long guidance only on the first turn of a
 session or when the checker is firing.
 
 ## Phase 5: Research inflow
+
+Scheduled after phase 6. See "In flight" for why.
 
 **5.1 Retrieval.** The agent fetches a URL inside its turn. Done when a pasted
 link comes back as something discussable.
