@@ -1,4 +1,5 @@
-import type {Anchor, Finding} from '@inkling/voice';
+import type {Anchor, Finding, Suppression} from '@inkling/voice';
+import type {StoredSuppression} from './bridge.ts';
 
 /**
  * Display names for the checker's rules.
@@ -34,6 +35,25 @@ export const RULE_LABELS: Record<string, string> = {
 /** The label for a rule id, falling back to the id so nothing renders blank. */
 export function ruleLabel(id: string): string {
   return RULE_LABELS[id] ?? id;
+}
+
+/**
+ * A stored dismissal in the shape the pure matcher takes, with the row's id
+ * kept alongside it.
+ *
+ * The id is what a restore deletes. It travels with the anchor rather than
+ * being looked up afterwards, because after an edit the finding's own anchor is
+ * no longer the one that was stored, so there is nothing to look it up by.
+ */
+export type Dismissal = Suppression & {id: number};
+
+/** The stored row, flat as the table holds it, gathered back into an anchor. */
+export function dismissalOf(row: StoredSuppression): Dismissal {
+  return {
+    id: row.id,
+    ruleId: row.ruleId,
+    anchor: {quote: row.quote, prefix: row.prefix, suffix: row.suffix, hint: row.hint},
+  };
 }
 
 export type RuleGroup = {

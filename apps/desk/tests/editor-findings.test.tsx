@@ -3,12 +3,21 @@ import {describe, expect, it} from 'bun:test';
 import {useCallback, useState} from 'react';
 import {fireEvent, render} from '@testing-library/react';
 import {EditorView} from '@codemirror/view';
-import {check, type Finding} from '@inkling/voice';
+import {check, resolveVoice, type Finding} from '@inkling/voice';
 import {EditorPanel, type Reveal} from '../src/components/editor/EditorPanel.tsx';
 import {FindingsStrip} from '../src/components/findings/FindingsStrip.tsx';
 import {useFindings} from '../src/lib/use-findings.ts';
 
 autoCleanup();
+
+/**
+ * No rule set anywhere in the cascade and nothing dismissed, which is what
+ * every assertion below is about: this suite is the editor and the strip, not
+ * the cascade. Held at module scope so the memo inside `useFindings` sees the
+ * same objects on every render.
+ */
+const EVERY_RULE = resolveVoice([]);
+const NOTHING_DISMISSED = Object.freeze([]);
 
 const MIXED = 'A sentence — with an em dash and a hyphen - too.';
 const CLEAN = 'Plain prose with nothing wrong in it at all.';
@@ -30,7 +39,7 @@ function Harness({
   marksOn?: boolean;
   path?: string;
 }) {
-  const findings = useFindings(source);
+  const {kept: findings} = useFindings(source, EVERY_RULE, NOTHING_DISMISSED);
   const [reveal, setReveal] = useState<Reveal | undefined>(undefined);
 
   const handlePick = useCallback(function (finding: Finding) {

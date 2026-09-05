@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {open} from '@tauri-apps/plugin-dialog';
 import type {DocPath, VaultPath} from '@inkling/vault';
-import type {Finding} from '@inkling/voice';
+import {resolveVoice, type Finding} from '@inkling/voice';
 import {isDesktop, loadSettings, saveSettings} from './lib/bridge.ts';
 import {
   DEFAULT_SETTINGS,
@@ -11,7 +11,9 @@ import {
 } from './lib/settings.ts';
 import {stubTransport, type AgentContext} from './lib/agent.ts';
 import {useFindings} from './lib/use-findings.ts';
+import {useSuppressions} from './lib/use-suppressions.ts';
 import {useWorkspace} from './lib/use-workspace.ts';
+import {cascadeFor, voiceNotice} from './lib/voice-cascade.ts';
 import {dataNotice} from './lib/workspace-state.ts';
 import {TitleBar} from './components/shell/TitleBar.tsx';
 import {StatusBar} from './components/shell/StatusBar.tsx';
@@ -20,8 +22,11 @@ import {EmptyState} from './components/shell/EmptyState.tsx';
 import {LibraryPanel} from './components/library/LibraryPanel.tsx';
 import {PreviewPanel} from './components/preview/PreviewPanel.tsx';
 import {EditorPanel, type Reveal} from './components/editor/EditorPanel.tsx';
-import {FindingsStrip} from './components/findings/FindingsStrip.tsx';
+import {FindingsStrip, type DismissedFinding} from './components/findings/FindingsStrip.tsx';
 import {ChatPanel} from './components/chat/ChatPanel.tsx';
+
+/** No document open, so no rule set governs anything. Held still for the memos. */
+const NO_CASCADE = Object.freeze({sets: [], problems: []});
 
 /** Last path segment of the vault directory, which is what a writer named it. */
 function vaultName(vault: VaultPath | undefined): string {
@@ -169,7 +174,25 @@ export function App() {
   const draft = workspace.open?.draft ?? '';
   const title = openPath === undefined ? 'Inkling' : (titles.get(openPath) ?? openPath);
 
-  const findings = useFindings(draft);
+  // Every level of the cascade is already in `workspace.sources`, so this is a
+  // handful of map lookups and one frontmatter parse per level, not a read.
+  const cascade = useMemo(
+    function () {
+      if (openPath === undefined) return NO_CASCADE;
+      return cascadeFor(openPath, draft, workspace.sources);
+    },
+    [openPath, draft, workspace.sources],
+  );
+
+  const voice = useMemo(
+    function () {
+      return resolveVoice(cascade.sets);
+    },
+    [cascade],
+  );
+
+  const {dismissals, dismiss, restore} = useSuppressions(openPath, workspace.data.kind === 'ready');
+  const {kept, suppressed} = useFindings(draft, voice, dismissals);
   const [reveal, setReveal] = useState<Reveal | undefined>(undefined);
 
   // The counter increments on every pick because the editor honours one reveal
@@ -180,6 +203,13 @@ export function App() {
       return {range: finding.range, seq: (current?.seq ?? 0) + 1};
     });
   }, []);
+
+  const handleRestore = useCallback(
+    function (entry: DismissedFinding) {
+      restore(entry.by.id);
+    },
+    [restore],
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -253,12 +283,18 @@ export function App() {
                   onChange={workspace.editDraft}
                   onSelect={setSelection}
                   onSave={workspace.saveNow}
-                  findings={findings}
+                  findings={kept}
                   marksOn={layout.marksOn}
                   reveal={reveal}
                 />
               </div>
-              <FindingsStrip findings={findings} onPick={handlePick} />
+              <FindingsStrip
+                findings={kept}
+                onPick={handlePick}
+                suppressed={suppressed}
+                onDismiss={dismiss}
+                onRestore={handleRestore}
+              />
             </div>
           </>
         )}
@@ -280,7 +316,12 @@ export function App() {
         )}
       </main>
 
-      <StatusBar error={workspace.error} notice={dataNotice(workspace.data)} />
+      {/* The database's own trouble first: a rule set that will not parse is
+          the smaller problem when nothing inkling stores is available. */}
+      <StatusBar
+        error={workspace.error}
+        notice={dataNotice(workspace.data) ?? voiceNotice(cascade.problems)}
+      />
     </div>
   );
 }

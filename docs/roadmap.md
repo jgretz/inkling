@@ -24,16 +24,17 @@ possible.
 
 | Run        | Item                                 | Waits on |
 | ---------- | ------------------------------------ | -------- |
-| `0c1d4c6b` | 1.1b detector fixes                  | nothing  |
-| `a4df40bf` | 1.2 findings in the editor           | 1.1b     |
 | `0f335217` | 1.3 voice rule sets and suppressions | 1.2      |
 
-Serialized rather than parallel: 1.2 builds the findings strip and 1.3 adds the
-dismiss affordance to it, so they would collide in the same files.
+1.1, 1.1b, 1.2 and 2.1 are merged. 1.3 is the last of phase one, and lands it.
 
-1.1 and 2.1 are merged. 2.1 was pulled forward out of phase two because 1.3
-stores suppressions in the database it creates. The phase numbering records what
-each item is, not the order it is built in.
+2.1 was pulled forward out of phase two because 1.3 stores suppressions in the
+database it creates. The phase numbering records what each item is, not the
+order it is built in.
+
+1.2 and 1.3 were serialized rather than run in parallel: 1.2 built the findings
+strip and 1.3 added the dismiss affordance to it, so they would have collided in
+the same files.
 
 1.1b exists because 1.1's detectors were tuned against specification prose
 written by someone thinking about the rules, which never breaks them. Against
@@ -73,11 +74,11 @@ findings strip that lists them with counts by rule. Clicking a finding scrolls t
 it. Done when typing a banned construction marks it within a keystroke.
 
 **1.3 Voice rule sets.** Depends on 1.1 and on 2.1, which is where the database
-it writes suppressions into arrives. Markdown files that cascade root, group,
-document, with a document able to suppress an inherited rule. Suppressions persist in SQLite
-against the quote anchor, so a deliberate rule break stays quiet through edits.
-Done when a suppressed finding stays suppressed after the surrounding paragraph
-is rewritten.
+it writes suppressions into arrives. `voice.md` files that cascade root, group,
+document, the nearest level winning any rule or threshold it names. Suppressions
+persist in SQLite against the quote anchor, so a deliberate rule break stays
+quiet through edits. Done when a suppressed finding stays suppressed after the
+surrounding paragraph is rewritten.
 
 ## Phase 2: Groups and documents
 

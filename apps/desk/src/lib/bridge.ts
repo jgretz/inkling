@@ -61,6 +61,49 @@ export function openVaultDb(vault: VaultPath): Promise<VaultDbStatus> {
   return invoke<VaultDbStatus>('open_vault_db', {vault});
 }
 
+/**
+ * A dismissed finding, as `src-tauri/src/voice.rs` returns it.
+ *
+ * A hand-written mirror of the Rust `Suppression`, the way `VaultDbStatus` is,
+ * with `serialises_to_the_shape_the_frontend_reads` in `voice.rs` pinning the
+ * other end. The anchor's four fields are flat here because they are flat in
+ * the table.
+ */
+export type StoredSuppression = {
+  id: number;
+  docPath: string;
+  ruleId: string;
+  quote: string;
+  prefix: string;
+  suffix: string;
+  hint: number;
+  createdAt: string;
+};
+
+export function listSuppressions(docPath: DocPath): Promise<StoredSuppression[]> {
+  return invoke<StoredSuppression[]>('list_suppressions', {docPath});
+}
+
+/** Resolves to the stored row, whether this call created it or an earlier one did. */
+export function addSuppression(
+  docPath: DocPath,
+  ruleId: string,
+  anchor: {quote: string; prefix: string; suffix: string; hint: number},
+): Promise<StoredSuppression> {
+  return invoke<StoredSuppression>('add_suppression', {
+    docPath,
+    ruleId,
+    quote: anchor.quote,
+    prefix: anchor.prefix,
+    suffix: anchor.suffix,
+    hint: anchor.hint,
+  });
+}
+
+export function removeSuppression(id: number): Promise<void> {
+  return invoke<void>('remove_suppression', {id});
+}
+
 export function loadSettings(): Promise<unknown> {
   return invoke<unknown>('load_settings');
 }

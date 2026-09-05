@@ -1,4 +1,3 @@
-import {THRESHOLDS} from '../constants.ts';
 import {findingAt, spansMask} from '../prose.ts';
 import {FORMAL_CONNECTIVES} from '../words.ts';
 import type {Detector, Finding, Prose, Sentence} from '../types.ts';
@@ -43,10 +42,10 @@ function connectiveRuns(prose: Prose): Sentence[][] {
  */
 export const transitionStacking: Detector = {
   id: ID,
-  run: function (prose): Finding[] {
+  run: function (prose, thresholds): Finding[] {
     return connectiveRuns(prose)
       .filter(function (run) {
-        return run.length >= THRESHOLDS.connectiveRun;
+        return run.length >= thresholds.connectiveRun;
       })
       .flatMap(function (run) {
         const start = run[0]?.start;

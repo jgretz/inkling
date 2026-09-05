@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import {DETECTORS, type Anchor, type Finding} from '@inkling/voice';
-import {groupFindings, ruleLabel, snippet} from '../src/lib/voice-rules.ts';
+import {dismissalOf, groupFindings, ruleLabel, snippet} from '../src/lib/voice-rules.ts';
 
 function finding(ruleId: string, start: number): Finding {
   return {
@@ -108,5 +108,26 @@ describe('snippet', function () {
     expect(result.before).toBe('one two');
     expect(result.quote).toBe('a b');
     expect(result.after).toBe('three four');
+  });
+});
+
+describe('dismissalOf', function () {
+  it('should gather the row\u2019s flat anchor columns back into an anchor', function () {
+    const row = {
+      id: 7,
+      docPath: 'drafts/a.md',
+      ruleId: 'em-dash',
+      quote: '\u2014',
+      prefix: 'before ',
+      suffix: ' after',
+      hint: 12,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    expect(dismissalOf(row)).toEqual({
+      id: 7,
+      ruleId: 'em-dash',
+      anchor: {quote: '\u2014', prefix: 'before ', suffix: ' after', hint: 12},
+    });
   });
 });

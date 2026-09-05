@@ -1,16 +1,21 @@
 import {THRESHOLDS} from './constants.ts';
 import type {Anchor, Range} from './types.ts';
 
-/** Length of the longest common suffix of two strings. */
-function sharedSuffix(a: string, b: string): number {
+/**
+ * Length of the longest common suffix of two strings.
+ *
+ * Exported for `suppress.ts`, which scores a resolved span the same way this
+ * file scores a candidate. One scoring rule, in one place.
+ */
+export function sharedSuffix(a: string, b: string): number {
   const limit = Math.min(a.length, b.length);
   let shared = 0;
   while (shared < limit && a[a.length - 1 - shared] === b[b.length - 1 - shared]) shared += 1;
   return shared;
 }
 
-/** Length of the longest common prefix of two strings. */
-function sharedPrefix(a: string, b: string): number {
+/** Length of the longest common prefix of two strings. See `sharedSuffix`. */
+export function sharedPrefix(a: string, b: string): number {
   const limit = Math.min(a.length, b.length);
   let shared = 0;
   while (shared < limit && a[shared] === b[shared]) shared += 1;
