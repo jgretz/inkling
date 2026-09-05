@@ -2,6 +2,7 @@ import {describe, expect, it} from 'bun:test';
 import type {DocPath, GroupPath} from '@inkling/vault';
 import {DEFAULT_VOICE_THRESHOLDS, resolveVoice, type ResolvedVoice} from '@inkling/voice';
 import {estimateTokens, type AgentContext} from '../src/lib/agent.ts';
+import {pointerAt, type Pointer} from '../src/lib/pointer.ts';
 import type {ContextReference} from '../src/lib/references.ts';
 import {followUpPrompt, openingPrompt, WRITING_COMPANION} from '../src/lib/agent-prompt.ts';
 
@@ -27,6 +28,19 @@ function reference(overrides: Partial<ContextReference> = {}): ContextReference 
     tokens: estimateTokens(source),
     ...overrides,
   };
+}
+
+/**
+ * A pointer at a passage, as the editor reports a selection.
+ *
+ * A fresh object on every call, deliberately: two selections of the same words
+ * are equal prose and different objects, and telling them apart by identity is
+ * the mistake the follow-up cases below are about.
+ */
+function selection(quote: string): Pointer {
+  const source = `Something above it. ${quote} Something below it.`;
+  const start = source.indexOf(quote);
+  return pointerAt(source, start, start + quote.length);
 }
 
 function context(overrides: Partial<AgentContext> = {}): AgentContext {
@@ -214,7 +228,7 @@ describe('followUpPrompt', function () {
   it('should send a selection the writer has just made', function () {
     const prompt = followUpPrompt({
       voice: voice(),
-      context: context({selection: 'the last paragraph'}),
+      context: context({selection: selection('the last paragraph')}),
       previous: context(),
       checkerFiring: false,
       authorized: false,
@@ -222,6 +236,36 @@ describe('followUpPrompt', function () {
     });
 
     expect(prompt).toContain('the last paragraph');
+  });
+
+  // The trap comparing the pointers rather than their quotes would spring: two
+  // selections of the same words are two objects, so every turn for the rest of
+  // the conversation would re-send a selection that never moved.
+  it('should not re-send a selection whose text has not changed', function () {
+    const prompt = followUpPrompt({
+      voice: voice(),
+      context: context({selection: selection('the last paragraph')}),
+      previous: context({selection: selection('the last paragraph')}),
+      checkerFiring: false,
+      authorized: false,
+      message: 'And now?',
+    });
+
+    expect(prompt).not.toContain('the last paragraph');
+    expect(prompt).not.toContain('The writer highlighted this');
+  });
+
+  it('should say so when the writer has dropped the selection they had', function () {
+    const prompt = followUpPrompt({
+      voice: voice(),
+      context: context({selection: undefined}),
+      previous: context({selection: selection('the last paragraph')}),
+      checkerFiring: false,
+      authorized: false,
+      message: 'Never mind',
+    });
+
+    expect(prompt).toContain('has nothing selected');
   });
 
   it('should send only a reference that was added since the last turn', function () {
@@ -332,5 +376,47 @@ describe('the turn block', function () {
   it('should send the block format once, at the top of the session', function () {
     expect(opening(false)).toContain('```inkling');
     expect(followUp(false)).not.toContain('```inkling');
+  });
+});
+
+describe('the pointing contract', function () {
+  function opening(): string {
+    return openingPrompt({
+      voice: voice(),
+      context: context(),
+      authorized: false,
+      message: 'Where is the weak paragraph?',
+    });
+  }
+
+  it('should ask for the point kind, with the block it is sent as', function () {
+    const prompt = opening();
+
+    expect(prompt).toContain('"kind": "point"');
+    expect(prompt).toContain('{"kind": "point", "quote": "the passage exactly as it stands now"}');
+  });
+
+  it('should say a point carries no replacement and is legal on either turn', function () {
+    const prompt = opening();
+
+    expect(prompt).toContain('No `replacement`');
+    expect(prompt).toContain('legal on either turn');
+  });
+
+  // The whole reason the kind exists: prose describing a location is something
+  // the writer has to go and count out for themselves.
+  it('should prefer naming a passage to describing where it is', function () {
+    expect(opening()).toContain('Naming the passage beats describing where it is');
+  });
+
+  it('should send the writers selection as its own words, unchanged', function () {
+    const prompt = openingPrompt({
+      voice: voice(),
+      context: context({selection: selection('the body of the draft')}),
+      authorized: false,
+      message: 'This bit',
+    });
+
+    expect(prompt).toContain('The writer highlighted this:\n\nthe body of the draft');
   });
 });

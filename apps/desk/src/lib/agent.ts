@@ -1,4 +1,5 @@
 import type {DocPath} from '@inkling/vault';
+import type {Pointer} from './pointer.ts';
 import type {ContextReference} from './references.ts';
 import type {AgentReply} from './reply.ts';
 
@@ -21,6 +22,15 @@ export type Message = {
   at: string;
   /** True while a reply is still streaming in. */
   pending?: boolean;
+  /**
+   * The passage this message pointed at, when it pointed at one.
+   *
+   * On a writer's message it is what they had selected when they sent it; on a
+   * reply it is the passage the agent named. Either way it is a quote and an
+   * anchor rather than a range, so it is resolved against the draft as it
+   * stands when the writer asks to see it, not as it stood when it was made.
+   */
+  pointer?: Pointer;
 };
 
 /**
@@ -31,8 +41,14 @@ export type Message = {
 export type AgentContext = {
   /** The document under discussion, if one is open. */
   doc: {path: DocPath; title: string; source: string} | undefined;
-  /** Text the writer highlighted in the editor, when they selected any. */
-  selection: string | undefined;
+  /**
+   * What the writer highlighted in the editor, when they selected any.
+   *
+   * A pointer rather than the bare text: only the quote is ever sent, and the
+   * anchor is what lets the transcript show the writer the passage again after
+   * they have edited around it.
+   */
+  selection: Pointer | undefined;
   /**
    * The assembled reference cascade: what the document's groups attached, then
    * what the document attached itself. Built by `assembleReferences`, which is
@@ -65,8 +81,9 @@ export type Turn = {
 /**
  * One piece of a turn: prose to render, or the turn's single parsed reply.
  *
- * A union rather than a bare string, because the three reply kinds have to be
- * structural for the accept-or-reject prompt to exist at all. Text chunks
+ * A union rather than a bare string, because the reply kinds have to be
+ * structural for the accept-or-reject prompt to exist at all, and for a passage
+ * the reply pointed at to be one the writer can click. Text chunks
  * arrive as they stream; the reply arrives once, last, and only for a turn that
  * ran to the end.
  */
@@ -99,7 +116,7 @@ export function estimateTokens(text: string): number {
 export function contextTokens(context: AgentContext): number {
   const parts = [
     context.doc?.source ?? '',
-    context.selection ?? '',
+    context.selection?.quote ?? '',
     ...context.references.map(function (entry) {
       return entry.source;
     }),

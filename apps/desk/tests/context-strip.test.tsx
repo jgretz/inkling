@@ -3,6 +3,7 @@ import {describe, expect, it, mock} from 'bun:test';
 import {fireEvent, render} from '@testing-library/react';
 import type {DocPath, DocSummary, GroupPath} from '@inkling/vault';
 import {estimateTokens, type AgentContext} from '../src/lib/agent.ts';
+import {pointerAt} from '../src/lib/pointer.ts';
 import type {ContextReference} from '../src/lib/references.ts';
 import {ContextStrip, type ReferenceControls} from '../src/components/chat/ContextStrip.tsx';
 
@@ -57,7 +58,7 @@ function doc(path: string, title: string): DocSummary {
 function context(overrides: Partial<AgentContext> = {}): AgentContext {
   return {
     doc: {path: 'drafts/piece.md' as DocPath, title: 'The piece', source: 'p'.repeat(200)},
-    selection: 's'.repeat(40),
+    selection: pointerAt('s'.repeat(40), 0, 40),
     references: [],
     ...overrides,
   };

@@ -5,8 +5,9 @@ import ArrowUp from 'lucide-react/dist/esm/icons/arrow-up';
 import Square from 'lucide-react/dist/esm/icons/square';
 import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
 import type {DocPath} from '@inkling/vault';
-import type {AgentContext, AgentTransport, Message} from '../../lib/agent.ts';
+import type {AgentContext, AgentTransport, Message, Role} from '../../lib/agent.ts';
 import type {Conversation} from '../../lib/conversations.ts';
+import {pointerFor, type Pointer} from '../../lib/pointer.ts';
 import type {AgentReply, Edit} from '../../lib/reply.ts';
 import type {TurnMode} from '../../lib/turn.ts';
 import {ContextStrip, type ReferenceControls} from './ContextStrip.tsx';
@@ -56,6 +57,11 @@ type ChatPanelProps = {
    * when the writer moved to another document while the agent was thinking.
    */
   onLand: (edit: Edit, path: DocPath | undefined) => void;
+  /**
+   * A passage in the transcript the writer asked to see. The caller resolves it
+   * against the draft as it stands now and reveals it, or says it has gone.
+   */
+  onPoint: (pointer: Pointer) => void;
   /** Fires when focus lands in the panel anywhere but the composer. */
   onFocus: () => void;
 };
@@ -67,8 +73,15 @@ type ChatPanelProps = {
  * neither is here. Kept beside the messages rather than on them because
  * `Message` is also the shape a stored turn comes back as, and none of this
  * survives a restart: a proposal is answered in the session that raised it.
+ *
+ * A pointer is the exception that proves it. It is here while the turn is live,
+ * and `messagesOf` rebuilds it from the stored reply on the way back in, so a
+ * transcript read a week later still points.
  */
-type Outcome = {kind: 'proposed'; edit: Edit} | {kind: 'refused'; reason: string};
+type Outcome =
+  | {kind: 'proposed'; edit: Edit}
+  | {kind: 'point'; pointer: Pointer}
+  | {kind: 'refused'; reason: string};
 
 /** The value of the switcher's last entry, which is not a conversation id. */
 const NEW_CONVERSATION = 'new';
@@ -159,11 +172,12 @@ const Proposal = memo(function Proposal({id, edit, onAccept, onReject}: Proposal
 });
 
 /**
- * A reply whose edit inkling would not use, in the validator's own words.
+ * A reply inkling would not act on, in the validator's own words.
  *
  * A notice and nothing more: there is deliberately nothing here to accept,
  * because the whole reason the reply was refused is that what it asked for
- * could not be read as an edit.
+ * could not be read. A pointer whose passage is gone from the document the turn
+ * carried is reported here too, for the same reason and in the same place.
  */
 const Refusal = memo(function Refusal({reason}: {reason: string}) {
   return (
@@ -171,8 +185,54 @@ const Refusal = memo(function Refusal({reason}: {reason: string}) {
       role="status"
       className="max-w-[85%] rounded-xl border border-amber-900/50 bg-amber-950/30 px-3 py-2 text-[12px] leading-relaxed text-amber-300"
     >
-      Inkling did not use the edit in this reply: {reason}
+      Inkling did not act on this reply: {reason}
     </p>
+  );
+});
+
+type ReferenceProps = {
+  pointer: Pointer;
+  /** Whose passage it is, which is the whole of what the label has to say. */
+  role: Role;
+  onPoint: (pointer: Pointer) => void;
+};
+
+/**
+ * A passage somebody pointed at, as the words themselves and a way back to them.
+ *
+ * The quote is what it shows, never an offset or a paragraph number: the writer
+ * has gone on editing since, and the only thing that stayed true is the text.
+ * Clicking resolves it against the draft as it stands now, so a passage that has
+ * since moved is found and one that has gone is said to have gone.
+ */
+const Reference = memo(function Reference({pointer, role, onPoint}: ReferenceProps) {
+  const mine = role === 'writer';
+  const show = useCallback(
+    function () {
+      onPoint(pointer);
+    },
+    [pointer, onPoint],
+  );
+
+  const lead = mine ? 'Show the passage you selected' : 'Show the passage the agent pointed at';
+
+  return (
+    <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+      <button
+        type="button"
+        onClick={show}
+        // The quote is in the accessible name, not only on screen. Without it a
+        // screen reader is offered a button to show a passage and never told
+        // which passage, which is the one thing the control is about.
+        aria-label={`${lead}: ${pointer.quote}`}
+        className="max-w-[85%] space-y-1 rounded-lg border-l-2 border-accent-muted bg-ink-900 py-1.5 pl-2.5 pr-3 text-left text-[12px] leading-relaxed text-ink-400 transition-colors duration-100 hover:bg-ink-850 hover:text-ink-200"
+      >
+        <span className="block text-[10px] font-medium uppercase tracking-wider text-ink-500">
+          {mine ? 'Selected' : 'Pointed at'}
+        </span>
+        <span className="line-clamp-3 whitespace-pre-wrap">{pointer.quote}</span>
+      </button>
+    </div>
   );
 });
 
@@ -191,6 +251,7 @@ export function ChatPanel({
   onFlush,
   onAccept,
   onLand,
+  onPoint,
   onFocus,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>(initial);
@@ -226,18 +287,36 @@ export function ChatPanel({
     });
   }, []);
 
-  /** What a turn's one parsed reply leaves behind, if it leaves anything. */
+  /**
+   * What a turn's one parsed reply leaves behind, if it leaves anything.
+   *
+   * `snapshot` is the context the turn was sent with, and every quote in the
+   * reply is read against it rather than against whatever is open now: the agent
+   * quoted the document it was given, and two documents made from one template
+   * share passages.
+   */
   const receive = useCallback(
-    function (replyId: string, reply: AgentReply, target: DocPath | undefined): void {
+    function (replyId: string, reply: AgentReply, snapshot: AgentContext): void {
       match(reply)
         // Prose, already on screen from the chunks it streamed in as.
         .with({kind: 'answer'}, function () {})
         .with({kind: 'made'}, function ({edit}) {
-          onLand(edit, target);
+          onLand(edit, snapshot.doc?.path);
         })
         .with({kind: 'proposed'}, function ({edit}) {
           setOutcomes(function (current) {
             return {...current, [replyId]: {kind: 'proposed', edit}};
+          });
+        })
+        .with({kind: 'point'}, function ({quote}) {
+          const found = pointerFor(snapshot.doc?.source ?? '', quote);
+          setOutcomes(function (current) {
+            return {
+              ...current,
+              [replyId]: found.ok
+                ? {kind: 'point', pointer: found.value}
+                : {kind: 'refused', reason: found.reason},
+            };
           });
         })
         .with({kind: 'refused'}, function ({reason}) {
@@ -280,13 +359,15 @@ export function ChatPanel({
       // document the turn actually carried, whatever is open by the time it
       // comes back, and the two cannot disagree if they are the same read.
       const snapshot = contextRef.current;
-      const target = snapshot.doc?.path;
 
       const writerMessage: Message = {
         id: nextId(),
         role: 'writer',
         text,
         at: new Date().toISOString(),
+        // What they had highlighted when they pressed send, so the transcript
+        // shows what the question was about and can show it again.
+        ...(snapshot.selection === undefined ? {} : {pointer: snapshot.selection}),
       };
       const replyId = nextId();
       setMessages(function (current) {
@@ -316,7 +397,7 @@ export function ChatPanel({
         };
         for await (const chunk of transport.send(turn, controller.signal)) {
           if (chunk.kind === 'reply') {
-            receive(replyId, chunk.reply, target);
+            receive(replyId, chunk.reply, snapshot);
             continue;
           }
           const {text: piece} = chunk;
@@ -434,6 +515,15 @@ export function ChatPanel({
             return (
               <Fragment key={message.id}>
                 <Bubble message={message} />
+                {/* The writer's own selection, and a stored reply's pointer,
+                    both arrive on the message. A live reply's arrives as an
+                    outcome, because it is built when the reply is parsed. */}
+                {message.pointer !== undefined && (
+                  <Reference pointer={message.pointer} role={message.role} onPoint={onPoint} />
+                )}
+                {outcome?.kind === 'point' && (
+                  <Reference pointer={outcome.pointer} role={message.role} onPoint={onPoint} />
+                )}
                 {outcome?.kind === 'proposed' && (
                   <Proposal
                     id={message.id}

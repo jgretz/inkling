@@ -4,8 +4,10 @@ import {EditorView, drawSelection, highlightActiveLine, keymap} from '@codemirro
 import {defaultKeymap, history, historyKeymap} from '@codemirror/commands';
 import {markdown, markdownLanguage} from '@codemirror/lang-markdown';
 import type {Finding, Range} from '@inkling/voice';
+import {pointerAt, type Pointer} from '../../lib/pointer.ts';
 import {inklingTheme} from './theme.ts';
 import {setFindings, voiceFindings} from './findings-marks.ts';
+import {agentPoint, clearPoint, setPoint} from './point-mark.ts';
 
 /**
  * A request to show a range.
@@ -20,6 +22,14 @@ import {setFindings, voiceFindings} from './findings-marks.ts';
 export type Reveal = {
   range: Range;
   seq: number;
+  /**
+   * Whether honouring this request also paints the passage.
+   *
+   * A pointer asks for the paint, because the writer clicked something in the
+   * chat and needs to see which words it meant. A finding does not: the strip
+   * entry they clicked already names it, and the underline is already there.
+   */
+  mark?: boolean;
 };
 
 type EditorPanelProps = {
@@ -27,8 +37,13 @@ type EditorPanelProps = {
   path: string;
   source: string;
   onChange: (source: string) => void;
-  /** Fires with the selected text, or an empty string when nothing is selected. */
-  onSelect: (selection: string) => void;
+  /**
+   * Fires with the selected passage, or `undefined` when nothing is selected.
+   *
+   * A pointer rather than the text alone, so the turn that carries it can show
+   * the writer the same passage again later.
+   */
+  onSelect: (selection: Pointer | undefined) => void;
   onSave: () => void;
   /**
    * Fires when focus lands anywhere in the editor, which is what puts the
@@ -88,7 +103,11 @@ export function EditorPanel({
         if (update.docChanged) handlers.current.onChange(update.state.doc.toString());
         if (update.selectionSet || update.docChanged) {
           const {from, to} = update.state.selection.main;
-          handlers.current.onSelect(from === to ? '' : update.state.sliceDoc(from, to));
+          // The document is read only when there is a selection to anchor: a
+          // caret move is the common case and costs nothing.
+          handlers.current.onSelect(
+            from === to ? undefined : pointerAt(update.state.doc.toString(), from, to),
+          );
         }
       });
 
@@ -110,6 +129,9 @@ export function EditorPanel({
         markdown({base: markdownLanguage, codeLanguages: []}),
         inklingTheme,
         voiceFindings(),
+        // Before the default keymap, so its Escape binding is offered the key
+        // first and declines it whenever no passage is painted.
+        agentPoint(),
         listener,
         saveKey,
         keymap.of([...defaultKeymap, ...historyKeymap]),
@@ -166,7 +188,12 @@ export function EditorPanel({
       const to = Math.max(from, Math.min(reveal.range.end, length));
       instance.dispatch({
         selection: {anchor: from, head: to},
-        effects: EditorView.scrollIntoView(from, {y: 'center'}),
+        effects: [
+          EditorView.scrollIntoView(from, {y: 'center'}),
+          // One highlight at a time: a reveal that wants none says so rather
+          // than leaving the previous pointer's paint behind it.
+          reveal.mark === true ? setPoint.of({start: from, end: to}) : clearPoint.of(null),
+        ],
       });
 
       // Focus after the update cycle rather than inside it. `focus()` makes

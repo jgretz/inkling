@@ -11,6 +11,7 @@ import {
   type Turn,
 } from '../src/lib/agent.ts';
 import type {Conversation} from '../src/lib/conversations.ts';
+import {pointerAt, type Pointer} from '../src/lib/pointer.ts';
 import type {Edit} from '../src/lib/reply.ts';
 import type {TurnMode} from '../src/lib/turn.ts';
 import {ChatPanel} from '../src/components/chat/ChatPanel.tsx';
@@ -80,6 +81,7 @@ type HarnessProps = {
   onFlush?: () => Promise<void>;
   onAccept?: (edit: Edit) => void;
   onLand?: (edit: Edit, path: DocPath | undefined) => void;
+  onPoint?: (pointer: Pointer) => void;
   onFocus?: () => void;
 };
 
@@ -94,6 +96,7 @@ function Harness({
   onFlush = noFlush,
   onAccept = noop,
   onLand = noop,
+  onPoint = noop,
   onFocus = noop,
 }: HarnessProps) {
   const [activeId, setActiveId] = useState(started);
@@ -118,6 +121,7 @@ function Harness({
       onFlush={onFlush}
       onAccept={onAccept}
       onLand={onLand}
+      onPoint={onPoint}
       onFocus={onFocus}
     />
   );
@@ -534,6 +538,146 @@ describe('a refused reply', function () {
     await ask(view);
 
     expect(landed).toEqual([]);
+  });
+});
+
+describe('a reply that points', function () {
+  const DRAFT = 'The ending is rather good.';
+
+  /** A transport whose reply points at `quote` and nothing else. */
+  function pointing(quote: string): AgentTransport {
+    return {
+      name: 'test',
+      async *send() {
+        yield {kind: 'text', text: 'That is the strong half.'};
+        yield {kind: 'reply', reply: {kind: 'point', text: 'That is the strong half.', quote}};
+      },
+    };
+  }
+
+  function about(source: string): AgentContext {
+    return {
+      ...emptyContext(),
+      doc: {path: 'drafts/a.md' as DocPath, title: 'A draft', source},
+    };
+  }
+
+  it('should show the passage the reply named, in its own words', async function () {
+    const view = panel({started: 3, transport: pointing('rather good'), context: about(DRAFT)});
+
+    await ask(view);
+
+    expect(view.getByLabelText(/^Show the passage the agent pointed at/).textContent).toContain(
+      'rather good',
+    );
+  });
+
+  it('should hand the pointer to the caller when the reference is clicked', async function () {
+    const shown: Pointer[] = [];
+    const view = panel({
+      started: 3,
+      transport: pointing('rather good'),
+      context: about(DRAFT),
+      onPoint(pointer: Pointer) {
+        shown.push(pointer);
+      },
+    });
+    await ask(view);
+
+    await act(async function () {
+      fireEvent.click(view.getByLabelText(/^Show the passage the agent pointed at/));
+    });
+
+    expect(shown).toHaveLength(1);
+    expect(shown[0]?.quote).toBe('rather good');
+    // An anchor, not a range: the writer goes on editing, and the offsets it
+    // was pointed at with stop being true the moment they do.
+    expect(shown[0]?.anchor.hint).toBe(DRAFT.indexOf('rather good'));
+  });
+
+  // Against the document the turn carried, not whatever is open now. A quote the
+  // snapshot never held is a reply inkling cannot act on.
+  it('should refuse a quote the turns own document does not hold', async function () {
+    const view = panel({
+      started: 3,
+      transport: pointing('the closing line'),
+      context: about(DRAFT),
+    });
+
+    await ask(view);
+
+    expect(view.getByText('not in the document any more', {exact: false})).toBeDefined();
+    expect(view.queryByLabelText(/^Show the passage the agent pointed at/)).toBeNull();
+  });
+
+  it('should refuse a quote the document holds twice', async function () {
+    const view = panel({
+      started: 3,
+      transport: pointing('One.'),
+      context: about('One. Two. One.'),
+    });
+
+    await ask(view);
+
+    expect(view.getByText('appears more than once', {exact: false})).toBeDefined();
+    expect(view.queryByLabelText(/^Show the passage the agent pointed at/)).toBeNull();
+  });
+
+  it('should offer nothing to accept, because a point changes nothing', async function () {
+    const view = panel({started: 3, transport: pointing('rather good'), context: about(DRAFT)});
+
+    await ask(view);
+
+    expect(view.queryByText('Accept')).toBeNull();
+  });
+});
+
+describe('the writers own selection', function () {
+  const DRAFT = 'The ending is rather good.';
+
+  function withSelection(): AgentContext {
+    return {
+      ...emptyContext(),
+      doc: {path: 'drafts/a.md' as DocPath, title: 'A draft', source: DRAFT},
+      selection: pointerAt(DRAFT, 14, 25),
+    };
+  }
+
+  it('should show what the writer had highlighted under their own message', async function () {
+    const view = panel({started: 3, context: withSelection()});
+
+    await ask(view);
+
+    expect(view.getByLabelText(/^Show the passage you selected/).textContent).toContain(
+      'rather good',
+    );
+  });
+
+  it('should hand that pointer to the caller when it is clicked', async function () {
+    const shown: Pointer[] = [];
+    const view = panel({
+      started: 3,
+      context: withSelection(),
+      onPoint(pointer: Pointer) {
+        shown.push(pointer);
+      },
+    });
+    await ask(view);
+
+    await act(async function () {
+      fireEvent.click(view.getByLabelText(/^Show the passage you selected/));
+    });
+
+    expect(shown).toHaveLength(1);
+    expect(shown[0]?.quote).toBe('rather good');
+  });
+
+  it('should show nothing under a message sent with nothing selected', async function () {
+    const view = panel({started: 3, context: emptyContext()});
+
+    await ask(view);
+
+    expect(view.queryByLabelText(/^Show the passage you selected/)).toBeNull();
   });
 });
 
