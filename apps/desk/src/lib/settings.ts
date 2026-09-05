@@ -1,4 +1,5 @@
 import type {VaultPath} from '@inkling/vault';
+import type {TurnPin} from './turn.ts';
 
 /**
  * Settings that survive a restart. Kept small and flat: anything derivable from
@@ -17,6 +18,11 @@ export type LayoutSettings = {
   chatOpen: boolean;
   /** Whether voice findings are underlined in the editor. */
   marksOn: boolean;
+  /**
+   * A turn mode the writer pinned by hand, overriding the focus rule, or
+   * `undefined` for the derived mode. Not a `ToggleKey`: it has three states.
+   */
+  turnPin: TurnPin;
   /** Panel widths in pixels; the editor takes whatever is left. */
   libraryWidth: number;
   previewWidth: number;
@@ -31,6 +37,7 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   previewOpen: true,
   chatOpen: true,
   marksOn: true,
+  turnPin: undefined,
   libraryWidth: 240,
   previewWidth: 420,
   chatWidth: 380,
@@ -61,6 +68,17 @@ function asWidth(value: unknown, fallback: number): number {
 }
 
 /**
+ * The pin, which is one of two literals or nothing at all.
+ *
+ * Anything else, including a settings file written before the field existed,
+ * reads as unpinned: the derived mode is the one that asks first, so falling
+ * back to it cannot surprise the writer.
+ */
+function asPin(value: unknown): TurnPin {
+  return value === 'writer' || value === 'agent' ? value : undefined;
+}
+
+/**
  * Reads whatever the settings file held into a fully populated `Settings`.
  *
  * Every field falls back independently. A settings file written by an older
@@ -78,6 +96,7 @@ export function parseSettings(raw: unknown): Settings {
       previewOpen: asBoolean(layout['previewOpen'], DEFAULT_LAYOUT.previewOpen),
       chatOpen: asBoolean(layout['chatOpen'], DEFAULT_LAYOUT.chatOpen),
       marksOn: asBoolean(layout['marksOn'], DEFAULT_LAYOUT.marksOn),
+      turnPin: asPin(layout['turnPin']),
       libraryWidth: asWidth(layout['libraryWidth'], DEFAULT_LAYOUT.libraryWidth),
       previewWidth: asWidth(layout['previewWidth'], DEFAULT_LAYOUT.previewWidth),
       chatWidth: asWidth(layout['chatWidth'], DEFAULT_LAYOUT.chatWidth),

@@ -57,6 +57,7 @@ function Harness({
           onChange={function () {}}
           onSelect={function () {}}
           onSave={function () {}}
+          onFocus={function () {}}
           findings={findings}
           marksOn={marksOn}
           reveal={reveal}

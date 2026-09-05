@@ -20,6 +20,8 @@ import {
   renameDoc,
   renameGroup as renameGroupCommand,
   writeDoc,
+  type DocFile,
+  type VaultDbStatus,
 } from './bridge.ts';
 import {
   INITIAL_WORKSPACE,
@@ -31,6 +33,40 @@ import {
 /** How long the editor sits quiet before the draft is written to disk. */
 const AUTOSAVE_MS = 800;
 
+/**
+ * The Rust calls this hook makes, as one value.
+ *
+ * Taken as a parameter rather than reached for at each call site so the hook is
+ * drivable with no webview, the way `daemon-token.ts` takes its three Tauri
+ * calls as `TokenPrimitives`. A `mock.module` on `bridge.ts` would do the same
+ * job and register in bun's run-global mock registry, reaching every other file
+ * that imports it.
+ */
+export type WorkspaceBridge = {
+  listDocs: (vault: VaultPath) => Promise<DocFile[]>;
+  listGroups: (vault: VaultPath) => Promise<string[]>;
+  openVaultDb: (vault: VaultPath) => Promise<VaultDbStatus>;
+  readDoc: (vault: VaultPath, path: DocPath) => Promise<DocFile>;
+  writeDoc: (vault: VaultPath, path: DocPath, source: string) => Promise<string>;
+  createDoc: (vault: VaultPath, path: DocPath, source: string) => Promise<void>;
+  createGroup: (vault: VaultPath, path: GroupPath) => Promise<void>;
+  renameGroup: (vault: VaultPath, from: GroupPath, to: GroupPath) => Promise<void>;
+  renameDoc: (vault: VaultPath, from: DocPath, to: DocPath) => Promise<void>;
+};
+
+/** The shipped one. Held at module scope so its identity never moves. */
+export const TAURI_WORKSPACE: WorkspaceBridge = {
+  listDocs,
+  listGroups,
+  openVaultDb,
+  readDoc,
+  writeDoc,
+  createDoc: createDocCommand,
+  createGroup: createGroupCommand,
+  renameGroup: renameGroupCommand,
+  renameDoc,
+};
+
 export type Workspace = WorkspaceState & {
   chooseVault: (vault: VaultPath) => void;
   openDoc: (path: DocPath) => void;
@@ -38,6 +74,20 @@ export type Workspace = WorkspaceState & {
   editDraft: (draft: string) => void;
   /** Writes the open draft now, bypassing the autosave delay. */
   saveNow: () => void;
+  /**
+   * The same write, awaited. Resolves at once when the buffer is clean, and
+   * otherwise once the draft is on disk, so the agent reads the file the writer
+   * is looking at rather than the one they had a second ago.
+   */
+  flush: () => Promise<void>;
+  /**
+   * Writes `source` to `path` and replaces the buffer with what reading the
+   * file back returns. Refuses when `path` is not the open document.
+   *
+   * The read-back is the point: the buffer ends up holding what disk actually
+   * holds, never what inkling believed it had written.
+   */
+  land: (source: string, path: DocPath | undefined) => Promise<void>;
   refresh: () => void;
   /** Makes a group, and every group above it that does not exist yet. */
   createGroup: (path: GroupPath) => void;
@@ -54,6 +104,14 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** What the writer is told when an agent's edit arrived for another document. */
+function strayEdit(path: DocPath | undefined): string {
+  if (path === undefined) {
+    return 'The agent sent an edit, but its turn was not about any document.';
+  }
+  return `The agent's edit was for ${path}, which is not the open document any more.`;
+}
+
 /**
  * Owns the vault, the document list and the open buffer.
  *
@@ -61,7 +119,7 @@ function message(error: unknown): string {
  * dispatch a path-tagged action so the reducer can drop a result that arrived
  * after the writer moved on.
  */
-export function useWorkspace(): Workspace {
+export function useWorkspace(bridge: WorkspaceBridge = TAURI_WORKSPACE): Workspace {
   const [state, dispatch] = useReducer(workspaceReducer, INITIAL_WORKSPACE);
   const vault = state.vault;
 
@@ -71,7 +129,7 @@ export function useWorkspace(): Workspace {
       dispatch({type: 'loadingStarted'});
       // One round trip's latency rather than two: neither listing needs the
       // other's answer.
-      Promise.all([listDocs(vault), listGroups(vault)])
+      Promise.all([bridge.listDocs(vault), bridge.listGroups(vault)])
         .then(function ([files, dirs]) {
           const docs = files.map(function (file) {
             return summarize(file.path as DocPath, file.source, isoFromEpoch(file.mtime));
@@ -88,7 +146,7 @@ export function useWorkspace(): Workspace {
           dispatch({type: 'failed', message: message(error)});
         });
     },
-    [vault],
+    [vault, bridge],
   );
 
   useEffect(
@@ -107,7 +165,8 @@ export function useWorkspace(): Workspace {
     function () {
       if (vault === undefined) return;
       let live = true;
-      openVaultDb(vault)
+      bridge
+        .openVaultDb(vault)
         .then(function (status) {
           if (!live) return;
           if (status.kind === 'ready') {
@@ -124,7 +183,7 @@ export function useWorkspace(): Workspace {
         live = false;
       };
     },
-    [vault],
+    [vault, bridge],
   );
 
   const chooseVault = useCallback(function (next: VaultPath) {
@@ -135,7 +194,8 @@ export function useWorkspace(): Workspace {
     function (path: DocPath) {
       if (vault === undefined) return;
       dispatch({type: 'loadingStarted'});
-      readDoc(vault, path)
+      bridge
+        .readDoc(vault, path)
         .then(function (file) {
           dispatch({type: 'docOpened', path, source: file.source});
         })
@@ -144,7 +204,7 @@ export function useWorkspace(): Workspace {
           dispatch({type: 'failed', message: message(error)});
         });
     },
-    [vault],
+    [vault, bridge],
   );
 
   const closeDoc = useCallback(function () {
@@ -174,20 +234,22 @@ export function useWorkspace(): Workspace {
   const createGroup = useCallback(
     function (path: GroupPath) {
       if (vault === undefined) return;
-      createGroupCommand(vault, path)
+      bridge
+        .createGroup(vault, path)
         .then(refresh)
         .catch(function (error) {
           console.error(`inkling: failed to make the group ${path}`, error);
           dispatch({type: 'failed', message: message(error)});
         });
     },
-    [vault, refresh],
+    [vault, refresh, bridge],
   );
 
   const renameGroup = useCallback(
     function (from: GroupPath, to: GroupPath) {
       if (vault === undefined) return;
-      renameGroupCommand(vault, from, to)
+      bridge
+        .renameGroup(vault, from, to)
         .then(function () {
           refresh();
           // The open document's path has just changed underneath it. Reopening
@@ -203,13 +265,14 @@ export function useWorkspace(): Workspace {
           dispatch({type: 'failed', message: message(error)});
         });
     },
-    [vault, refresh, openDoc],
+    [vault, refresh, openDoc, bridge],
   );
 
   const moveDoc = useCallback(
     function (from: DocPath, to: DocPath) {
       if (vault === undefined) return;
-      renameDoc(vault, from, to)
+      bridge
+        .renameDoc(vault, from, to)
         .then(function () {
           refresh();
           if (openRef.current?.path === from) openDoc(to);
@@ -219,7 +282,7 @@ export function useWorkspace(): Workspace {
           dispatch({type: 'failed', message: message(error)});
         });
     },
-    [vault, refresh, openDoc],
+    [vault, refresh, openDoc, bridge],
   );
 
   const createDoc = useCallback(
@@ -229,9 +292,10 @@ export function useWorkspace(): Workspace {
       // It is already in hand: the vault scan loaded every document's source,
       // so this is a map lookup rather than a second read of the disk.
       const override = sourcesRef.current.get(templatePathFor(kind));
-      // `createDocCommand`, not `writeDoc`: two titles that slug to the same
+      // `bridge.createDoc`, not `writeDoc`: two titles that slug to the same
       // filename must not silently overwrite the first one's prose.
-      createDocCommand(vault, path, templateFor(kind, title, new Date().toISOString(), override))
+      bridge
+        .createDoc(vault, path, templateFor(kind, title, new Date().toISOString(), override))
         .then(function () {
           refresh();
           openDoc(path);
@@ -241,25 +305,101 @@ export function useWorkspace(): Workspace {
           dispatch({type: 'failed', message: message(error)});
         });
     },
-    [vault, refresh, openDoc],
+    [vault, refresh, openDoc, bridge],
   );
 
+  /**
+   * One writer for the open document, in the order the calls arrived.
+   *
+   * The autosave and an agent's landing are two callers reaching for the same
+   * file, and unordered they can leave disk holding the older of the two: the
+   * landing writes the edit, an autosave that was already in flight finishes
+   * afterwards with the draft the edit replaced, and the landing's read-back
+   * has already marked the buffer clean, so nothing ever writes the edit again.
+   * Queued, the landing simply waits its turn, and a save that reaches the
+   * front of the queue with nothing left to do finds the buffer clean and
+   * writes nothing.
+   *
+   * Every guard below therefore reads `openRef` inside the queued work rather
+   * than when the call was made.
+   */
+  const writing = useRef<Promise<void>>(Promise.resolve());
+  const enqueue = useCallback(function (work: () => Promise<void>): Promise<void> {
+    // Both settled paths, because one rejection would otherwise leave the chain
+    // rejected and every later write unqueued. Neither caller's work rejects.
+    const next = writing.current.then(work, work);
+    writing.current = next;
+    return next;
+  }, []);
+
+  /**
+   * Writes the open draft, and resolves when it is on disk.
+   *
+   * The promise is what `flush` is: an autosave that nobody awaits and an agent
+   * turn that must not start until the file matches the buffer are the same
+   * write, so they are the same function under two names rather than two
+   * writers racing each other for one file.
+   */
   const save = useCallback(
-    function () {
-      const open = openRef.current;
-      if (vault === undefined || open === undefined || !isDirty(open)) return;
-      const {path, draft} = open;
-      dispatch({type: 'saveStarted', path});
-      writeDoc(vault, path, draft)
-        .then(function () {
-          dispatch({type: 'saveSucceeded', path, source: draft});
-        })
-        .catch(function (error) {
-          console.error(`inkling: failed to save ${path}`, error);
-          dispatch({type: 'saveFailed', path, message: message(error)});
-        });
+    function (): Promise<void> {
+      return enqueue(function () {
+        const open = openRef.current;
+        if (vault === undefined || open === undefined || !isDirty(open)) return Promise.resolve();
+        const {path, draft} = open;
+        dispatch({type: 'saveStarted', path});
+        return bridge
+          .writeDoc(vault, path, draft)
+          .then(function () {
+            dispatch({type: 'saveSucceeded', path, source: draft});
+          })
+          .catch(function (error) {
+            console.error(`inkling: failed to save ${path}`, error);
+            dispatch({type: 'saveFailed', path, message: message(error)});
+          });
+      });
     },
-    [vault],
+    [vault, bridge, enqueue],
+  );
+
+  /**
+   * Writes an agent's edit and replaces the buffer with what disk came back
+   * with, rather than with what was sent.
+   *
+   * Guarded on the document rather than on dirtiness: a landing may be the only
+   * change in flight, and one whose result matched the draft byte for byte
+   * would never reach the file if it were guarded the way `save` is.
+   */
+  const land = useCallback(
+    function (source: string, path: DocPath | undefined): Promise<void> {
+      return enqueue(function () {
+        const open = openRef.current;
+        if (vault === undefined || open === undefined) return Promise.resolve();
+        // The document the turn was about, not whichever one is open now. A
+        // writer who moved on while the agent was thinking must not have its
+        // edit written into a file it never read, and a quoted passage that two
+        // documents share (they were made from the same template) would
+        // otherwise match in the wrong one. Said out loud rather than dropped:
+        // the agent's reply claims an edit that is not going to happen.
+        if (path !== open.path) {
+          dispatch({type: 'failed', message: strayEdit(path)});
+          return Promise.resolve();
+        }
+        dispatch({type: 'saveStarted', path});
+        return bridge
+          .writeDoc(vault, path, source)
+          .then(function () {
+            return bridge.readDoc(vault, path);
+          })
+          .then(function (file) {
+            dispatch({type: 'docReloaded', path, source: file.source});
+          })
+          .catch(function (error) {
+            console.error(`inkling: failed to land an edit in ${path}`, error);
+            dispatch({type: 'saveFailed', path, message: message(error)});
+          });
+      });
+    },
+    [vault, bridge, enqueue],
   );
 
   const draft = state.open?.draft;
@@ -289,6 +429,8 @@ export function useWorkspace(): Workspace {
     closeDoc,
     editDraft,
     saveNow: save,
+    flush: save,
+    land,
     refresh,
     createGroup,
     renameGroup,

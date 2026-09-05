@@ -63,6 +63,7 @@ export type WorkspaceAction =
       sources: ReadonlyMap<DocPath, string>;
     }
   | {type: 'docOpened'; path: DocPath; source: string}
+  | {type: 'docReloaded'; path: DocPath; source: string}
   | {type: 'docClosed'}
   | {type: 'draftEdited'; path: DocPath; draft: string}
   | {type: 'saveStarted'; path: DocPath}
@@ -147,6 +148,16 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
         error: undefined,
         open: {path, draft: source, saved: source, save: {kind: 'clean'}},
       };
+    })
+    .with({type: 'docReloaded'}, function ({path, source}) {
+      // Through `updateOpen` rather than replacing `open` outright: a landing
+      // is a write and a read, and a writer who switched documents in between
+      // must not have the old file's text land in the new file's buffer. The
+      // draft goes with it, because what disk holds is what the editor should
+      // now show; that is the whole point of reading it back.
+      return updateOpen(state, path, function (open) {
+        return {...open, draft: source, saved: source, save: {kind: 'clean'}};
+      });
     })
     .with({type: 'docClosed'}, function () {
       return {...state, open: undefined};

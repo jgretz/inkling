@@ -1,15 +1,27 @@
-import {autoCleanup} from './setup.ts';
+import {autoCleanup, drainReactScheduler} from './setup.ts';
 import {describe, expect, it} from 'bun:test';
 import {useState} from 'react';
-import {fireEvent, render} from '@testing-library/react';
+import {act, fireEvent, render} from '@testing-library/react';
 import type {DocPath} from '@inkling/vault';
-import {emptyContext, type AgentTransport, type Message} from '../src/lib/agent.ts';
+import {
+  emptyContext,
+  type AgentContext,
+  type AgentTransport,
+  type Message,
+  type Turn,
+} from '../src/lib/agent.ts';
 import type {Conversation} from '../src/lib/conversations.ts';
+import type {Edit} from '../src/lib/reply.ts';
+import type {TurnMode} from '../src/lib/turn.ts';
 import {ChatPanel} from '../src/components/chat/ChatPanel.tsx';
 
 autoCleanup();
 
 function noop() {}
+
+function noFlush(): Promise<void> {
+  return Promise.resolve();
+}
 
 /**
  * A transport that answers nothing. Every case here is about what the writer
@@ -61,16 +73,36 @@ type HarnessProps = {
   onDelete?: () => void;
   /** The document's conversations, so a document down to its last one is testable. */
   all?: readonly Conversation[];
+  transport?: AgentTransport;
+  mode?: TurnMode;
+  /** The document the turn carries, so a swap mid-turn is testable. */
+  context?: AgentContext;
+  onFlush?: () => Promise<void>;
+  onAccept?: (edit: Edit) => void;
+  onLand?: (edit: Edit, path: DocPath | undefined) => void;
+  onFocus?: () => void;
 };
 
-function Harness({started, onCreate = noop, onDelete = noop, all = ALL}: HarnessProps) {
+function Harness({
+  started,
+  onCreate = noop,
+  onDelete = noop,
+  all = ALL,
+  transport = SILENT,
+  mode = 'writer',
+  context = emptyContext(),
+  onFlush = noFlush,
+  onAccept = noop,
+  onLand = noop,
+  onFocus = noop,
+}: HarnessProps) {
   const [activeId, setActiveId] = useState(started);
 
   return (
     <ChatPanel
       key={activeId}
-      transport={SILENT}
-      context={emptyContext()}
+      transport={transport}
+      context={context}
       references={{
         docs: [],
         group: undefined,
@@ -82,12 +114,48 @@ function Harness({started, onCreate = noop, onDelete = noop, all = ALL}: Harness
       }}
       initial={STORED[activeId] ?? []}
       conversations={{all, activeId, onSelect: setActiveId, onCreate, onDelete}}
+      mode={mode}
+      onFlush={onFlush}
+      onAccept={onAccept}
+      onLand={onLand}
+      onFocus={onFocus}
     />
   );
 }
 
+function harness(props: Partial<HarnessProps> = {}) {
+  return <Harness {...props} started={props.started ?? 3} />;
+}
+
 function panel(props: Partial<HarnessProps> = {}) {
   return render(<Harness {...props} started={props.started ?? 1} />);
+}
+
+const EDIT: Edit = {quote: 'rather good', replacement: 'good'};
+
+/** A context carrying one open document, which is all the landing path needs. */
+function about(path: DocPath): AgentContext {
+  return {...emptyContext(), doc: {path, title: 'A draft', source: 'The ending is rather good.'}};
+}
+
+/** Types a message and presses send, letting the turn run as far as it can. */
+async function ask(view: ReturnType<typeof render>, text = 'Tighten this'): Promise<void> {
+  await act(async function () {
+    fireEvent.change(view.getByLabelText('Message the agent'), {target: {value: text}});
+  });
+  await act(async function () {
+    fireEvent.click(view.getByLabelText('Send message'));
+    await drainReactScheduler();
+  });
+}
+
+/** A promise the test decides when to settle, for pausing a turn mid-stream. */
+function gate(): {promise: Promise<void>; open: () => void} {
+  let open = function () {};
+  const promise = new Promise<void>(function (resolve) {
+    open = resolve;
+  });
+  return {promise, open};
 }
 
 describe('the conversation switcher', function () {
@@ -184,5 +252,319 @@ describe('the message list', function () {
     expect(
       view.getByText('Ask for a rewrite, an outline, or a second opinion.', {exact: false}),
     ).toBeDefined();
+  });
+});
+
+/**
+ * A transport that records the turns it was handed and answers each one
+ * according to the authorization that turn carried, the way the real one does.
+ *
+ * `pause` holds the turn open between the prose and the reply, which is the
+ * window a writer's focus can move in.
+ */
+function scripted(options: {order?: string[]; pause?: Promise<void>} = {}) {
+  const sent: Turn[] = [];
+  const transport: AgentTransport = {
+    name: 'test',
+    async *send(turn) {
+      sent.push(turn);
+      options.order?.push('send');
+      yield {kind: 'text', text: 'Tightened it.'};
+      if (options.pause !== undefined) await options.pause;
+      yield turn.authorized
+        ? {kind: 'reply', reply: {kind: 'made', text: 'Tightened it.', edit: EDIT}}
+        : {kind: 'reply', reply: {kind: 'proposed', text: 'Tightened it.', edit: EDIT}};
+    },
+  };
+  return {transport, sent};
+}
+
+describe('whose turn a send is', function () {
+  it('should send an unauthorized turn while the turn is the writers', async function () {
+    const {transport, sent} = scripted();
+    const view = panel({started: 3, transport, mode: 'writer'});
+
+    await ask(view);
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.authorized).toBe(false);
+  });
+
+  it('should send an authorized turn while the turn is the agents', async function () {
+    const {transport, sent} = scripted();
+    const view = panel({started: 3, transport, mode: 'agent'});
+
+    await ask(view);
+
+    expect(sent[0]?.authorized).toBe(true);
+  });
+
+  // On call order rather than on a timer: the guarantee is that the file the
+  // agent may read matches the buffer, and a sleep would only ever suggest it.
+  //
+  // The flush records itself when it RESOLVES, not when it is called, so this
+  // pins the await rather than the call. A send that fired the flush and did
+  // not wait for it would order the other way round.
+  it('should await the flush before the authorized turn leaves', async function () {
+    const order: string[] = [];
+    const {transport} = scripted({order});
+    const view = panel({
+      started: 3,
+      transport,
+      mode: 'agent',
+      onFlush() {
+        return Promise.resolve().then(function () {
+          order.push('flush');
+        });
+      },
+    });
+
+    await ask(view);
+
+    expect(order).toEqual(['flush', 'send']);
+  });
+
+  // Nothing to flush for: the writer's turn writes nothing and the agent is not
+  // being invited to read the file.
+  it('should not flush for a turn that is the writers', async function () {
+    const order: string[] = [];
+    const {transport} = scripted({order});
+    const view = panel({
+      started: 3,
+      transport,
+      mode: 'writer',
+      onFlush() {
+        order.push('flush');
+        return Promise.resolve();
+      },
+    });
+
+    await ask(view);
+
+    expect(order).toEqual(['send']);
+  });
+
+  // Authorization is captured at send time. A writer who fires off a rewrite
+  // and then clicks into the editor while it thinks has not revoked it.
+  it('should still land the edit when focus moved to the editor mid-turn', async function () {
+    const held = gate();
+    const {transport, sent} = scripted({pause: held.promise});
+    const landed: Edit[] = [];
+    const props: Partial<HarnessProps> = {
+      started: 3,
+      transport,
+      mode: 'agent',
+      onLand(edit: Edit) {
+        landed.push(edit);
+      },
+    };
+    const view = render(harness(props));
+
+    await ask(view);
+    expect(sent[0]?.authorized).toBe(true);
+
+    // The writer clicks back into the document while the reply is streaming.
+    await act(async function () {
+      view.rerender(harness({...props, mode: 'writer'}));
+    });
+    await act(async function () {
+      held.open();
+      await drainReactScheduler();
+    });
+
+    expect(landed).toEqual([EDIT]);
+  });
+
+  // The document is captured with the authorization, for the same reason. A
+  // writer who opened another document mid-turn must not have the agent's edit
+  // offered against a file the turn never read: two documents made from one
+  // template share passages, so a quote can match in the wrong one.
+  it('should report the document the turn carried, not the one open when it lands', async function () {
+    const held = gate();
+    const {transport} = scripted({pause: held.promise});
+    const targets: Array<DocPath | undefined> = [];
+    const props: Partial<HarnessProps> = {
+      started: 3,
+      transport,
+      mode: 'agent',
+      context: about('asked-about.md' as DocPath),
+      onLand(_edit: Edit, path: DocPath | undefined) {
+        targets.push(path);
+      },
+    };
+    const view = render(harness(props));
+
+    await ask(view);
+
+    await act(async function () {
+      view.rerender(harness({...props, context: about('opened-since.md' as DocPath)}));
+    });
+    await act(async function () {
+      held.open();
+      await drainReactScheduler();
+    });
+
+    expect(targets).toEqual(['asked-about.md' as DocPath]);
+  });
+});
+
+describe('a proposed edit', function () {
+  it('should offer the replacement and the passage it replaces', async function () {
+    const {transport} = scripted();
+    const view = panel({started: 3, transport, mode: 'writer'});
+
+    await ask(view);
+
+    expect(view.getByText('rather good')).toBeDefined();
+    expect(view.getByText('good')).toBeDefined();
+  });
+
+  it('should report the edit to the caller when it is accepted', async function () {
+    const accepted: Edit[] = [];
+    const {transport} = scripted();
+    const view = panel({
+      started: 3,
+      transport,
+      mode: 'writer',
+      onAccept(edit: Edit) {
+        accepted.push(edit);
+      },
+    });
+    await ask(view);
+
+    await act(async function () {
+      fireEvent.click(view.getByText('Accept'));
+    });
+
+    expect(accepted).toEqual([EDIT]);
+    expect(view.queryByText('Accept')).toBeNull();
+  });
+
+  it('should report nothing and leave the conversation alone when it is rejected', async function () {
+    const accepted: Edit[] = [];
+    const {transport} = scripted();
+    const view = panel({
+      started: 3,
+      transport,
+      mode: 'writer',
+      onAccept(edit: Edit) {
+        accepted.push(edit);
+      },
+    });
+    await ask(view);
+
+    await act(async function () {
+      fireEvent.click(view.getByText('Reject'));
+    });
+
+    expect(accepted).toEqual([]);
+    expect(view.queryByText('Accept')).toBeNull();
+    // What was said stays said. Rejecting an edit is not deleting a reply.
+    expect(view.getByText('Tighten this')).toBeDefined();
+    expect(view.getByText('Tightened it.')).toBeDefined();
+  });
+
+  it('should not land anything the writer only accepted into the buffer', async function () {
+    const landed: Edit[] = [];
+    const {transport} = scripted();
+    const view = panel({
+      started: 3,
+      transport,
+      mode: 'writer',
+      onLand(edit: Edit) {
+        landed.push(edit);
+      },
+    });
+    await ask(view);
+
+    await act(async function () {
+      fireEvent.click(view.getByText('Accept'));
+    });
+
+    expect(landed).toEqual([]);
+  });
+});
+
+describe('a refused reply', function () {
+  /** What the transport yields when the validator would not read the block. */
+  const REFUSING: AgentTransport = {
+    name: 'test',
+    async *send() {
+      yield {kind: 'text', text: 'Tightened it.'};
+      yield {
+        kind: 'reply',
+        reply: {
+          kind: 'refused',
+          text: 'Tightened it.',
+          reason: 'its edit block was not readable as JSON',
+        },
+      };
+    },
+  };
+
+  it('should show the reason and offer nothing to accept', async function () {
+    const accepted: Edit[] = [];
+    const view = panel({
+      started: 3,
+      transport: REFUSING,
+      mode: 'agent',
+      onAccept(edit: Edit) {
+        accepted.push(edit);
+      },
+    });
+
+    await ask(view);
+
+    expect(view.getByText('not readable as JSON', {exact: false})).toBeDefined();
+    expect(view.queryByText('Accept')).toBeNull();
+    expect(accepted).toEqual([]);
+  });
+
+  it('should land nothing on a turn whose reply it refused', async function () {
+    const landed: Edit[] = [];
+    const view = panel({
+      started: 3,
+      transport: REFUSING,
+      mode: 'agent',
+      onLand(edit: Edit) {
+        landed.push(edit);
+      },
+    });
+
+    await ask(view);
+
+    expect(landed).toEqual([]);
+  });
+});
+
+describe('reporting focus', function () {
+  it('should report focus landing on the conversation switcher', function () {
+    let reported = 0;
+    const view = panel({
+      started: 3,
+      onFocus() {
+        reported += 1;
+      },
+    });
+
+    fireEvent.focus(view.getByLabelText('Conversation'));
+
+    expect(reported).toBe(1);
+  });
+
+  // The composer is neutral. Typing a message is not a claim on the turn: a
+  // writer whose cursor is in the document still expects to be asked first.
+  it('should report nothing when focus lands on the composer', function () {
+    let reported = 0;
+    const view = panel({
+      started: 3,
+      onFocus() {
+        reported += 1;
+      },
+    });
+
+    fireEvent.focus(view.getByLabelText('Message the agent'));
+
+    expect(reported).toBe(0);
   });
 });

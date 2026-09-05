@@ -4,8 +4,12 @@ import BookOpen from 'lucide-react/dist/esm/icons/book-open';
 import Columns from 'lucide-react/dist/esm/icons/columns-2';
 import Library from 'lucide-react/dist/esm/icons/library';
 import MessageSquare from 'lucide-react/dist/esm/icons/message-square';
+import PenLine from 'lucide-react/dist/esm/icons/pen-line';
+import Pin from 'lucide-react/dist/esm/icons/pin';
 import SpellCheck from 'lucide-react/dist/esm/icons/spell-check';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles';
 import type {LayoutSettings, ToggleKey} from '../../lib/settings.ts';
+import {indicatorLabel, type TurnIndicator} from '../../lib/turn.ts';
 import type {SaveState} from '../../lib/workspace-state.ts';
 
 type TitleBarProps = {
@@ -14,6 +18,12 @@ type TitleBarProps = {
   save: SaveState | undefined;
   layout: LayoutSettings;
   onToggle: (key: ToggleKey) => void;
+  /** Whose turn it is, or that a write is in flight. See `lib/turn.ts`. */
+  turn: TurnIndicator;
+  /** Whether a manual pin, rather than the focus rule, put it there. */
+  pinned: boolean;
+  /** Cycles the pin: unpinned, the writer's turn, the agent's, unpinned. */
+  onPin: () => void;
 };
 
 const SAVE_LABEL: Record<SaveState['kind'], string> = {
@@ -21,6 +31,12 @@ const SAVE_LABEL: Record<SaveState['kind'], string> = {
   dirty: 'Unsaved',
   saving: 'Saving…',
   failed: 'Save failed',
+};
+
+const TURN_LABEL: Record<TurnIndicator, string> = {
+  writer: 'You',
+  agent: 'Agent',
+  landing: 'Writing…',
 };
 
 type ToggleProps = {
@@ -52,7 +68,16 @@ const Toggle = memo(function Toggle({active, label, onClick, children}: TogglePr
  * this strip is both the app header and the window's drag region; the left pad
  * clears the traffic lights.
  */
-export function TitleBar({title, subtitle, save, layout, onToggle}: TitleBarProps) {
+export function TitleBar({
+  title,
+  subtitle,
+  save,
+  layout,
+  onToggle,
+  turn,
+  pinned,
+  onPin,
+}: TitleBarProps) {
   return (
     <header
       data-tauri-drag-region
@@ -73,6 +98,25 @@ export function TitleBar({title, subtitle, save, layout, onToggle}: TitleBarProp
           {SAVE_LABEL[save.kind]}
         </span>
       )}
+
+      {/* The whole state is in the accessible name, not only in the icon: the
+          three states differ by which of two people may write next, which is
+          not a thing a glyph can say on its own. */}
+      <button
+        type="button"
+        onClick={onPin}
+        aria-label={indicatorLabel(turn, pinned)}
+        title={indicatorLabel(turn, pinned)}
+        className={`flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-colors duration-100 ${
+          turn === 'agent' || turn === 'landing'
+            ? 'bg-accent-muted/20 text-accent'
+            : 'text-ink-400 hover:bg-ink-800 hover:text-ink-200'
+        }`}
+      >
+        {turn === 'writer' ? <PenLine size={13} aria-hidden /> : <Sparkles size={13} aria-hidden />}
+        <span>{TURN_LABEL[turn]}</span>
+        {pinned && <Pin size={10} aria-hidden />}
+      </button>
 
       <div className="flex items-center gap-0.5">
         <Toggle

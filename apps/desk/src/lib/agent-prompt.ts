@@ -1,6 +1,7 @@
 import {DEFAULT_VOICE_THRESHOLDS, type ResolvedVoice, type VoiceThresholds} from '@inkling/voice';
 import type {AgentContext} from './agent.ts';
 import type {ContextReference} from './references.ts';
+import {FENCE} from './reply.ts';
 
 /**
  * Turning a turn into the text a session is actually sent.
@@ -20,7 +21,9 @@ import type {ContextReference} from './references.ts';
  *
  * The compact rules are the exception: they go in every turn. They are two
  * lines, and they are the instruction most likely to be forgotten by the twelfth
- * message of a long conversation.
+ * message of a long conversation. The turn block is the second exception, for
+ * the same reason and a stronger one: which of the two edit kinds is legal
+ * changes between one turn and the next, so a stale copy is a wrong copy.
  */
 
 /** The threshold keys, so a moved one can be named without hard-coding a list. */
@@ -56,13 +59,18 @@ How to answer:
   find it.
 - When you disagree, say so and say why. Agreement they did not earn is worth
   nothing to them.
-- You cannot edit their document. Suggest the replacement text and let them take
-  it.`;
+
+The document is written by turns, and every message tells you whose turn it is.
+On the writer's turn you propose a change and they accept or reject it. On your
+own turn you say what the change is and inkling makes it for you. You never edit
+the file yourself, on either turn.`;
 
 /** Everything the first turn of a session needs. */
 export type OpeningTurn = {
   voice: ResolvedVoice;
   context: AgentContext;
+  /** Whether this turn may change the document. See `docs/turn-taking.md`. */
+  authorized: boolean;
   message: string;
 };
 
@@ -74,6 +82,8 @@ export type FollowUpTurn = {
   previous: AgentContext;
   /** True when the voice checker is raising findings on the current draft. */
   checkerFiring: boolean;
+  /** Whether this turn may change the document. See `docs/turn-taking.md`. */
+  authorized: boolean;
   message: string;
 };
 
@@ -84,10 +94,12 @@ export type FollowUpTurn = {
  * as instructions about what follows rather than as an afterthought, and the
  * writer's message comes last so it is the freshest thing in the context.
  */
-export function openingPrompt({voice, context, message}: OpeningTurn): string {
+export function openingPrompt({voice, context, authorized, message}: OpeningTurn): string {
   return blocks([
     rulesBlock(voice),
     ...voice.guidance.map(guidanceBlock),
+    CONTRACT_BLOCK,
+    turnBlock(authorized),
     documentBlock(context),
     selectionBlock(context.selection),
     ...context.references.map(referenceBlock),
@@ -107,6 +119,7 @@ export function followUpPrompt({
   context,
   previous,
   checkerFiring,
+  authorized,
   message,
 }: FollowUpTurn): string {
   const draftMoved = context.doc?.source !== previous.doc?.source;
@@ -114,6 +127,7 @@ export function followUpPrompt({
 
   return blocks([
     rulesBlock(voice),
+    turnBlock(authorized),
     ...(checkerFiring ? voice.guidance.map(guidanceBlock) : []),
     ...(draftMoved ? [documentBlock(context)] : []),
     ...(selectionMoved ? [selectionBlock(context.selection)] : []),
@@ -150,6 +164,52 @@ function removed(
   return before.filter(function (entry) {
     return !kept.has(entry.id);
   });
+}
+
+/**
+ * The reply contract, sent once at the top of a session.
+ *
+ * It is long, and it does not change between turns, so it goes with the rest of
+ * the once-only material. What does change is which kind is legal, and that is
+ * {@link turnBlock}, which is short enough to re-send every turn.
+ */
+const CONTRACT_BLOCK = `## How to reply
+
+Ordinary prose, unless the reply changes the document or asks to. When it does,
+end the reply with one fenced block, and put nothing after it:
+
+${FENCE}
+{"kind": "proposed", "quote": "the passage exactly as it stands now", "replacement": "what goes there instead"}
+\`\`\`
+
+- \`kind\` is \`made\` when you are changing the document and \`proposed\` when you
+  are asking to. The turn tells you which one is legal.
+- \`quote\` is the passage to replace, copied from the document exactly, and long
+  enough to appear in it only once. An edit whose quote inkling cannot find, or
+  finds twice, is refused and the writer is told why.
+- \`replacement\` is what goes there instead. An empty string deletes the passage.
+- One block, replacing one passage. A reply carrying two is refused whole.
+- The writer never sees the block. Say what you did, or what you are asking to
+  do, in the prose above it.`;
+
+/**
+ * Which of the two edit kinds is legal on this turn, and what the other one
+ * costs. Short on purpose: it goes in every turn, opening and follow-up alike,
+ * because a stale copy of it is a wrong copy.
+ */
+function turnBlock(authorized: boolean): string {
+  if (authorized) {
+    return `## Whose turn it is
+
+Yours. You may change the document: send \`"kind": "made"\` and inkling writes it
+to the file, then reads the file back. Propose instead if you would rather ask.`;
+  }
+
+  return `## Whose turn it is
+
+The writer's. Do not change the document. If you want it changed, propose the
+change with \`"kind": "proposed"\` and they will accept or reject it. A block
+claiming \`"kind": "made"\` on this turn is refused and applied to nothing.`;
 }
 
 /**

@@ -142,6 +142,45 @@ describe('workspaceReducer', function () {
     expect(next.open?.draft).toBe('other');
   });
 
+  // The landing's read-back. What disk holds is what the editor should show,
+  // so both the draft and the saved marker move to it and the buffer is clean.
+  it('should replace the buffer with what reading the file back returned', function () {
+    const edited = workspaceReducer(opened('v1'), {
+      type: 'draftEdited',
+      path: first,
+      draft: 'v2',
+    });
+
+    const reloaded = workspaceReducer(edited, {
+      type: 'docReloaded',
+      path: first,
+      source: 'from disk',
+    });
+
+    expect(reloaded.open?.draft).toBe('from disk');
+    expect(reloaded.open?.saved).toBe('from disk');
+    expect(reloaded.open?.save).toEqual({kind: 'clean'});
+  });
+
+  // A landing is a write and then a read, so a writer who switched documents in
+  // between must not have the old file's text arrive in the new file's buffer.
+  it('should not apply a read-back to a document opened since', function () {
+    const switched = workspaceReducer(opened('v1'), {
+      type: 'docOpened',
+      path: second,
+      source: 'other',
+    });
+
+    const next = workspaceReducer(switched, {
+      type: 'docReloaded',
+      path: first,
+      source: 'from disk',
+    });
+
+    expect(next).toBe(switched);
+    expect(next.open?.draft).toBe('other');
+  });
+
   it('should surface a save failure with its message', function () {
     const dirty = workspaceReducer(opened('v1'), {
       type: 'draftEdited',

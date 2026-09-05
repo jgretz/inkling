@@ -1,10 +1,14 @@
-import {useCallback, useEffect, useRef, useState} from 'react';
-import type {ChangeEvent, KeyboardEvent} from 'react';
+import {Fragment, memo, useCallback, useEffect, useRef, useState} from 'react';
+import type {ChangeEvent, FocusEvent, KeyboardEvent} from 'react';
+import {match} from 'ts-pattern';
 import ArrowUp from 'lucide-react/dist/esm/icons/arrow-up';
 import Square from 'lucide-react/dist/esm/icons/square';
 import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
+import type {DocPath} from '@inkling/vault';
 import type {AgentContext, AgentTransport, Message} from '../../lib/agent.ts';
 import type {Conversation} from '../../lib/conversations.ts';
+import type {AgentReply, Edit} from '../../lib/reply.ts';
+import type {TurnMode} from '../../lib/turn.ts';
 import {ContextStrip, type ReferenceControls} from './ContextStrip.tsx';
 
 /** The conversations of the open document, and how the writer moves between them. */
@@ -37,7 +41,34 @@ type ChatPanelProps = {
    */
   initial: Message[];
   conversations: ConversationControls;
+  /**
+   * Whose turn it is as of this render. Read once at the top of a send and not
+   * afterwards: a turn authorized when it left stays authorized.
+   */
+  mode: TurnMode;
+  /** Awaited before an authorized turn leaves, so disk matches the buffer. */
+  onFlush: () => Promise<void>;
+  /** A proposal the writer accepted. The caller applies it to the buffer. */
+  onAccept: (edit: Edit) => void;
+  /**
+   * An edit the agent made on its own turn, with the document the turn was
+   * about. The caller lands it on disk, and the path is what lets it refuse
+   * when the writer moved to another document while the agent was thinking.
+   */
+  onLand: (edit: Edit, path: DocPath | undefined) => void;
+  /** Fires when focus lands in the panel anywhere but the composer. */
+  onFocus: () => void;
 };
+
+/**
+ * What became of a reply, for the replies that leave something on screen.
+ *
+ * An answer leaves nothing, and an edit made goes straight to the caller, so
+ * neither is here. Kept beside the messages rather than on them because
+ * `Message` is also the shape a stored turn comes back as, and none of this
+ * survives a restart: a proposal is answered in the session that raised it.
+ */
+type Outcome = {kind: 'proposed'; edit: Edit} | {kind: 'refused'; reason: string};
 
 /** The value of the switcher's last entry, which is not a conversation id. */
 const NEW_CONVERSATION = 'new';
@@ -68,6 +99,83 @@ function Bubble({message}: {message: Message}) {
   );
 }
 
+type ProposalProps = {
+  /** The message the proposal came in on, so accepting one answers only it. */
+  id: string;
+  edit: Edit;
+  onAccept: (id: string, edit: Edit) => void;
+  onReject: (id: string) => void;
+};
+
+/**
+ * A proposed edit, as the replacement passage and the passage it replaces.
+ *
+ * Both halves, rather than the replacement alone: the writer is being asked to
+ * agree to a swap, and half a swap is not something anyone can answer. A
+ * rendered diff would say the same thing at greater length and is a non-goal.
+ */
+const Proposal = memo(function Proposal({id, edit, onAccept, onReject}: ProposalProps) {
+  const accept = useCallback(
+    function () {
+      onAccept(id, edit);
+    },
+    [id, edit, onAccept],
+  );
+  const reject = useCallback(
+    function () {
+      onReject(id);
+    },
+    [id, onReject],
+  );
+
+  return (
+    <div className="max-w-[85%] space-y-1.5 rounded-xl border border-ink-800 bg-ink-900 p-2.5 text-[12px] leading-relaxed">
+      <p className="text-[10px] font-medium uppercase tracking-wider text-ink-500">Replace</p>
+      <p className="selectable whitespace-pre-wrap text-ink-400 line-through">{edit.quote}</p>
+      <p className="text-[10px] font-medium uppercase tracking-wider text-ink-500">With</p>
+      {edit.replacement.length === 0 ? (
+        <p className="italic text-ink-500">Nothing. The passage would be cut.</p>
+      ) : (
+        <p className="selectable whitespace-pre-wrap text-ink-100">{edit.replacement}</p>
+      )}
+      <div className="flex gap-1.5 pt-0.5">
+        <button
+          type="button"
+          onClick={accept}
+          className="rounded-md bg-accent px-2 py-1 text-[12px] text-ink-950 transition-opacity duration-100 hover:opacity-90"
+        >
+          Accept
+        </button>
+        <button
+          type="button"
+          onClick={reject}
+          className="rounded-md px-2 py-1 text-[12px] text-ink-400 transition-colors duration-100 hover:bg-ink-800 hover:text-ink-200"
+        >
+          Reject
+        </button>
+      </div>
+    </div>
+  );
+});
+
+/**
+ * A reply whose edit inkling would not use, in the validator's own words.
+ *
+ * A notice and nothing more: there is deliberately nothing here to accept,
+ * because the whole reason the reply was refused is that what it asked for
+ * could not be read as an edit.
+ */
+const Refusal = memo(function Refusal({reason}: {reason: string}) {
+  return (
+    <p
+      role="status"
+      className="max-w-[85%] rounded-xl border border-amber-900/50 bg-amber-950/30 px-3 py-2 text-[12px] leading-relaxed text-amber-300"
+    >
+      Inkling did not use the edit in this reply: {reason}
+    </p>
+  );
+});
+
 /**
  * The conversation. Owns its own history rather than lifting it into the
  * workspace: a chat is about a document but is not part of it, and nothing in
@@ -79,12 +187,19 @@ export function ChatPanel({
   references,
   initial,
   conversations,
+  mode,
+  onFlush,
+  onAccept,
+  onLand,
+  onFocus,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>(initial);
+  const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const abort = useRef<AbortController | null>(null);
   const tail = useRef<HTMLDivElement>(null);
+  const composer = useRef<HTMLTextAreaElement>(null);
 
   useEffect(
     function () {
@@ -111,10 +226,61 @@ export function ChatPanel({
     });
   }, []);
 
+  /** What a turn's one parsed reply leaves behind, if it leaves anything. */
+  const receive = useCallback(
+    function (replyId: string, reply: AgentReply, target: DocPath | undefined): void {
+      match(reply)
+        // Prose, already on screen from the chunks it streamed in as.
+        .with({kind: 'answer'}, function () {})
+        .with({kind: 'made'}, function ({edit}) {
+          onLand(edit, target);
+        })
+        .with({kind: 'proposed'}, function ({edit}) {
+          setOutcomes(function (current) {
+            return {...current, [replyId]: {kind: 'proposed', edit}};
+          });
+        })
+        .with({kind: 'refused'}, function ({reason}) {
+          setOutcomes(function (current) {
+            return {...current, [replyId]: {kind: 'refused', reason}};
+          });
+        })
+        .exhaustive();
+    },
+    [onLand],
+  );
+
+  /** Takes the proposal off screen, whichever way it was answered. */
+  const settle = useCallback(function (replyId: string): void {
+    setOutcomes(function (current) {
+      const {[replyId]: _answered, ...rest} = current;
+      return rest;
+    });
+  }, []);
+
+  const accept = useCallback(
+    function (replyId: string, edit: Edit) {
+      onAccept(edit);
+      settle(replyId);
+    },
+    [onAccept, settle],
+  );
+
   const send = useCallback(
     async function () {
       const text = input.trim();
       if (text.length === 0 || busy) return;
+
+      // Read once, here, before anything awaits. Everything after this line may
+      // run while the writer moves focus, and a turn authorized when it left
+      // stays authorized: re-deriving mid-flight is a race, and the race is
+      // worse than the edge case.
+      const authorized = mode === 'agent';
+      // One snapshot, read here for the same reason: an edit belongs to the
+      // document the turn actually carried, whatever is open by the time it
+      // comes back, and the two cannot disagree if they are the same read.
+      const snapshot = contextRef.current;
+      const target = snapshot.doc?.path;
 
       const writerMessage: Message = {
         id: nextId(),
@@ -137,15 +303,26 @@ export function ChatPanel({
       abort.current = controller;
 
       try {
+        // Before the turn leaves, never after: an authorized turn may read the
+        // file, and it should read what the writer is looking at rather than
+        // whatever the autosave last got round to.
+        if (authorized) await onFlush();
+
         const turn = {
           message: text,
-          context: contextRef.current,
+          context: snapshot,
           history: historyRef.current,
+          authorized,
         };
         for await (const chunk of transport.send(turn, controller.signal)) {
+          if (chunk.kind === 'reply') {
+            receive(replyId, chunk.reply, target);
+            continue;
+          }
+          const {text: piece} = chunk;
           setMessages(function (current) {
             return current.map(function (message) {
-              return message.id === replyId ? {...message, text: message.text + chunk} : message;
+              return message.id === replyId ? {...message, text: message.text + piece} : message;
             });
           });
         }
@@ -167,7 +344,7 @@ export function ChatPanel({
         });
       }
     },
-    [busy, input, transport],
+    [busy, input, transport, mode, onFlush, receive],
   );
 
   const handleKey = useCallback(
@@ -185,6 +362,17 @@ export function ChatPanel({
     setInput(event.target.value);
   }, []);
 
+  const handleFocus = useCallback(
+    function (event: FocusEvent<HTMLElement>) {
+      // The composer is neutral. Typing a message is not a claim on the turn:
+      // a writer whose cursor is in the document types their question here and
+      // still expects to be asked before anything changes under them.
+      if (event.target === composer.current) return;
+      onFocus();
+    },
+    [onFocus],
+  );
+
   const {onSelect, onCreate} = conversations;
   const handleSwitch = useCallback(
     function (event: ChangeEvent<HTMLSelectElement>) {
@@ -196,7 +384,10 @@ export function ChatPanel({
   );
 
   return (
-    <section className="flex h-full min-w-0 flex-col border-l border-ink-800 bg-ink-950">
+    <section
+      onFocusCapture={handleFocus}
+      className="flex h-full min-w-0 flex-col border-l border-ink-800 bg-ink-950"
+    >
       <div className="flex shrink-0 items-baseline justify-between px-3 pb-1 pt-3">
         <span className="text-[11px] font-medium uppercase tracking-wider text-ink-400">Agent</span>
         <span className="text-[10px] text-ink-600">{transport.name}</span>
@@ -239,7 +430,21 @@ export function ChatPanel({
           </p>
         ) : (
           messages.map(function (message) {
-            return <Bubble key={message.id} message={message} />;
+            const outcome = outcomes[message.id];
+            return (
+              <Fragment key={message.id}>
+                <Bubble message={message} />
+                {outcome?.kind === 'proposed' && (
+                  <Proposal
+                    id={message.id}
+                    edit={outcome.edit}
+                    onAccept={accept}
+                    onReject={settle}
+                  />
+                )}
+                {outcome?.kind === 'refused' && <Refusal reason={outcome.reason} />}
+              </Fragment>
+            );
           })
         )}
         <div ref={tail} />
@@ -250,6 +455,7 @@ export function ChatPanel({
       <div className="shrink-0 border-t border-ink-800 p-2">
         <div className="flex items-end gap-2 rounded-lg bg-ink-850 p-2 focus-within:ring-1 focus-within:ring-accent-muted">
           <textarea
+            ref={composer}
             value={input}
             onChange={handleInput}
             onKeyDown={handleKey}

@@ -30,6 +30,12 @@ type EditorPanelProps = {
   /** Fires with the selected text, or an empty string when nothing is selected. */
   onSelect: (selection: string) => void;
   onSave: () => void;
+  /**
+   * Fires when focus lands anywhere in the editor, which is what puts the
+   * document back in the writer's hands. Read off the host element, so the
+   * panel never has to know which of the view's own nodes took it.
+   */
+  onFocus: () => void;
   findings: readonly Finding[];
   /** Whether findings are underlined. The strip lists them either way. */
   marksOn: boolean;
@@ -54,6 +60,7 @@ export function EditorPanel({
   onChange,
   onSelect,
   onSave,
+  onFocus,
   findings,
   marksOn,
   reveal,
@@ -177,5 +184,14 @@ export function EditorPanel({
     [reveal?.seq],
   );
 
-  return <div ref={host} className="selectable h-full min-w-0 overflow-hidden bg-ink-900" />;
+  // React delegates focus at the tree's root, so focus landing on a node
+  // CodeMirror created reaches this handler without the panel needing a
+  // CodeMirror focus API of its own.
+  return (
+    <div
+      ref={host}
+      onFocusCapture={onFocus}
+      className="selectable h-full min-w-0 overflow-hidden bg-ink-900"
+    />
+  );
 }

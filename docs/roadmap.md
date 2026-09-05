@@ -22,14 +22,13 @@ possible.
 
 ## In flight
 
-| Run        | Item                                    | Waits on |
-| ---------- | --------------------------------------- | -------- |
-| `370adfa9` | 3 references and assembled context      | nothing  |
-| `69034d50` | 4a transport, sessions, prompt assembly | 3        |
-| `3d1ae893` | 4b turn taking                          | 4a       |
-| `a02a1681` | 4c anchored highlighting                | 4b       |
+| Run        | Item                     | Waits on |
+| ---------- | ------------------------ | -------- |
+| `a02a1681` | 4c anchored highlighting | 4b       |
 
-Phases 1 and 2 are complete and merged.
+Phases 1 and 2 are complete and merged, and so are 3 (`370adfa9`) and 4a
+(`69034d50`). 4b (`3d1ae893`) is done and awaiting merge: the turn is derived
+from focus with a pin over it, and both edit paths are built.
 
 Phase 4 is split three ways rather than by its numbered items. 4a carries 4.1,
 4.2 and 4.5, because prompt assembly is where voice guidance lands and building
@@ -150,10 +149,12 @@ closing and reopening the app brings a conversation back with every turn in it,
 the unfinished one included and marked as such.
 
 **4.3 Turn taking.** Focus-derived mode, the pin, the indicator, and the three
-reply kinds. Both edit paths: written through dispatch on the agent's turn,
-returned as structured output for accept or reject on the writer's. See
-[`turn-taking.md`](./turn-taking.md). Done when the agent asks before writing
-while the cursor is in the editor, and does not while it is in the chat.
+reply kinds. Both edit paths: landed on disk and read back on the agent's turn,
+held as a proposal for accept or reject on the writer's. A held session has no
+structured return, so the reply contract is prose in the prompt and a validator
+on arrival. See [`turn-taking.md`](./turn-taking.md). Done when the agent asks
+before writing while the cursor is in the editor, and does not while it is in
+the chat.
 
 **4.4 Anchored highlighting, both directions.** A selection reaches the agent as
 context; a reply's anchor scrolls and highlights the editor. Quote anchors, never
