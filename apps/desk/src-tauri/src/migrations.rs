@@ -29,6 +29,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "voice_suppression",
         sql: include_str!("../migrations/0002_voice_suppression.sql"),
     },
+    Migration {
+        version: 3,
+        name: "reference",
+        sql: include_str!("../migrations/0003_reference.sql"),
+    },
 ];
 
 /// Applies every migration the database has not seen, returning the version it
@@ -75,7 +80,10 @@ mod tests {
 
         // Appending a migration updates this line on purpose: the catalog is
         // the one place a reviewer can see the whole schema history.
-        assert_eq!(catalog, vec![(1, "meta"), (2, "voice_suppression")]);
+        assert_eq!(
+            catalog,
+            vec![(1, "meta"), (2, "voice_suppression"), (3, "reference")]
+        );
     }
 
     #[test]
@@ -93,7 +101,7 @@ mod tests {
         let first = migrate(&mut conn).expect("should migrate");
         let second = migrate(&mut conn).expect("should re-run without applying anything");
 
-        assert_eq!(first, 2);
-        assert_eq!(second, 2);
+        assert_eq!(first, 3);
+        assert_eq!(second, 3);
     }
 }

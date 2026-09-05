@@ -14,6 +14,7 @@ export {emptyFrontmatter, parseDoc, serializeDoc} from './frontmatter.ts';
 export {TEMPLATE_DIR, templateFor, templatePathFor} from './templates.ts';
 export {countWords, firstHeading, loadDoc, summarize, titleFromPath} from './summary.ts';
 export {
+  ancestorGroups,
   filterTree,
   groupName,
   groupOf,

@@ -204,7 +204,7 @@ mod tests {
 
         let status = db.open(vault.path()).expect("should open");
 
-        assert_eq!(status, VaultDbStatus::Ready { schema_version: 2 });
+        assert_eq!(status, VaultDbStatus::Ready { schema_version: 3 });
         assert!(db_path(vault.path()).is_file());
         let ignore = fs::read_to_string(data_dir(vault.path()).join(".gitignore"))
             .expect("should write a gitignore");
@@ -220,8 +220,8 @@ mod tests {
         insert_probe(&db, "a");
         let second = db.open(vault.path()).expect("should reopen");
 
-        assert_eq!(first, VaultDbStatus::Ready { schema_version: 2 });
-        assert_eq!(second, VaultDbStatus::Ready { schema_version: 2 });
+        assert_eq!(first, VaultDbStatus::Ready { schema_version: 3 });
+        assert_eq!(second, VaultDbStatus::Ready { schema_version: 3 });
         assert_eq!(probe(&db), Some("a".to_string()));
     }
 

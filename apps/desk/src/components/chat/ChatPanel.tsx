@@ -2,14 +2,14 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import type {ChangeEvent, KeyboardEvent} from 'react';
 import ArrowUp from 'lucide-react/dist/esm/icons/arrow-up';
 import Square from 'lucide-react/dist/esm/icons/square';
-import type {DocPath} from '@inkling/vault';
 import type {AgentContext, AgentTransport, Message} from '../../lib/agent.ts';
-import {ContextStrip} from './ContextStrip.tsx';
+import {ContextStrip, type ReferenceControls} from './ContextStrip.tsx';
 
 type ChatPanelProps = {
   transport: AgentTransport;
   context: AgentContext;
-  onUnpin: (path: DocPath) => void;
+  /** Attaching and detaching, which happens in the context strip and nowhere else. */
+  references: ReferenceControls;
 };
 
 let counter = 0;
@@ -43,7 +43,7 @@ function Bubble({message}: {message: Message}) {
  * workspace: a chat is about a document but is not part of it, and nothing in
  * the editor or preview should re-render because a reply streamed in.
  */
-export function ChatPanel({transport, context, onUnpin}: ChatPanelProps) {
+export function ChatPanel({transport, context, references}: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -170,7 +170,7 @@ export function ChatPanel({transport, context, onUnpin}: ChatPanelProps) {
         <div ref={tail} />
       </div>
 
-      <ContextStrip context={context} onUnpin={onUnpin} />
+      <ContextStrip context={context} references={references} />
 
       <div className="shrink-0 border-t border-ink-800 p-2">
         <div className="flex items-end gap-2 rounded-lg bg-ink-850 p-2 focus-within:ring-1 focus-within:ring-accent-muted">

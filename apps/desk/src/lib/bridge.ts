@@ -1,5 +1,6 @@
 import {invoke} from '@tauri-apps/api/core';
 import type {DocPath, GroupPath, VaultPath} from '@inkling/vault';
+import type {ReferenceKind, StoredReference, StoredReferenceSuppression} from './references.ts';
 
 /**
  * The typed edge of the Rust command surface. Every `invoke` in the app goes
@@ -131,6 +132,74 @@ export function addSuppression(
 
 export function removeSuppression(id: number): Promise<void> {
   return invoke<void>('remove_suppression', {id});
+}
+
+/**
+ * The stored row shapes, re-exported so callers reach one module for the wire.
+ *
+ * They are declared in `references.ts` rather than here because the assembler
+ * that reads them must not name this file: it imports `@tauri-apps/api`, which
+ * a test with no webview cannot load. `serialises_to_the_shape_the_frontend_reads`
+ * in `src-tauri/src/references.rs` pins the other end of both.
+ */
+export type {StoredReference, StoredReferenceSuppression};
+
+/** Who a reference is attached to, flattened into the two columns below. */
+export type ReferenceOwner = {kind: 'doc'; path: DocPath} | {kind: 'group'; path: GroupPath};
+
+export type NewReference = {
+  owner: ReferenceOwner;
+  kind: ReferenceKind;
+  title: string;
+  /** The vault path for a `doc` or a `note`. */
+  targetPath?: DocPath;
+  /** The address for a `link`. */
+  url?: string;
+};
+
+/** Every reference in the vault. The cascade is assembled from these app-side. */
+export function listReferences(): Promise<StoredReference[]> {
+  return invoke<StoredReference[]>('list_references');
+}
+
+/**
+ * Attaches a reference, resolving to the stored row whether this call created
+ * it or an earlier one did.
+ *
+ * The owner is a discriminated union here and two nullable columns on the wire,
+ * so no caller ever assembles the pair by hand and gets both set. Both keys are
+ * sent explicitly, `null` for the one that is not in play.
+ */
+export function addReference(reference: NewReference): Promise<StoredReference> {
+  return invoke<StoredReference>('add_reference', {
+    docPath: reference.owner.kind === 'doc' ? reference.owner.path : null,
+    groupPath: reference.owner.kind === 'group' ? reference.owner.path : null,
+    kind: reference.kind,
+    targetPath: reference.targetPath ?? null,
+    url: reference.url ?? null,
+    title: reference.title,
+  });
+}
+
+/** Removes the row. A note's markdown body, if it had one, is left alone. */
+export function removeReference(id: number): Promise<void> {
+  return invoke<void>('remove_reference', {id});
+}
+
+export function listReferenceSuppressions(): Promise<StoredReferenceSuppression[]> {
+  return invoke<StoredReferenceSuppression[]>('list_reference_suppressions');
+}
+
+/** Turns one inherited reference off for one document, leaving the group's row. */
+export function addReferenceSuppression(
+  docPath: DocPath,
+  referenceId: number,
+): Promise<StoredReferenceSuppression> {
+  return invoke<StoredReferenceSuppression>('add_reference_suppression', {docPath, referenceId});
+}
+
+export function removeReferenceSuppression(id: number): Promise<void> {
+  return invoke<void>('remove_reference_suppression', {id});
 }
 
 export function loadSettings(): Promise<unknown> {

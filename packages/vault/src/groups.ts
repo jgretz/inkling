@@ -76,6 +76,25 @@ function selfAndAncestors(group: string): string[] {
 }
 
 /**
+ * Every group containing a path, the shallowest first and the nearest last.
+ *
+ * The empty array for a path at the vault root, because the root is not a
+ * group: `GroupPath` is never the empty string, and the levels that cascade
+ * onto a document are the real directories above it and nothing else. That is
+ * the one way this differs from the voice cascade's `ancestorDirs`, which does
+ * start at the root because a `voice.md` may sit there.
+ *
+ * Works on a document path and on a group path alike: the group's own path is
+ * the directory portion of a document's, and a nested group's ancestors are the
+ * directories above it.
+ */
+export function ancestorGroups(path: string): GroupPath[] {
+  const group = groupOf(path);
+  if (group === undefined) return [];
+  return selfAndAncestors(group) as GroupPath[];
+}
+
+/**
  * Builds the tree the library renders.
  *
  * `groups` is what the vault scan found on disk, so a group the writer just

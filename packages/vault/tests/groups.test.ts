@@ -1,5 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import {
+  ancestorGroups,
   filterTree,
   groupName,
   groupOf,
@@ -60,6 +61,26 @@ describe('parentGroup', function () {
 
   it('should return undefined for a top-level group', function () {
     expect(parentGroup('drafts')).toBeUndefined();
+  });
+});
+
+describe('ancestorGroups', function () {
+  it('should return nothing for a document at the vault root', function () {
+    expect(ancestorGroups('a.md')).toEqual([]);
+  });
+
+  it('should return the one group holding a document one level down', function () {
+    expect(ancestorGroups('drafts/a.md')).toEqual(groups('drafts'));
+  });
+
+  it('should return every group above a nested document, shallowest first', function () {
+    expect(ancestorGroups('drafts/2026/june/a.md')).toEqual(
+      groups('drafts', 'drafts/2026', 'drafts/2026/june'),
+    );
+  });
+
+  it('should return the groups above a group path, itself last', function () {
+    expect(ancestorGroups('drafts/2026/june')).toEqual(groups('drafts', 'drafts/2026'));
   });
 });
 

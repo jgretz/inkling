@@ -14,6 +14,7 @@ apps/desk/            the Tauri desktop app
     src/settings.rs   one JSON file in the platform config dir
     src/data.rs       the vault's SQLite database, one connection
     src/voice.rs      dismissed findings, stored against their anchors
+    src/references.rs what a document or a group carries into a turn
     src/paths.rs      the columns a rename has to rewrite
     src/migrations.rs the schema history, as data
     migrations/       one .sql file per migration
@@ -119,12 +120,34 @@ Rows are kept until the writer restores one. There is no sweep for anchors that
 no longer resolve, because anything keyed on "this document is gone" would
 delete dismissals the first time a writer renamed a folder in Finder.
 
-A rename inside inkling does follow. `src-tauri/src/paths.rs` holds
-`PATH_KEYED`, the list of `(table, column)` pairs that store a document path,
-and the two rewrites over it: one for a group's prefix, one for a single
-document. The matching is `substr`, never `LIKE`, because a group a writer named
-`50%_done` would make a `LIKE` pattern match paths that have nothing to do with
-it.
+References join them: one row per attachment, owned by a document or by a group
+and never both, carrying either a vault-relative `target_path` or a `url`. A
+group's references cascade onto every document inside it, and a document turns
+one off with a row in `reference_suppression` rather than by deleting something
+other documents are reading. That table is keyed on the reference's row id, so a
+retitled or repointed group reference stays off, and the foreign key cascade
+sweeps the suppressions when the reference itself goes. A note's markdown body
+is an ordinary vault document under `references/`, not a blob in here: detaching
+the row leaves the writer's prose exactly where it was.
+
+Which of those references reach a given document is decided nowhere near SQL.
+`list_references` hands the whole table over in one call, and
+`lib/references.ts` walks the document's ancestor groups against the sources the
+vault scan already loaded, root-most group first and the document's own last.
+A reference naming a file the vault no longer holds is kept and shown as broken,
+for the same reason a dismissal survives a folder rename in Finder.
+
+A rename inside inkling does follow. `src-tauri/src/paths.rs` holds two
+registries of `(table, column)` pairs and the two rewrites over them.
+`PATH_KEYED` lists the columns holding a **document** path and `GROUP_KEYED` the
+columns holding a **group** path, because a rewrite acts on a column and a
+column has to mean one thing. A group rename takes the prefix form over the
+document columns, and both the exact and the prefix form over the group ones:
+the reference attached to `drafts` stores the bare string `drafts`, which no
+comparison against `drafts/` would ever match. A single-document rename takes
+`PATH_KEYED` only, since moving a document changes no group. The matching is
+`substr`, never `LIKE`, because a group a writer named `50%_done` would make a
+`LIKE` pattern match paths that have nothing to do with it.
 
 The order the two halves happen in is the whole design. A transaction opens, the
 rows are rewritten, `fs::rename` runs, and the commit comes last. The half that
@@ -139,8 +162,9 @@ which is the same degradation the status bar already explains.
 Rows already sitting at the target path are deleted first, inside the same
 transaction. The target does not exist on disk at that point, so they are
 orphans of a group or a document that has gone, and leaving them would fail the
-rename on the anchor's unique index with a constraint error the writer cannot
-act on. They are the only rows any of this deletes.
+rename on a unique index with a constraint error the writer cannot act on. They
+are the only rows a rename deletes, and the suppressions the reference cascade
+takes with them are the only rows anything else does.
 
 Adding a migration is three things: a new `src-tauri/migrations/NNNN_name.sql`,
 one appended entry in `MIGRATIONS`, and the line in the catalog test that pins
@@ -155,7 +179,11 @@ and yields reply chunks; the panel handles streaming, cancellation and errors
 around it. The shipped transport is a stub that reports what it was handed.
 
 The context strip above the composer lists every piece of text the next turn
-will carry, with its token estimate. That is the app's honesty surface, and
-nothing should ever reach a model that is not named there.
+will carry, with its token estimate: the open document, the selection, and the
+assembled reference cascade, each inherited entry naming the group it came from.
+That is the app's honesty surface, and nothing should ever reach a model that is
+not named there. It is also the only place a reference is attached or detached
+in this build, which is why the picker lives beside the chips rather than in the
+library.
 
 See [`agent.md`](./agent.md) for what is still undecided.

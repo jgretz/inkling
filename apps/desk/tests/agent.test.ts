@@ -1,6 +1,22 @@
 import {describe, expect, it} from 'bun:test';
 import type {DocPath} from '@inkling/vault';
 import {contextTokens, emptyContext, estimateTokens, stubTransport} from '../src/lib/agent.ts';
+import type {ContextReference} from '../src/lib/references.ts';
+
+/** An assembled reference carrying `source`, as `assembleReferences` returns one. */
+function reference(source: string): ContextReference {
+  return {
+    id: 1,
+    kind: 'doc',
+    title: 'B',
+    source,
+    target: 'b.md',
+    origin: {level: 'document'},
+    missing: false,
+    suppressedBy: undefined,
+    tokens: estimateTokens(source),
+  };
+}
 
 describe('estimateTokens', function () {
   it('should return zero for empty text', function () {
@@ -17,14 +33,26 @@ describe('contextTokens', function () {
     expect(contextTokens(emptyContext())).toBe(0);
   });
 
-  it('should total the document, the selection and every pinned file', function () {
+  it('should total the document, the selection and every reference', function () {
     const total = contextTokens({
       doc: {path: 'a.md' as DocPath, title: 'A', source: 'x'.repeat(400)},
       selection: 'y'.repeat(40),
-      pinned: [{path: 'b.md' as DocPath, title: 'B', source: 'z'.repeat(80)}],
+      references: [reference('z'.repeat(80))],
     });
 
     expect(total).toBe(100 + 10 + 20);
+  });
+
+  // A link, a file the vault lost and one this document turned off all come
+  // back with an empty source, so none of them may cost anything here.
+  it('should count nothing for a reference that carries no body', function () {
+    const total = contextTokens({
+      doc: undefined,
+      selection: undefined,
+      references: [reference('')],
+    });
+
+    expect(total).toBe(0);
   });
 });
 
