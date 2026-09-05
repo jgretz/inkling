@@ -8,6 +8,7 @@ import {
   filterTree,
   groupTree,
   movedTo,
+  type DocKind,
   type DocPath,
   type DocSummary,
   type GroupNode,
@@ -28,7 +29,7 @@ type LibraryPanelProps = {
   onCreateGroup: (path: GroupPath) => void;
   onRenameGroup: (from: GroupPath, to: GroupPath) => void;
   onMoveDoc: (from: DocPath, to: DocPath) => void;
-  onCreateDoc: (path: DocPath, title: string) => void;
+  onCreateDoc: (path: DocPath, title: string, kind: DocKind) => void;
 };
 
 /** A stable empty list, so a filtered render does not break `GroupRow`'s memo. */
@@ -133,12 +134,17 @@ export function LibraryPanel({
     setEditing(undefined);
   }, []);
 
-  const submitEditing = useCallback(
+  // Two handlers rather than one taking an optional kind: a document is named
+  // and kinded together, a group is only ever named, and a single callback
+  // serving both would have to carry a kind that two of its three callers have
+  // no way to supply.
+  const submitName = useCallback(
     function (value: string) {
-      if (editing === undefined) return;
+      if (editing === undefined || editing.kind === 'newDoc') return;
       setEditing(undefined);
-      // Exhaustive rather than an if-chain ending in a fallthrough: a fourth
-      // kind of field added later must not quietly write a document.
+      // Exhaustive rather than an if-chain ending in a fallthrough: a further
+      // kind of naming field added later must not quietly fall through one of
+      // these two.
       match(editing)
         .with({kind: 'newGroup'}, function () {
           // A path rather than a name, if that is what the writer typed: the
@@ -152,12 +158,18 @@ export function LibraryPanel({
           const parent = group.split('/').slice(0, -1).join('/');
           onRenameGroup(group, (parent === '' ? value : `${parent}/${value}`) as GroupPath);
         })
-        .with({kind: 'newDoc'}, function ({group}) {
-          onCreateDoc(movedTo(fileNameFor(value), group), value);
-        })
         .exhaustive();
     },
-    [editing, onCreateGroup, onRenameGroup, onCreateDoc],
+    [editing, onCreateGroup, onRenameGroup],
+  );
+
+  const submitNewDoc = useCallback(
+    function (value: string, kind: DocKind) {
+      if (editing?.kind !== 'newDoc') return;
+      setEditing(undefined);
+      onCreateDoc(movedTo(fileNameFor(value), editing.group), value, kind);
+    },
+    [editing, onCreateDoc],
   );
 
   const naming = editing?.kind === 'newDoc' && editing.group === undefined;
@@ -218,7 +230,7 @@ export function LibraryPanel({
         <InlineField
           label="Name of the new group"
           placeholder="Group name, or a path like essays/2026"
-          onSubmit={submitEditing}
+          onSubmit={submitName}
           onCancel={cancelEditing}
         />
       )}
@@ -243,7 +255,7 @@ export function LibraryPanel({
                 onToggle={toggleRoot}
                 onOpen={onOpen}
                 onMove={onMoveDoc}
-                onSubmit={submitEditing}
+                onSubmit={submitNewDoc}
                 onCancel={cancelEditing}
               />
             )}
@@ -261,7 +273,8 @@ export function LibraryPanel({
                   onOpen={onOpen}
                   onMove={onMoveDoc}
                   onEdit={setEditing}
-                  onSubmit={submitEditing}
+                  onSubmitName={submitName}
+                  onSubmitDoc={submitNewDoc}
                 />
               );
             })}

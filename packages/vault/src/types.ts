@@ -21,8 +21,12 @@ export type DocPath = string & {readonly __brand: 'DocPath'};
  */
 export type GroupPath = string & {readonly __brand: 'GroupPath'};
 
-/** The kinds of writing inkling is built for. Drives templates and prompts. */
-export const DOC_KINDS = ['article', 'essay', 'note', 'talk', 'thread'] as const;
+/**
+ * The kinds of writing inkling is built for: a blog article, an email, a
+ * proposal, and a note for everything that is none of those yet. Drives
+ * templates and prompts.
+ */
+export const DOC_KINDS = ['article', 'email', 'proposal', 'note'] as const;
 
 export type DocKind = (typeof DOC_KINDS)[number];
 

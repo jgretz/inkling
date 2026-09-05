@@ -15,7 +15,7 @@ describe('parseDoc', function () {
     const source = [
       '---',
       'title: On Writing',
-      'kind: essay',
+      'kind: article',
       'tags:',
       '  - craft',
       '---',
@@ -26,7 +26,7 @@ describe('parseDoc', function () {
     const result = parseDoc(source);
 
     expect(result.frontmatter.title).toBe('On Writing');
-    expect(result.frontmatter.kind).toBe('essay');
+    expect(result.frontmatter.kind).toBe('article');
     expect(result.frontmatter.tags).toEqual(['craft']);
     expect(result.body).toBe('Body.');
   });
@@ -45,6 +45,18 @@ describe('parseDoc', function () {
     const result = parseDoc(source);
 
     expect(result.frontmatter.kind).toBeUndefined();
+  });
+
+  it('should still open a document written before the kinds were narrowed', function () {
+    // `essay` was a kind inkling shipped with and no longer recognises. A vault
+    // written back then still opens: the value is dropped, the prose is not.
+    const source = ['---', 'title: On Writing', 'kind: essay', '---', '', 'Body.'].join('\n');
+
+    const result = parseDoc(source);
+
+    expect(result.frontmatter.kind).toBeUndefined();
+    expect(result.frontmatter.title).toBe('On Writing');
+    expect(result.body).toBe('Body.');
   });
 
   it('should fall back to the whole file when the block never closes', function () {
@@ -76,7 +88,7 @@ describe('serializeDoc', function () {
     const source = [
       '---',
       'title: On Writing',
-      'kind: essay',
+      'kind: article',
       'tags:',
       '  - craft',
       'publication: The Atlantic',
@@ -88,7 +100,7 @@ describe('serializeDoc', function () {
     const result = parseDoc(serializeDoc(parseDoc(source)));
 
     expect(result.frontmatter.title).toBe('On Writing');
-    expect(result.frontmatter.kind).toBe('essay');
+    expect(result.frontmatter.kind).toBe('article');
     expect(result.frontmatter.tags).toEqual(['craft']);
     expect(result.frontmatter.extra).toEqual({publication: 'The Atlantic'});
     expect(result.body).toBe('Body.');

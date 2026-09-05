@@ -1,6 +1,6 @@
 ---
 title: On Writing With an Agent
-kind: essay
+kind: article
 tags:
   - craft
   - tools

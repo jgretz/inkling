@@ -3,9 +3,10 @@ import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down';
 import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right';
 import FilePlus from 'lucide-react/dist/esm/icons/file-plus';
 import Pencil from 'lucide-react/dist/esm/icons/pencil';
-import type {DocPath, GroupNode, GroupPath} from '@inkling/vault';
+import type {DocKind, DocPath, GroupNode, GroupPath} from '@inkling/vault';
 import {DocRow} from './DocRow.tsx';
 import {InlineField} from './InlineField.tsx';
+import {NewDocField} from './NewDocField.tsx';
 
 /**
  * Which inline field is open, and what it will name when it is submitted.
@@ -67,8 +68,10 @@ type GroupRowProps = {
   onOpen: (path: DocPath) => void;
   onMove: (from: DocPath, to: DocPath) => void;
   onEdit: (editing: Editing | undefined) => void;
-  /** Applies whatever `editing` names to the value the writer typed. */
-  onSubmit: (value: string) => void;
+  /** Renames this group to the name the writer typed. */
+  onSubmitName: (value: string) => void;
+  /** Creates a document in this group, as the kind the writer picked. */
+  onSubmitDoc: (value: string, kind: DocKind) => void;
 };
 
 /** One group, its documents, and every group below it. */
@@ -82,7 +85,8 @@ export const GroupRow = memo(function GroupRow({
   onOpen,
   onMove,
   onEdit,
-  onSubmit,
+  onSubmitName,
+  onSubmitDoc,
 }: GroupRowProps) {
   const open = !collapsed.includes(node.path);
   const Chevron = open ? ChevronDown : ChevronRight;
@@ -126,7 +130,7 @@ export const GroupRow = memo(function GroupRow({
           label={`Rename the group ${label}`}
           placeholder="Group name"
           initial={label}
-          onSubmit={onSubmit}
+          onSubmit={onSubmitName}
           onCancel={handleCancel}
         />
       ) : (
@@ -161,10 +165,11 @@ export const GroupRow = memo(function GroupRow({
       )}
 
       {naming && (
-        <InlineField
+        <NewDocField
           label={`Title of the new document in ${label}`}
+          kindLabel={`Kind of the new document in ${label}`}
           placeholder="Document title"
-          onSubmit={onSubmit}
+          onSubmit={onSubmitDoc}
           onCancel={handleCancel}
         />
       )}
@@ -197,7 +202,8 @@ export const GroupRow = memo(function GroupRow({
                 onOpen={onOpen}
                 onMove={onMove}
                 onEdit={onEdit}
-                onSubmit={onSubmit}
+                onSubmitName={onSubmitName}
+                onSubmitDoc={onSubmitDoc}
               />
             );
           })}
