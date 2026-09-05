@@ -43,6 +43,7 @@ describe('openingPrompt', function () {
     const prompt = openingPrompt({
       voice: voice({guidance: [GUIDANCE]}),
       context: context(),
+      authorized: false,
       message: 'Tighten the ending',
     });
 
@@ -52,7 +53,12 @@ describe('openingPrompt', function () {
   });
 
   it('should name every rule in force', function () {
-    const prompt = openingPrompt({voice: voice(), context: context(), message: 'Hello'});
+    const prompt = openingPrompt({
+      voice: voice(),
+      context: context(),
+      authorized: false,
+      message: 'Hello',
+    });
 
     expect(prompt).toContain('em-dash');
     expect(prompt).toContain('sentence-length-uniformity');
@@ -62,6 +68,7 @@ describe('openingPrompt', function () {
     const prompt = openingPrompt({
       voice: voice({detectors: []}),
       context: context(),
+      authorized: false,
       message: 'Hello',
     });
 
@@ -74,6 +81,7 @@ describe('openingPrompt', function () {
     const prompt = openingPrompt({
       voice: voice({thresholds: {...DEFAULT_VOICE_THRESHOLDS, wordsPerTriplet: 400}}),
       context: context(),
+      authorized: false,
       message: 'Hello',
     });
 
@@ -87,6 +95,7 @@ describe('openingPrompt', function () {
       context: context({
         references: [reference({origin: {level: 'group', group: 'drafts' as GroupPath}})],
       }),
+      authorized: false,
       message: 'Hello',
     });
 
@@ -109,6 +118,7 @@ describe('openingPrompt', function () {
           }),
         ],
       }),
+      authorized: false,
       message: 'Hello',
     });
 
@@ -120,6 +130,7 @@ describe('openingPrompt', function () {
     const prompt = openingPrompt({
       voice: voice(),
       context: context({references: [reference({missing: true, source: ''})]}),
+      authorized: false,
       message: 'Hello',
     });
 
@@ -134,6 +145,7 @@ describe('followUpPrompt', function () {
       context: context(),
       previous: context(),
       checkerFiring: false,
+      authorized: false,
       message: 'And the opening?',
     });
 
@@ -149,6 +161,7 @@ describe('followUpPrompt', function () {
       context: context(),
       previous: context(),
       checkerFiring: true,
+      authorized: false,
       message: 'And the opening?',
     });
 
@@ -161,6 +174,7 @@ describe('followUpPrompt', function () {
       context: context(),
       previous: context(),
       checkerFiring: false,
+      authorized: false,
       message: 'And the opening?',
     });
 
@@ -173,6 +187,7 @@ describe('followUpPrompt', function () {
       context: context(),
       previous: context(),
       checkerFiring: false,
+      authorized: false,
       message: 'And the opening?',
     });
 
@@ -189,6 +204,7 @@ describe('followUpPrompt', function () {
       context: edited,
       previous: context(),
       checkerFiring: false,
+      authorized: false,
       message: 'Better?',
     });
 
@@ -201,6 +217,7 @@ describe('followUpPrompt', function () {
       context: context({selection: 'the last paragraph'}),
       previous: context(),
       checkerFiring: false,
+      authorized: false,
       message: 'This bit',
     });
 
@@ -221,6 +238,7 @@ describe('followUpPrompt', function () {
       context: now,
       previous: before,
       checkerFiring: false,
+      authorized: false,
       message: 'Does it answer the brief?',
     });
 
@@ -234,6 +252,7 @@ describe('followUpPrompt', function () {
       context: context({references: []}),
       previous: context({references: [reference()]}),
       checkerFiring: false,
+      authorized: false,
       message: 'Never mind that one',
     });
 
@@ -246,12 +265,72 @@ describe('the persona', function () {
   // turn of the session, so repeating it as the first message would be the same
   // words twice.
   it('should not be repeated inside the opening prompt', function () {
-    const prompt = openingPrompt({voice: voice(), context: context(), message: 'Hello'});
+    const prompt = openingPrompt({
+      voice: voice(),
+      context: context(),
+      authorized: false,
+      message: 'Hello',
+    });
 
     expect(prompt).not.toContain(WRITING_COMPANION);
   });
 
-  it('should tell the agent it cannot edit the document', function () {
-    expect(WRITING_COMPANION).toContain('cannot edit');
+  // It is sent once and governs every turn, so it describes the regime in
+  // general terms. Which kind is legal right now is the turn block's job, and
+  // the turn block is re-sent every turn precisely because it changes.
+  it('should describe the two-turn regime rather than a flat refusal to edit', function () {
+    expect(WRITING_COMPANION).toContain('written by turns');
+    expect(WRITING_COMPANION).toContain('propose');
+    expect(WRITING_COMPANION).not.toContain('cannot edit');
+  });
+
+  it('should say the agent never writes the file itself, on either turn', function () {
+    expect(WRITING_COMPANION).toContain('the file yourself, on either turn');
+  });
+});
+
+describe('the turn block', function () {
+  function opening(authorized: boolean): string {
+    return openingPrompt({voice: voice(), context: context(), authorized, message: 'Rewrite this'});
+  }
+
+  function followUp(authorized: boolean): string {
+    return followUpPrompt({
+      voice: voice(),
+      context: context(),
+      previous: context(),
+      checkerFiring: false,
+      authorized,
+      message: 'Rewrite this',
+    });
+  }
+
+  it('should tell an unauthorized turn to propose rather than change the document', function () {
+    const prompt = opening(false);
+
+    expect(prompt).toContain('Do not change the document');
+    expect(prompt).toContain('"kind": "proposed"');
+  });
+
+  it('should tell an authorized turn it may change the document', function () {
+    const prompt = opening(true);
+
+    expect(prompt).toContain('You may change the document');
+    expect(prompt).toContain('"kind": "made"');
+    expect(prompt).not.toContain('Do not change the document');
+  });
+
+  // Re-sent every turn for the same reason the compact rules are, and a
+  // stronger one: which kind is legal changes between one turn and the next, so
+  // a stale copy is a wrong copy.
+  it('should carry the turn into a follow-up as well as an opening', function () {
+    expect(followUp(false)).toContain('Do not change the document');
+    expect(followUp(true)).toContain('You may change the document');
+  });
+
+  // Long, and unchanged between turns, so it goes with the once-only material.
+  it('should send the block format once, at the top of the session', function () {
+    expect(opening(false)).toContain('```inkling');
+    expect(followUp(false)).not.toContain('```inkling');
   });
 });

@@ -216,6 +216,13 @@ on toryo's dispatch daemon per conversation, over the vendored client in
 the whole context on a session's first turn and only what moved on every turn
 after it.
 
+A reply chunk is either prose or the turn's one parsed reply, and the parsing is
+the transport's job rather than the panel's. `lib/reply.ts` is where a turn
+becomes an answer, an edit made, an edit proposed or a refusal with a reason;
+`lib/turn.ts` is where focus and the pin become the authorization that turn was
+sent with. Both are pure, and both are exercised without a window. See
+[`turn-taking.md`](./turn-taking.md).
+
 The context strip above the composer lists the text the next turn will carry,
 with its token estimate: the open document, the selection, and the assembled
 reference cascade, each inherited entry naming the group it came from. That is

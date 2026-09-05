@@ -1,6 +1,7 @@
 import {autoCleanup} from './setup.ts';
 import {describe, expect, it, mock} from 'bun:test';
-import {act, render} from '@testing-library/react';
+import {act, fireEvent, render} from '@testing-library/react';
+import {undo} from '@codemirror/commands';
 import {EditorView} from '@codemirror/view';
 import {EditorPanel} from '../src/components/editor/EditorPanel.tsx';
 
@@ -34,6 +35,7 @@ type PanelProps = {
   source: string;
   onChange?: (source: string) => void;
   onSave?: () => void;
+  onFocus?: () => void;
 };
 
 function panel(props: PanelProps) {
@@ -44,6 +46,7 @@ function panel(props: PanelProps) {
       onChange={props.onChange ?? function () {}}
       onSelect={function () {}}
       onSave={props.onSave ?? function () {}}
+      onFocus={props.onFocus ?? function () {}}
       findings={[]}
       marksOn
       reveal={undefined}
@@ -114,5 +117,37 @@ describe('EditorPanel', function () {
     });
 
     expect(view.state.selection.main.anchor).toBe(6);
+  });
+
+  // Focus landing anywhere in the editor is what puts the document back in the
+  // writer's hands, and it is read off the host rather than out of CodeMirror.
+  it('should report focus landing in the editor', function () {
+    const onFocus = mock(function () {});
+    const {view} = mount({source: 'First line.', onFocus});
+
+    act(function () {
+      fireEvent.focus(view.contentDOM);
+    });
+
+    expect(onFocus).toHaveBeenCalled();
+  });
+
+  // An accepted proposal reaches the editor as a changed `source` prop, and the
+  // sync effect replaces the whole document to apply it. One dispatched
+  // transaction is one history event, so Command-Z is the escape hatch it looks
+  // like rather than a partial undo through a rewrite.
+  it('should make an accepted edit arriving as a new source one undo step', function () {
+    const {view, rerender} = mount({source: 'The ending is rather good.'});
+
+    act(function () {
+      rerender(panel({source: 'The ending is good.'}));
+    });
+    expect(view.state.doc.toString()).toBe('The ending is good.');
+
+    act(function () {
+      undo(view);
+    });
+
+    expect(view.state.doc.toString()).toBe('The ending is rather good.');
   });
 });

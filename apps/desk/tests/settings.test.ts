@@ -47,4 +47,20 @@ describe('parseSettings', function () {
   it('should treat an empty vault string as no vault', function () {
     expect(parseSettings({vault: ''}).vault).toBeUndefined();
   });
+
+  it('should leave the turn unpinned for a settings file written before the pin existed', function () {
+    expect(parseSettings({layout: {chatOpen: false}}).layout.turnPin).toBeUndefined();
+  });
+
+  it('should keep a pin that names one of the two modes', function () {
+    expect(parseSettings({layout: {turnPin: 'agent'}}).layout.turnPin).toBe('agent');
+    expect(parseSettings({layout: {turnPin: 'writer'}}).layout.turnPin).toBe('writer');
+  });
+
+  // Falling back to unpinned rather than to a mode: the derived mode is the one
+  // that asks first, so nonsense in the file cannot hand the agent the document.
+  it('should leave the turn unpinned when the field holds nonsense', function () {
+    expect(parseSettings({layout: {turnPin: 'nobody'}}).layout.turnPin).toBeUndefined();
+    expect(parseSettings({layout: {turnPin: true}}).layout.turnPin).toBeUndefined();
+  });
 });

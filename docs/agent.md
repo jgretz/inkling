@@ -53,31 +53,41 @@ Four choices follow from it, and each is load-bearing:
   is the case that does surface, with the daemon's own tail. A session is closed
   when its conversation stops being the active one, keeping its id as the
   conversation's resume id.
-- **The agent writes nothing.** The session runs as toryo's `explorer`
-  orientation, which carries a hard write deny in toryo's own permission policy,
-  and its `writeScope` is present and empty. An absent `writeScope` means the
-  opposite, a lock over the whole working directory, which is why the key is
-  always sent. The persona is inkling's own, through
-  `agent.roleInstructionOverride`, so the session is a writing companion rather
-  than toryo's engineering explorer.
+- **The agent's session cannot write.** The deny comes from the orientation:
+  `explorer` maps to a read-only deny list in toryo's own permission policy, and
+  that list includes `Write`. `writeScope` is a different thing entirely, a
+  conflict claim over paths that dispatch uses to serialize jobs, and toryo's own
+  doc comment on it says the worker ignores the field. It is present and empty
+  because an ABSENT key is what the daemon refuses at 400, and because absent
+  would mean a lock over the whole working directory. The persona is inkling's
+  own, through `agent.roleInstructionOverride`, so the session is a writing
+  companion rather than toryo's engineering explorer.
 
 A daemon restart ends every held session. The conversation and its turns survive
 in SQLite; the process does not, and the next turn opens a new session.
 
-## Not decided
-
 ### How the agent edits
 
-Reading the document is settled. Writing to it is not. The candidates:
+Decided in 4b: **inkling applies every edit, on both turns.** The agent names the
+passage and the replacement and inkling does the writing, so the session keeps
+its write deny and the app never has to reason about a second writer holding the
+file. That also means one mechanism to test rather than two, and no re-open of a
+live session to change what it is allowed to do.
 
-- **Suggestions only.** The agent proposes a replacement; the writer accepts it
-  into the buffer. Reversible, slow, never surprising.
-- **Direct edits with undo.** The agent dispatches into the CodeMirror
-  transaction log. Fast, and Command-Z is the escape hatch.
-- **Diff review.** The agent produces a patch shown as a diff over the preview.
-  Best for large rewrites, heaviest to build.
+The three candidates it settles between were suggestions only, direct edits into
+the CodeMirror transaction log, and a rendered diff over the preview. What
+shipped is the first with the second's speed on the agent's own turn: an
+authorized turn lands without asking, and an unauthorized one is a proposal the
+writer accepts or rejects. An accepted proposal reaches the editor as a changed
+`source` prop and the sync effect applies it as one transaction, so Command-Z
+undoes the whole edit in one step. A rendered diff is still not built; a proposal
+shows the replacement and the passage it replaces.
 
-This is the decision that shapes most of the rest of the app.
+[`turn-taking.md`](./turn-taking.md) is the rest of it: how the mode is derived,
+what the reply contract looks like on the wire, and what happens to a quote the
+document no longer holds.
+
+## Not decided
 
 ### Memory across documents
 

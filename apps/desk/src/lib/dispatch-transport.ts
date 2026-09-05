@@ -10,6 +10,7 @@ import {emptyContext, type AgentContext, type AgentTransport, type Turn} from '.
 import {followUpPrompt, openingPrompt, WRITING_COMPANION} from './agent-prompt.ts';
 import type {Conversation, ConversationStore} from './conversations.ts';
 import type {TokenRefresh} from './daemon-token.ts';
+import {createFenceFilter, parseReply} from './reply.ts';
 
 /**
  * The agent transport: one conversation, held open on toryo's dispatch daemon.
@@ -38,6 +39,15 @@ import type {TokenRefresh} from './daemon-token.ts';
  * a turn that never comes back is still a row the next launch can find. Without
  * it there would be no way to tell "the agent said nothing" from "inkling was
  * closed mid-answer", and the second must never be rendered as an answer.
+ *
+ * ## The reply is validated here, not in the panel
+ *
+ * A held turn carries no structured return, so the reply contract is prose in
+ * the prompt and a validator on arrival. Both halves of that live under this
+ * file: the fence filter keeps the block off the writer's screen as it streams,
+ * and `parseReply` turns the whole of what was said into one of four shapes
+ * before the panel ever sees it. The stored row keeps the raw text, block and
+ * all, so the database holds what was actually said.
  */
 
 /** What the writer is told when there is no token and no retry will help. */
@@ -146,14 +156,22 @@ export function createDispatchTransport(deps: DispatchTransportDeps): DispatchTr
       project: {name: vaultName(deps.vault), workingDir: deps.vault},
       llm: {provider: 'claude', model: 'default', executionMode: 'held'},
       // `explorer` carries a hard write deny in toryo's own permission policy,
-      // which is what holds phase 4a's line that the agent writes nothing. The
-      // override is the highest-precedence role instruction, so the session is a
-      // writing companion rather than toryo's engineering explorer.
+      // and that deny is the whole of why the agent cannot touch the file: even
+      // on its own turn, inkling is the one that writes. The override is the
+      // highest-precedence role instruction, so the session is a writing
+      // companion rather than toryo's engineering explorer.
       agent: {orientation: 'explorer', roleInstructionOverride: WRITING_COMPANION},
-      prompt: openingPrompt({voice: deps.voice(), context: turn.context, message: turn.message}),
-      // Present and empty: this conversation writes nothing. An ABSENT key is
-      // what the daemon refuses at 400, and it means the opposite, a lock over
-      // the whole working directory.
+      prompt: openingPrompt({
+        voice: deps.voice(),
+        context: turn.context,
+        authorized: turn.authorized,
+        message: turn.message,
+      }),
+      // Not what stops the agent writing: `writeScope` is dispatch's conflict
+      // claim over paths, and toryo's own doc comment on it says the worker
+      // ignores the field. It is present and empty because an ABSENT key is
+      // what the daemon refuses at 400, and because absent would claim a lock
+      // over the whole working directory. The write deny is the orientation.
       writeScope: [],
       // All four default true and would otherwise attach toryo's engineering
       // brain to a prose conversation, append a follow-ups block and a heartbeat
@@ -291,6 +309,7 @@ export function createDispatchTransport(deps: DispatchTransportDeps): DispatchTr
       context: turn.context,
       previous: previous ?? emptyContext(),
       checkerFiring: deps.checkerFiring(),
+      authorized: turn.authorized,
       message: turn.message,
     });
   }
@@ -364,11 +383,20 @@ export function createDispatchTransport(deps: DispatchTransportDeps): DispatchTr
 
       let answer = '';
       let failure: string | undefined;
+      // Rebuilt per turn: a filter sealed by one turn's block would swallow the
+      // whole of the next one.
+      const filter = createFenceFilter();
       try {
         for await (const chunk of stream(turn, signal)) {
           answer += chunk;
-          yield chunk;
+          const safe = filter.push(chunk);
+          if (safe.length > 0) yield {kind: 'text', text: safe};
         }
+        // Only for a turn that ran to the end. A turn that failed or was
+        // stopped has no reply to parse, and half a block is not one.
+        const tail = filter.end();
+        if (tail.length > 0) yield {kind: 'text', text: tail};
+        yield {kind: 'reply', reply: parseReply(answer, turn.authorized)};
         previous = turn.context;
       } catch (error) {
         // A turn the writer stopped is not a failure: what arrived is on screen

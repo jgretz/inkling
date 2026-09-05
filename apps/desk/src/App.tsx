@@ -14,6 +14,8 @@ import type {AgentContext} from './lib/agent.ts';
 import {daemonToken, initDaemonToken, refreshDaemonToken} from './lib/daemon-token.ts';
 import {createDispatchTransport, type TokenAccess} from './lib/dispatch-transport.ts';
 import {assembleReferences} from './lib/references.ts';
+import {applyEdit, type Edit} from './lib/reply.ts';
+import {cyclePin, deriveMode, indicatorFor, type FocusRegion} from './lib/turn.ts';
 import {useConversations} from './lib/use-conversations.ts';
 import {useFindings} from './lib/use-findings.ts';
 import {useReferences} from './lib/use-references.ts';
@@ -63,6 +65,10 @@ export function App() {
   const [layout, setLayout] = useState<LayoutSettings>(DEFAULT_SETTINGS.layout);
   const [selection, setSelection] = useState('');
   const [restored, setRestored] = useState(false);
+  /** Where focus last was, which is what the turn mode is derived from. */
+  const [lastFocus, setLastFocus] = useState<FocusRegion | undefined>(undefined);
+  /** True from the moment an agent's edit starts landing until the buffer holds disk. */
+  const [landing, setLanding] = useState(false);
 
   const [agentError, setAgentError] = useState<string | undefined>(undefined);
 
@@ -399,6 +405,67 @@ export function App() {
     [restore],
   );
 
+  // Held in a ref for the reason the voice cascade is: an edit is applied to
+  // the draft as it stands when the reply lands, and depending on the draft
+  // itself would rebuild the panel's send handler on every keystroke.
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+
+  const {editDraft, flush, land} = workspace;
+
+  /** A proposal the writer accepted. Buffer only; nothing reaches disk. */
+  const handleAccept = useCallback(
+    function (edit: Edit) {
+      const applied = applyEdit(draftRef.current, edit);
+      if (!applied.ok) {
+        setAgentError(applied.reason);
+        return;
+      }
+      setAgentError(undefined);
+      editDraft(applied.value);
+    },
+    [editDraft],
+  );
+
+  /**
+   * An edit the agent made on its own turn: written, then read back.
+   *
+   * The transient indicator is held from here rather than from inside the
+   * workspace, because what it is about is this whole round trip and not the
+   * one write in the middle of it.
+   */
+  const handleLand = useCallback(
+    function (edit: Edit) {
+      const applied = applyEdit(draftRef.current, edit);
+      if (!applied.ok) {
+        setAgentError(applied.reason);
+        return;
+      }
+      setAgentError(undefined);
+      setLanding(true);
+      void land(applied.value).finally(function () {
+        setLanding(false);
+      });
+    },
+    [land],
+  );
+
+  const handlePin = useCallback(function () {
+    setLayout(function (current) {
+      return {...current, turnPin: cyclePin(current.turnPin)};
+    });
+  }, []);
+
+  const handleEditorFocus = useCallback(function () {
+    setLastFocus('editor');
+  }, []);
+
+  const handleChatFocus = useCallback(function () {
+    setLastFocus('chat');
+  }, []);
+
+  const mode = deriveMode(lastFocus, layout.turnPin);
+
   return (
     <div className="flex h-full flex-col">
       <TitleBar
@@ -407,6 +474,9 @@ export function App() {
         save={workspace.open?.save}
         layout={layout}
         onToggle={handleToggle}
+        turn={indicatorFor(mode, landing)}
+        pinned={layout.turnPin !== undefined}
+        onPin={handlePin}
       />
 
       <main className="flex min-h-0 flex-1">
@@ -473,9 +543,10 @@ export function App() {
                 <EditorPanel
                   path={workspace.open.path}
                   source={draft}
-                  onChange={workspace.editDraft}
+                  onChange={editDraft}
                   onSelect={setSelection}
                   onSave={workspace.saveNow}
+                  onFocus={handleEditorFocus}
                   findings={kept}
                   marksOn={layout.marksOn}
                   reveal={reveal}
@@ -515,6 +586,11 @@ export function App() {
                   references={referenceControls}
                   initial={conversations.initial}
                   conversations={conversationControls}
+                  mode={mode}
+                  onFlush={flush}
+                  onAccept={handleAccept}
+                  onLand={handleLand}
+                  onFocus={handleChatFocus}
                 />
               ) : (
                 <section className="h-full border-l border-ink-800 bg-ink-950" />

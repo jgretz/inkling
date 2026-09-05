@@ -3,6 +3,7 @@ import type {DocPath, VaultPath} from '@inkling/vault';
 import {resolveVoice} from '@inkling/voice';
 import {createHeldSessionClient} from '@inkling/toryo';
 import {emptyContext, type AgentContext} from '../src/lib/agent.ts';
+import type {AgentReply} from '../src/lib/reply.ts';
 import type {
   Conversation,
   ConversationStore,
@@ -189,6 +190,12 @@ type Harness = {
   errors: string[];
   /** How many times the transport cleared the writer-facing failure. */
   cleared: () => number;
+  /** A whole turn: what the panel would render, and the one parsed reply. */
+  turn: (
+    message: string,
+    options?: {context?: AgentContext; authorized?: boolean},
+  ) => Promise<{text: string; reply: AgentReply | undefined}>;
+  /** The same, reduced to the text, which is what most cases here assert on. */
   send: (message: string, context?: AgentContext) => Promise<string>;
   /** Sends, then stops the turn the moment the first chunk lands. */
   stopAfterFirstChunk: (message: string) => Promise<string>;
@@ -228,6 +235,28 @@ function harness(
     },
   });
 
+  async function runTurn(
+    message: string,
+    options: {context?: AgentContext; authorized?: boolean} = {},
+  ): Promise<{text: string; reply: AgentReply | undefined}> {
+    const controller = new AbortController();
+    let text = '';
+    let reply: AgentReply | undefined;
+    for await (const chunk of transport.send(
+      {
+        message,
+        context: options.context ?? emptyContext(),
+        history: [],
+        authorized: options.authorized ?? false,
+      },
+      controller.signal,
+    )) {
+      if (chunk.kind === 'reply') reply = chunk.reply;
+      else text += chunk.text;
+    }
+    return {text, reply};
+  }
+
   return {
     calls,
     turns,
@@ -236,25 +265,19 @@ function harness(
     cleared() {
       return cleared;
     },
+    turn: runTurn,
     async send(message, context = emptyContext()) {
-      const controller = new AbortController();
-      let text = '';
-      for await (const chunk of transport.send(
-        {message, context, history: []},
-        controller.signal,
-      )) {
-        text += chunk;
-      }
+      const {text} = await runTurn(message, {context});
       return text;
     },
     async stopAfterFirstChunk(message) {
       const controller = new AbortController();
       let text = '';
       for await (const chunk of transport.send(
-        {message, context: emptyContext(), history: []},
+        {message, context: emptyContext(), history: [], authorized: false},
         controller.signal,
       )) {
-        text += chunk;
+        if (chunk.kind === 'text') text += chunk.text;
         controller.abort();
       }
       return text;
@@ -421,6 +444,96 @@ describe('a turn that goes through', function () {
     expect(await failure(app.send('Tighten this'))).toBe('the model refused');
     expect(app.turns[0]?.state).toBe('failed');
     expect(app.turns[0]?.answered).toBe('the model refused');
+  });
+});
+
+describe('the reply a turn comes back with', function () {
+  const EDIT = '{"kind": "made", "quote": "rather good", "replacement": "good"}';
+
+  it('should end an ordinary turn with an answer', async function () {
+    const app = harness([
+      () => live('s-1'),
+      () => stream(HELLO, said('Cut the qualifier.'), ended({index: 0, isError: false})),
+    ]);
+
+    const {reply} = await app.turn('Tighten this');
+
+    expect(reply).toEqual({kind: 'answer', text: 'Cut the qualifier.'});
+  });
+
+  it('should parse an edit block as an edit made on an authorized turn', async function () {
+    const app = harness([
+      () => live('s-1'),
+      () =>
+        stream(
+          HELLO,
+          said(`Tightened it.\n\n\`\`\`inkling\n${EDIT}\n\`\`\``),
+          ended({index: 0, isError: false}),
+        ),
+    ]);
+
+    const {reply} = await app.turn('Tighten this', {authorized: true});
+
+    expect(reply).toEqual({
+      kind: 'made',
+      text: 'Tightened it.',
+      edit: {quote: 'rather good', replacement: 'good'},
+    });
+  });
+
+  // The authorization the turn was sent with, not one re-derived on arrival.
+  it('should refuse the same block on a turn that was not authorized', async function () {
+    const app = harness([
+      () => live('s-1'),
+      () =>
+        stream(
+          HELLO,
+          said(`Tightened it.\n\n\`\`\`inkling\n${EDIT}\n\`\`\``),
+          ended({index: 0, isError: false}),
+        ),
+    ]);
+
+    const {reply} = await app.turn('Tighten this', {authorized: false});
+
+    expect(reply?.kind).toBe('refused');
+  });
+
+  it('should keep the block off the streamed text while storing the whole of it', async function () {
+    const app = harness([
+      () => live('s-1'),
+      () =>
+        stream(
+          HELLO,
+          said(`Tightened it.\n\n\`\`\`inkling\n${EDIT}\n\`\`\``),
+          ended({index: 0, isError: false}),
+        ),
+    ]);
+
+    const {text} = await app.turn('Tighten this', {authorized: true});
+
+    expect(text.trim()).toBe('Tightened it.');
+    expect(app.turns[0]?.answered).toContain('"kind": "made"');
+  });
+
+  // Half a block is not a reply, and a turn nobody finished has nothing to say
+  // about the document.
+  it('should yield no reply for a turn that failed', async function () {
+    const app = harness([() => live('s-1'), () => stream(HELLO, said('Half a th'))]);
+
+    await failure(app.turn('Tighten this'));
+
+    expect(app.turns[0]?.state).toBe('failed');
+  });
+
+  it('should carry the turns authorization into the prompt it sends', async function () {
+    const app = harness([
+      () => live('s-1'),
+      () => stream(HELLO, said('ok'), ended({index: 0, isError: false})),
+    ]);
+
+    await app.turn('Tighten this', {authorized: true});
+
+    expect(app.calls[0]?.body?.payload?.prompt).toContain('You may change the document');
   });
 });
 

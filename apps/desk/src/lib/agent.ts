@@ -1,5 +1,6 @@
 import type {DocPath} from '@inkling/vault';
 import type {ContextReference} from './references.ts';
+import type {AgentReply} from './reply.ts';
 
 /**
  * The agent boundary.
@@ -51,13 +52,31 @@ export type Turn = {
    * knows it.
    */
   history: Message[];
+  /**
+   * Whether this turn may change the document without asking.
+   *
+   * Captured by the panel at send time from the mode in force then, and never
+   * re-derived afterwards: a writer who fires off a rewrite and then clicks into
+   * the editor while it thinks does not revoke it. See `docs/turn-taking.md`.
+   */
+  authorized: boolean;
 };
+
+/**
+ * One piece of a turn: prose to render, or the turn's single parsed reply.
+ *
+ * A union rather than a bare string, because the three reply kinds have to be
+ * structural for the accept-or-reject prompt to exist at all. Text chunks
+ * arrive as they stream; the reply arrives once, last, and only for a turn that
+ * ran to the end.
+ */
+export type ReplyChunk = {kind: 'text'; text: string} | {kind: 'reply'; reply: AgentReply};
 
 /** An agent backend. One method, so a real one can be dropped in unchanged. */
 export type AgentTransport = {
   name: string;
   /** Yields the reply in chunks so the panel can render it as it arrives. */
-  send: (turn: Turn, signal: AbortSignal) => AsyncIterable<string>;
+  send: (turn: Turn, signal: AbortSignal) => AsyncIterable<ReplyChunk>;
 };
 
 export function emptyContext(): AgentContext {
