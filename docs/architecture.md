@@ -150,12 +150,10 @@ group a writer named `50%_done` would make a `LIKE` pattern match paths that
 have nothing to do with it.
 
 Every entry also carries a role, which is a separate question from which kind of
-path it holds. A **subject** column says whose row it is, so a row already at the
-destination is an orphan of something that has gone and is deleted. A
-**pointer** column says what the row points at, and `reference.target_path` is
-the only one so far. A row sitting there is a live attachment shown as broken,
-and the rename putting a file back at that path is the moment it becomes whole
-again, so nothing is swept ahead of it.
+path it holds. A **subject** column says whose row it is: a dismissal of this
+document, a reference belonging to this group. A **pointer** column says what the
+row points at, and `reference.target_path` is the only one so far. The
+difference shows at the destination, below.
 
 The order the two halves happen in is the whole design. A transaction opens, the
 rows are rewritten, `fs::rename` runs, and the commit comes last. The half that
@@ -171,10 +169,13 @@ Rows already sitting at the target of a subject column are deleted first, inside
 the same transaction. The target does not exist on disk at that point, so they
 are orphans of a group or a document that has gone, and leaving them would fail
 the rename on a unique index with a constraint error the writer cannot act on.
-A rename deletes those, and the one row it merges away when it points two of a
-document's references at the same file, and nothing else. The suppressions the
-reference cascade takes with a detached reference are the only rows anything
-outside a rename deletes.
+A pointer column sweeps nothing: a row there names a file the vault does not
+hold and is shown as broken, and the rename putting a file back at that path is
+the moment it becomes whole again. Its unique index is settled by `OR REPLACE`
+on the update instead, which merges only the two references a rename has pointed
+at one file. Those are every row a rename deletes. Outside a rename, the
+suppressions the reference cascade takes with a detached reference are the only
+rows anything deletes.
 
 Adding a migration is three things: a new `src-tauri/migrations/NNNN_name.sql`,
 one appended entry in `MIGRATIONS`, and the line in the catalog test that pins
