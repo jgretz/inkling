@@ -166,6 +166,30 @@ describe('filterTree', function () {
     expect(filtered.groups.map((node) => node.path)).toEqual(['essays' as GroupPath]);
   });
 
+  it('should keep a document whose filename matches even when its title does not', function () {
+    const named = groupTree([doc('drafts/on-endings.md', 'Untitled')]);
+
+    const filtered = filterTree(named, 'on-endings');
+
+    expect(filtered.groups[0]?.docs.map((entry) => entry.title)).toEqual(['Untitled']);
+  });
+
+  it('should keep an empty group whose own name matches', function () {
+    const empty = groupTree([], groups('essays'));
+
+    expect(pathsIn(filterTree(empty, 'essays'))).toEqual(['essays']);
+  });
+
+  it('should not match a document on the group portion of its path', function () {
+    // Were the whole path in the haystack, the group-name rule above would
+    // decide nothing: every document under a matching group would match on its
+    // own. `drafts/2026` is a substring of this document's path and of no
+    // group's name, so only a path match could keep it.
+    const nested = groupTree([doc('drafts/2026/a.md', 'Buried')]);
+
+    expect(filterTree(nested, 'drafts/2026').groups).toEqual([]);
+  });
+
   it('should drop a group with nothing matching in it', function () {
     const filtered = filterTree(tree, 'something else');
 

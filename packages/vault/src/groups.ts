@@ -147,9 +147,18 @@ function matches(haystack: string, needle: string): boolean {
   return haystack.toLowerCase().includes(needle);
 }
 
-/** Case-insensitive match across the fields a writer would search a document by. */
+/**
+ * Case-insensitive match against a document's names: its title, its filename
+ * and its tags.
+ *
+ * Deliberately not the whole path. Every document under a group carries that
+ * group's name in its path, so matching on the path would make every document
+ * in a matching group match on its own, and the rule below about a group whose
+ * own name matches would decide nothing it does not already decide.
+ */
 function matchesDoc(doc: DocSummary, needle: string): boolean {
-  return matches([doc.title, doc.path, ...doc.tags].join(' '), needle);
+  const fileName = doc.path.split('/').pop() ?? doc.path;
+  return matches([doc.title, fileName, ...doc.tags].join(' '), needle);
 }
 
 function filterNode(node: GroupNode, needle: string): GroupNode | undefined {
