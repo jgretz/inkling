@@ -138,16 +138,24 @@ A reference naming a file the vault no longer holds is kept and shown as broken,
 for the same reason a dismissal survives a folder rename in Finder.
 
 A rename inside inkling does follow. `src-tauri/src/paths.rs` holds two
-registries of `(table, column)` pairs and the two rewrites over them.
-`PATH_KEYED` lists the columns holding a **document** path and `GROUP_KEYED` the
-columns holding a **group** path, because a rewrite acts on a column and a
-column has to mean one thing. A group rename takes the prefix form over the
-document columns, and both the exact and the prefix form over the group ones:
-the reference attached to `drafts` stores the bare string `drafts`, which no
-comparison against `drafts/` would ever match. A single-document rename takes
-`PATH_KEYED` only, since moving a document changes no group. The matching is
-`substr`, never `LIKE`, because a group a writer named `50%_done` would make a
-`LIKE` pattern match paths that have nothing to do with it.
+registries of stored columns and the two rewrites over them. `PATH_KEYED` lists
+the columns holding a **document** path and `GROUP_KEYED` the columns holding a
+**group** path, because a rewrite acts on a column and a column has to mean one
+thing. A group rename takes the prefix form over the document columns, and both
+the exact and the prefix form over the group ones: the reference attached to
+`drafts` stores the bare string `drafts`, which no comparison against `drafts/`
+would ever match. A single-document rename takes `PATH_KEYED` only, since moving
+a document changes no group. The matching is `substr`, never `LIKE`, because a
+group a writer named `50%_done` would make a `LIKE` pattern match paths that
+have nothing to do with it.
+
+Every entry also carries a role, which is a separate question from which kind of
+path it holds. A **subject** column says whose row it is, so a row already at the
+destination is an orphan of something that has gone and is deleted. A
+**pointer** column says what the row points at, and `reference.target_path` is
+the only one so far. A row sitting there is a live attachment shown as broken,
+and the rename putting a file back at that path is the moment it becomes whole
+again, so nothing is swept ahead of it.
 
 The order the two halves happen in is the whole design. A transaction opens, the
 rows are rewritten, `fs::rename` runs, and the commit comes last. The half that
@@ -159,12 +167,14 @@ also fails, the error says plainly that the folder moved and the dismissals
 under it did not. With no database open the directory rename happens alone,
 which is the same degradation the status bar already explains.
 
-Rows already sitting at the target path are deleted first, inside the same
-transaction. The target does not exist on disk at that point, so they are
-orphans of a group or a document that has gone, and leaving them would fail the
-rename on a unique index with a constraint error the writer cannot act on. They
-are the only rows a rename deletes, and the suppressions the reference cascade
-takes with them are the only rows anything else does.
+Rows already sitting at the target of a subject column are deleted first, inside
+the same transaction. The target does not exist on disk at that point, so they
+are orphans of a group or a document that has gone, and leaving them would fail
+the rename on a unique index with a constraint error the writer cannot act on.
+A rename deletes those, and the one row it merges away when it points two of a
+document's references at the same file, and nothing else. The suppressions the
+reference cascade takes with a detached reference are the only rows anything
+outside a rename deletes.
 
 Adding a migration is three things: a new `src-tauri/migrations/NNNN_name.sql`,
 one appended entry in `MIGRATIONS`, and the line in the catalog test that pins

@@ -862,6 +862,67 @@ mod tests {
         assert_eq!(off[0].reference_id, inherited.id);
     }
 
+    /// A reference whose file went missing outside inkling is kept and shown
+    /// broken, so a rename that puts a file back at that path has to leave it
+    /// alone rather than sweep it as an orphan. The target column points at
+    /// another row's subject; it does not identify this one.
+    #[test]
+    fn should_revive_a_broken_reference_when_a_group_rename_puts_its_target_back() {
+        let (vault, db) = vault_with_a_group("drafts");
+        attach_to_doc(&db, "notes/x.md", "essays/a.md");
+
+        rename_group_in(vault.path(), &db, "drafts", "essays").expect("should rename");
+
+        assert_eq!(
+            only_reference(&db).target_path.as_deref(),
+            Some("essays/a.md")
+        );
+    }
+
+    /// The same, one document wide, through `rewrite_exact`.
+    #[test]
+    fn should_revive_a_broken_reference_when_a_document_moves_onto_its_target() {
+        let (vault, db) = vault_with_a_group("drafts");
+        fs::create_dir_all(vault.path().join("essays")).expect("should make a dir");
+        attach_to_doc(&db, "notes/x.md", "essays/a.md");
+
+        rename_doc_with(
+            &vault.path().to_string_lossy(),
+            "drafts/a.md",
+            "essays/a.md",
+            &db,
+        )
+        .expect("should move");
+
+        assert_eq!(
+            only_reference(&db).target_path.as_deref(),
+            Some("essays/a.md")
+        );
+    }
+
+    /// Two of one document's references collapsing onto one file: the rename
+    /// must merge them rather than fail on the unique index, and the row that
+    /// followed the file is the one that survives.
+    #[test]
+    fn should_merge_two_references_a_rename_points_at_the_same_file() {
+        let (vault, db) = vault_with_a_group("drafts");
+        fs::create_dir_all(vault.path().join("essays")).expect("should make a dir");
+        let following = attach_to_doc(&db, "notes/x.md", "drafts/a.md");
+        attach_to_doc(&db, "notes/x.md", "essays/a.md");
+
+        rename_doc_with(
+            &vault.path().to_string_lossy(),
+            "drafts/a.md",
+            "essays/a.md",
+            &db,
+        )
+        .expect("should move");
+
+        let row = only_reference(&db);
+        assert_eq!(row.id, following.id);
+        assert_eq!(row.target_path.as_deref(), Some("essays/a.md"));
+    }
+
     #[test]
     fn should_carry_a_reference_target_when_one_document_moves() {
         let (vault, db) = vault_with_a_group("drafts");

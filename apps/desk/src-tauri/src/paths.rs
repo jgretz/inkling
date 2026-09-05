@@ -14,6 +14,11 @@
 //! well as a prefix one, and a single-document rename leaves them alone
 //! entirely: a document moving cannot change which group anything belongs to.
 //!
+//! Each entry also carries a [`Role`], which is a second and independent
+//! question: does the path say *whose* row this is, or does it say what the row
+//! points at? The two want opposite treatment at the destination, which is why
+//! the role is stored rather than assumed. See [`Role`].
+//!
 //! Roadmap 4.2 (conversations) adds path-keyed tables too, and this is the file
 //! they append to, so a rename keeps working without every caller learning the
 //! new table's name.
@@ -24,34 +29,66 @@
 
 use rusqlite::Transaction;
 
+/// What a stored path says about the row holding it.
+///
+/// The distinction decides what happens to rows already sitting at the
+/// destination, and getting it wrong loses the writer's data quietly.
+///
+/// A [`Role::Subject`] column says whose row this is: a dismissal *of* this
+/// document, a reference *belonging to* this group. The destination does not
+/// exist on disk when a rename runs, so a row already filed there is an orphan
+/// of a document or group that has gone. It is deleted, because leaving it
+/// would fail the rename on a unique index with a constraint error the writer
+/// cannot act on, and because reviving a dead document's dismissals under a
+/// different document's name is not what anyone meant.
+///
+/// A [`Role::Pointer`] column says what the row points at, and identifies some
+/// other row's subject rather than this one. A row filed there is not an
+/// orphan: it is a live attachment naming a file the vault does not currently
+/// hold, kept and shown as broken on purpose, and a rename putting a file back
+/// at that path is exactly the moment it becomes whole again. So nothing is
+/// deleted ahead of a pointer rewrite, and the unique index is settled by
+/// `OR REPLACE` on the update instead, which touches only a row that genuinely
+/// collides.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Role {
+    Subject,
+    Pointer,
+}
+
+use Role::{Pointer, Subject};
+
 /// Every (table, column) pair holding a vault-relative document path.
-pub const PATH_KEYED: &[(&str, &str)] = &[
-    ("voice_suppression", "doc_path"),
-    ("reference", "doc_path"),
-    ("reference", "target_path"),
-    ("reference_suppression", "doc_path"),
+pub const PATH_KEYED: &[(&str, &str, Role)] = &[
+    ("voice_suppression", "doc_path", Subject),
+    ("reference", "doc_path", Subject),
+    ("reference", "target_path", Pointer),
+    ("reference_suppression", "doc_path", Subject),
 ];
 
 /// Every (table, column) pair holding a vault-relative group path.
-pub const GROUP_KEYED: &[(&str, &str)] = &[("reference", "group_path")];
+pub const GROUP_KEYED: &[(&str, &str, Role)] = &[("reference", "group_path", Subject)];
 
-/// Deletes rows already stored at the target, then moves `from` onto `to`.
+/// Moves `from` onto `to`, clearing the destination first for a subject column.
 ///
-/// Rows already at the target are deleted first in both rewrites below. The
-/// target does not exist on disk at that point, so those rows are orphans of an
-/// earlier group or document by the same name; leaving them would fail the
-/// rename on a unique index with a constraint error the writer cannot act on.
+/// The update is `OR REPLACE` for both roles. A subject column cannot reach it,
+/// because the delete above has already emptied the destination; a pointer
+/// column relies on it, because two of one document's references can be pointed
+/// at one file by a rename and only one row may say so.
 fn move_exact(
     tx: &Transaction<'_>,
     table: &str,
     column: &str,
+    role: Role,
     from: &str,
     to: &str,
 ) -> rusqlite::Result<()> {
-    let delete = format!("DELETE FROM {table} WHERE {column} = ?1");
-    tx.execute(&delete, [&to])?;
+    if role == Subject {
+        let delete = format!("DELETE FROM {table} WHERE {column} = ?1");
+        tx.execute(&delete, [&to])?;
+    }
 
-    let update = format!("UPDATE {table} SET {column} = ?1 WHERE {column} = ?2");
+    let update = format!("UPDATE OR REPLACE {table} SET {column} = ?1 WHERE {column} = ?2");
     tx.execute(&update, [&to, &from])?;
     Ok(())
 }
@@ -61,16 +98,19 @@ fn move_under(
     tx: &Transaction<'_>,
     table: &str,
     column: &str,
+    role: Role,
     old: &str,
     new: &str,
 ) -> rusqlite::Result<()> {
-    let delete = format!("DELETE FROM {table} WHERE substr({column}, 1, length(?1)) = ?1");
-    tx.execute(&delete, [&new])?;
+    if role == Subject {
+        let delete = format!("DELETE FROM {table} WHERE substr({column}, 1, length(?1)) = ?1");
+        tx.execute(&delete, [&new])?;
+    }
 
     // `length` is evaluated by SQLite over the same string it compares, so
     // the prefix's length is never computed twice in two encodings.
     let update = format!(
-        "UPDATE {table} SET {column} = ?1 || substr({column}, length(?2) + 1)
+        "UPDATE OR REPLACE {table} SET {column} = ?1 || substr({column}, length(?2) + 1)
          WHERE substr({column}, 1, length(?2)) = ?2"
     );
     tx.execute(&update, [&new, &old])?;
@@ -86,13 +126,13 @@ pub fn rewrite_prefix(tx: &Transaction<'_>, from: &str, to: &str) -> rusqlite::R
     let old = format!("{from}/");
     let new = format!("{to}/");
 
-    for (table, column) in PATH_KEYED {
-        move_under(tx, table, column, &old, &new)?;
+    for (table, column, role) in PATH_KEYED {
+        move_under(tx, table, column, *role, &old, &new)?;
     }
 
-    for (table, column) in GROUP_KEYED {
-        move_exact(tx, table, column, from, to)?;
-        move_under(tx, table, column, &old, &new)?;
+    for (table, column, role) in GROUP_KEYED {
+        move_exact(tx, table, column, *role, from, to)?;
+        move_under(tx, table, column, *role, &old, &new)?;
     }
     Ok(())
 }
@@ -103,28 +143,31 @@ pub fn rewrite_prefix(tx: &Transaction<'_>, from: &str, to: &str) -> rusqlite::R
 /// groups are exactly where they were, and rewriting one would move a group's
 /// references onto a path that is a document.
 pub fn rewrite_exact(tx: &Transaction<'_>, from: &str, to: &str) -> rusqlite::Result<()> {
-    for (table, column) in PATH_KEYED {
-        move_exact(tx, table, column, from, to)?;
+    for (table, column, role) in PATH_KEYED {
+        move_exact(tx, table, column, *role, from, to)?;
     }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    use super::Role::{Pointer, Subject};
     use super::{GROUP_KEYED, PATH_KEYED};
 
     /// Asserted as a whole slice, the way `catalog_lists_every_shipped_migration`
     /// is: a table added later must be a deliberate edit here, because a
     /// path-keyed column left off this list silently stops following a rename.
+    /// The role is pinned along with the column, because a pointer column
+    /// filed as a subject deletes live rows at the destination.
     #[test]
     fn path_keyed_lists_every_column_holding_a_document_path() {
         assert_eq!(
             PATH_KEYED,
             &[
-                ("voice_suppression", "doc_path"),
-                ("reference", "doc_path"),
-                ("reference", "target_path"),
-                ("reference_suppression", "doc_path"),
+                ("voice_suppression", "doc_path", Subject),
+                ("reference", "doc_path", Subject),
+                ("reference", "target_path", Pointer),
+                ("reference_suppression", "doc_path", Subject),
             ]
         );
     }
@@ -134,6 +177,6 @@ mod tests {
     /// prefix pass; one left off stops following a group rename at all.
     #[test]
     fn group_keyed_lists_every_column_holding_a_group_path() {
-        assert_eq!(GROUP_KEYED, &[("reference", "group_path")]);
+        assert_eq!(GROUP_KEYED, &[("reference", "group_path", Subject)]);
     }
 }
