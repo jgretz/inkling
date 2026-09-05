@@ -142,9 +142,12 @@ stream is read with `fetch` instead. Daemon down shows an error. Done when a tur
 round-trips and the panel streams it.
 
 **4.2 Sessions.** Several conversations per document, persisted in SQLite, one
-turn record per round trip with the pre-turn snapshot. Resume a pending turn on
-restart the way toryo's designer does. Done when closing and reopening the app
-recovers a conversation mid-turn.
+turn record per round trip with the pre-turn snapshot. A turn still in flight
+when the window went cannot be recovered, whatever the daemon says about its
+session: the event stream carries no backlog, so a reply that landed meanwhile is
+gone and the turn reads as interrupted rather than as an answer. Done when
+closing and reopening the app brings a conversation back with every turn in it,
+the unfinished one included and marked as such.
 
 **4.3 Turn taking.** Focus-derived mode, the pin, the indicator, and the three
 reply kinds. Both edit paths: written through dispatch on the agent's turn,
@@ -158,8 +161,8 @@ line numbers. Done when an anchor still resolves after the paragraph above it is
 rewritten.
 
 **4.5 Voice guidance in the prompt.** The cascade assembled into the turn,
-compact rules always, the long document only on the first turn of a session or
-when the checker is firing.
+compact rules always, each level's long guidance only on the first turn of a
+session or when the checker is firing.
 
 ## Phase 5: Research inflow
 

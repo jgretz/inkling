@@ -79,16 +79,16 @@ Reading the document is settled. Writing to it is not. The candidates:
 
 This is the decision that shapes most of the rest of the app.
 
-### Memory across sessions
+### Memory across documents
 
-Conversations now persist. A document holds as many as the writer starts, each
-with one turn record per round trip and the document as it stood before that
-turn, in `.inkling/inkling.db` beside the vault. Reopening the app brings them
-back, and a turn that was in flight when the window went reads as interrupted
-rather than as an answer, because a held session's event stream has no backlog to
-replay.
+Memory within one is settled. Conversations persist: a document holds as many as
+the writer starts, each with one turn record per round trip and the document as
+it stood before that turn, in `.inkling/inkling.db` beside the vault. Reopening
+the app brings them back, and a turn that was in flight when the window went
+reads as interrupted rather than as an answer, because a held session's event
+stream has no backlog to replay.
 
-What is still open is memory across _documents_: whether the agent should carry
-something it learned about a writer's voice from one piece into the next, and
-where that would live. Nothing does so today, and `autoPopulateMemory` is
-explicitly off, so no prose leaves the vault for toryo's own memory database.
+What is open is whether the agent should carry something it learned about a
+writer's voice from one piece into the next, and where that would live. Nothing
+does so today, and `autoPopulateMemory` is explicitly off, so no prose leaves the
+vault for toryo's own memory database.
