@@ -86,6 +86,51 @@ describe('parseReply', function () {
   });
 });
 
+describe('a reply that points', function () {
+  it('should read a point block as a passage the reply is about', function () {
+    const raw = withBlock(block({kind: 'point', quote: 'rather good'}));
+
+    expect(parseReply(raw, false)).toEqual({
+      kind: 'point',
+      text: PROSE,
+      quote: 'rather good',
+    });
+  });
+
+  // A point changes nothing, so there is nothing for the authorization to
+  // govern: the same block means the same thing on either turn.
+  it('should read the same block on the agents own turn', function () {
+    const raw = withBlock(block({kind: 'point', quote: 'rather good'}));
+
+    expect(parseReply(raw, true)).toEqual({
+      kind: 'point',
+      text: PROSE,
+      quote: 'rather good',
+    });
+  });
+
+  it('should refuse a point naming no passage', function () {
+    const raw = withBlock(block({kind: 'point', quote: ''}));
+
+    expect(refusal(parseReply(raw, false))).toContain('no passage to point at');
+  });
+
+  // One or the other. A block that both points and replaces is two intentions,
+  // and inkling would have to guess which one the prose above it described.
+  it('should refuse a point that also carries a replacement', function () {
+    const raw = withBlock(block({kind: 'point', quote: 'rather good', replacement: 'good'}));
+
+    expect(refusal(parseReply(raw, false))).toContain('replace it as well');
+  });
+
+  it('should keep the block off the screen as it streams, as any block is', function () {
+    const shown = filtered([withBlock(block({kind: 'point', quote: 'rather good'}))]);
+
+    expect(shown.trim()).toBe(PROSE);
+    expect(shown).not.toContain('point');
+  });
+});
+
 describe('a reply that is refused', function () {
   it('should refuse a block that is not readable as JSON', function () {
     const reply = parseReply(withBlock('{kind: made, quote: "x"'), true);
@@ -93,10 +138,21 @@ describe('a reply that is refused', function () {
     expect(refusal(reply)).toContain('JSON');
   });
 
-  it('should refuse a kind that is neither made nor proposed', function () {
+  it('should refuse a kind that is none of the three', function () {
     const raw = withBlock(block({kind: 'rewritten', quote: 'x', replacement: 'y'}));
 
     expect(refusal(parseReply(raw, true))).toContain('rewritten');
+  });
+
+  // A block is no longer always an edit, so a refusal that called it one would
+  // be telling the writer the wrong thing about a reply that meant to point.
+  it('should refuse an unknown kind without calling every block an edit', function () {
+    const raw = withBlock(block({kind: 'rewritten', quote: 'x'}));
+
+    const reason = refusal(parseReply(raw, true));
+
+    expect(reason).toContain('not a kind of reply');
+    expect(reason).not.toContain('edit');
   });
 
   it('should refuse a block carrying no replacement', function () {
@@ -119,7 +175,8 @@ describe('a reply that is refused', function () {
     expect(refusal(parseReply(raw, false))).toContain('was yours');
   });
 
-  // One quote and one replacement per reply. Multi-hunk edits are 4c's problem.
+  // One passage per reply, whether it is changed or pointed at. A multi-hunk
+  // edit is not something inkling offers.
   it('should refuse a reply carrying more than one block', function () {
     const raw = `${withBlock(block({kind: 'proposed', quote: 'a', replacement: 'b'}))}\n\n${FENCE}\n${block(
       {kind: 'proposed', quote: 'c', replacement: 'd'},
@@ -224,8 +281,9 @@ describe('applyEdit', function () {
     expect(applied).toEqual({ok: true, value: 'The ending is good, and the opening is not.'});
   });
 
-  // The honest answer while anchoring is still 4c's work: the writer edited the
-  // paragraph while the agent was thinking about it.
+  // The honest answer when the writer edited the paragraph while the agent was
+  // thinking about it. An edit matches the text it was given or it does not
+  // apply: rewriting the wrong passage is worse than rewriting none.
   it('should refuse a quote that is no longer in the document', function () {
     const applied = applyEdit(SOURCE, {quote: 'quite good', replacement: 'good'});
 

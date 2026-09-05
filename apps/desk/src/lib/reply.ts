@@ -1,3 +1,5 @@
+import {locate, type Miss} from './pointer.ts';
+
 /**
  * The reply contract: what a turn is allowed to come back as, and how it is read.
  *
@@ -8,8 +10,8 @@
  *
  * Everything in this file is pure: no window, no clock, no network. What a turn
  * comes back as is a union rather than a flag, because the permission prompt
- * cannot exist unless the distinction is structural: the three kinds the agent
- * may send, plus the refusal inkling answers a fourth thing with.
+ * cannot exist unless the distinction is structural: the four kinds the agent
+ * may send, plus the refusal inkling answers a fifth thing with.
  */
 
 /** Opens the one fenced block a reply may carry. See `openingPrompt`. */
@@ -32,11 +34,16 @@ export type Edit = {
  * `made` is only ever produced for a turn that was authorized when it was sent.
  * An agent claiming one on an unauthorized turn is a `refused`, so no caller
  * has to re-check the authorization it already captured.
+ *
+ * `point` changes nothing and asks for nothing: it names a passage the reply is
+ * about, so the chat can offer to show the writer where it is. It is legal on
+ * either turn for that reason.
  */
 export type AgentReply =
   | {kind: 'answer'; text: string}
   | {kind: 'made'; text: string; edit: Edit}
   | {kind: 'proposed'; text: string; edit: Edit}
+  | {kind: 'point'; text: string; quote: string}
   | {kind: 'refused'; text: string; reason: string};
 
 export type EditResult = {ok: true; value: string} | {ok: false; reason: string};
@@ -101,7 +108,7 @@ function openingRun(text: string): number {
 }
 
 /**
- * The whole of what a turn said, read as one of the four shapes above.
+ * The whole of what a turn said, read as one of the five shapes above.
  *
  * `authorized` is the turn's own authorization as captured when it was sent,
  * never re-derived here: a writer who fires off a rewrite and then clicks into
@@ -115,25 +122,40 @@ export function parseReply(raw: string, authorized: boolean): AgentReply {
   const rest = raw.slice(at + FENCE.length);
 
   const close = rest.indexOf(CLOSE);
-  if (close < 0) return refused(text, 'its edit block was never closed');
+  if (close < 0) return refused(text, 'its block was never closed');
   if (rest.slice(close + CLOSE.length).includes(FENCE)) {
-    return refused(text, 'it carried more than one edit block, and a turn may change one passage');
+    return refused(
+      text,
+      'it carried more than one block, and a turn changes or points at one passage',
+    );
   }
 
   const parsed = readJson(rest.slice(0, close));
-  if (parsed === undefined) return refused(text, 'its edit block was not readable as JSON');
+  if (parsed === undefined) return refused(text, 'its block was not readable as JSON');
 
   const kind = parsed['kind'];
-  if (kind !== 'made' && kind !== 'proposed') {
-    return refused(text, `its edit block asked for "${String(kind)}", which is not a kind of edit`);
+  if (kind !== 'made' && kind !== 'proposed' && kind !== 'point') {
+    return refused(text, `its block asked for "${String(kind)}", which is not a kind of reply`);
   }
 
   const quote = parsed['quote'];
   if (typeof quote !== 'string' || quote.length === 0) {
-    return refused(text, 'its edit block named no passage to replace');
+    return refused(
+      text,
+      kind === 'point'
+        ? 'its block named no passage to point at'
+        : 'its edit block named no passage to replace',
+    );
   }
 
   const replacement = parsed['replacement'];
+  if (kind === 'point') {
+    if (replacement !== undefined) {
+      return refused(text, 'its block asked to point at a passage and to replace it as well');
+    }
+    return {kind, text, quote};
+  }
+
   if (typeof replacement !== 'string') {
     return refused(text, 'its edit block carried no replacement text');
   }
@@ -161,26 +183,37 @@ function readJson(body: string): Record<string, unknown> | undefined {
 }
 
 /**
+ * Why an edit's quote could not be placed, as the status bar says it.
+ *
+ * Whole sentences, because that is where they land: `App` puts them beside a
+ * save failure with nothing else around them. The chat says the same two misses
+ * in its own words, inside a notice that has already begun the sentence.
+ */
+const EDIT_MISS: Record<Miss, string> = {
+  missing: 'The passage the agent quoted is not in the document any more.',
+  ambiguous: 'The passage the agent quoted appears more than once, so where it meant is unclear.',
+};
+
+/**
  * Puts an edit into a source string, refusing rather than guessing.
  *
- * Exact matching, and exactly one match. A quote that is no longer there, and a
- * quote that could go in either of two places, are both answered with a
- * sentence rather than with a replacement the writer did not mean. Tolerant
- * anchors are 4c and deliberately not here.
+ * The matching rule is `locate`, shared with pointing: exact, and exactly one
+ * match. A quote that is no longer there, and a quote that could go in either of
+ * two places, are both answered with a sentence rather than with a replacement
+ * the writer did not mean.
+ *
+ * Deliberately not tolerant. A pointer that resolves onto the wrong passage
+ * highlights the wrong words; an edit that did would rewrite them, so an edit
+ * matches the text it was given or it does not apply at all.
  */
 export function applyEdit(source: string, edit: Edit): EditResult {
-  const first = source.indexOf(edit.quote);
-  if (first < 0) {
-    return {ok: false, reason: 'The passage the agent quoted is not in the document any more.'};
-  }
-  if (source.indexOf(edit.quote, first + 1) >= 0) {
-    return {
-      ok: false,
-      reason: 'The passage the agent quoted appears more than once, so where it meant is unclear.',
-    };
-  }
+  const found = locate(source, edit.quote);
+  if (!found.ok) return {ok: false, reason: EDIT_MISS[found.miss]};
   return {
     ok: true,
-    value: source.slice(0, first) + edit.replacement + source.slice(first + edit.quote.length),
+    value:
+      source.slice(0, found.start) +
+      edit.replacement +
+      source.slice(found.start + edit.quote.length),
   };
 }

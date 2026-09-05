@@ -5,6 +5,7 @@ import {
   pendingTurn,
   type StoredTurn,
 } from '../src/lib/conversations.ts';
+import {FENCE} from '../src/lib/reply.ts';
 
 function turn(overrides: Partial<StoredTurn> = {}): StoredTurn {
   return {
@@ -71,6 +72,73 @@ describe('messagesOf', function () {
 
   it('should return nothing for a conversation that has said nothing', function () {
     expect(messagesOf([])).toEqual([]);
+  });
+});
+
+describe('a stored turn that carried a block', function () {
+  const SNAPSHOT = 'The ending is rather good, and the opening is not.';
+
+  /** A stored answer as the row holds it: the prose, then the raw block. */
+  function answered(body: Record<string, unknown>, prose = 'The ending is the strong half.') {
+    return turn({
+      snapshot: SNAPSHOT,
+      answered: `${prose}\n\n${FENCE}\n${JSON.stringify(body)}\n\`\`\``,
+    });
+  }
+
+  // The streaming filter only ran live, so without reading the row back through
+  // the reply reader, re-opening a conversation would show the writer the JSON
+  // the panel hid while it arrived.
+  it('should render the prose alone, never the block', function () {
+    const [, reply] = messagesOf([answered({kind: 'point', quote: 'rather good'})]);
+
+    expect(reply?.text).toBe('The ending is the strong half.');
+  });
+
+  it('should show no block for a stored edit either', function () {
+    const [, reply] = messagesOf([
+      answered({kind: 'proposed', quote: 'rather good', replacement: 'good'}),
+    ]);
+
+    expect(reply?.text).toBe('The ending is the strong half.');
+    expect(reply?.pointer).toBeUndefined();
+  });
+
+  // Built against the snapshot, the document as the agent saw it, so the anchor
+  // records the context that was actually around the passage.
+  it('should rebuild the pointer a stored point block named', function () {
+    const [, reply] = messagesOf([answered({kind: 'point', quote: 'rather good'})]);
+
+    expect(reply?.pointer?.quote).toBe('rather good');
+    expect(reply?.pointer?.anchor.hint).toBe(SNAPSHOT.indexOf('rather good'));
+  });
+
+  // The turn is over and there is nothing left to answer, so the transcript says
+  // nothing about it rather than raising a notice a week after the fact.
+  it('should yield the prose and no pointer when the snapshot lost the passage', function () {
+    const [, reply] = messagesOf([answered({kind: 'point', quote: 'the closing line'})]);
+
+    expect(reply?.text).toBe('The ending is the strong half.');
+    expect(reply?.pointer).toBeUndefined();
+  });
+
+  it('should yield no pointer when the snapshot holds the passage twice', function () {
+    const [, reply] = messagesOf([
+      turn({
+        snapshot: 'One. Two. One.',
+        answered: `Both of them.\n\n${FENCE}\n${JSON.stringify({kind: 'point', quote: 'One.'})}\n\`\`\``,
+      }),
+    ]);
+
+    expect(reply?.text).toBe('Both of them.');
+    expect(reply?.pointer).toBeUndefined();
+  });
+
+  it('should leave an ordinary answer exactly as it was said', function () {
+    const [, reply] = messagesOf([turn({answered: 'Cut the last line.'})]);
+
+    expect(reply?.text).toBe('Cut the last line.');
+    expect(reply?.pointer).toBeUndefined();
   });
 });
 

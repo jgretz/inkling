@@ -1,5 +1,7 @@
 import type {DocPath} from '@inkling/vault';
 import type {Message} from './agent.ts';
+import {pointerFor} from './pointer.ts';
+import {parseReply} from './reply.ts';
 
 /**
  * Stored conversations, as rows and as the messages a panel renders.
@@ -92,12 +94,35 @@ export const INTERRUPTED_TEXT = 'This turn ended while inkling was closed.';
 /** The name a conversation gets when the writer has not chosen one. */
 export const DEFAULT_TITLE = 'Conversation';
 
-/** The agent's half of one stored turn, as the panel renders it. */
+/**
+ * The agent's half of one stored turn, as the panel renders it.
+ *
+ * An answered turn is read back through the reply reader rather than rendered
+ * raw. The row holds what was actually said, block and all, and the streaming
+ * filter that hid the block only ran live: without this, re-opening a
+ * conversation would show the writer the JSON the panel hid while it arrived.
+ *
+ * Reading it back is also what makes a pointer survive a restart with nothing
+ * stored for it. The quote is located in `snapshot`, the document as the agent
+ * saw it, and turned into an anchor there; a quote that snapshot does not hold,
+ * or holds twice, yields the prose and no pointer. Nothing is said about it,
+ * because the turn is over and there is nothing left to answer.
+ */
 function replyOf(turn: StoredTurn): Message {
   const base = {id: `t${turn.id}a`, role: 'agent' as const, at: turn.createdAt};
   switch (turn.state) {
-    case 'answered':
-      return {...base, text: turn.answered ?? ''};
+    case 'answered': {
+      // Authorized: whether the turn was is not recorded, and nothing here
+      // applies an edit, so the only thing the flag could change is whether a
+      // stored `made` block reads back as a refusal. The prose is the same
+      // either way.
+      const reply = parseReply(turn.answered ?? '', true);
+      if (reply.kind !== 'point') return {...base, text: reply.text};
+
+      const pointer = pointerFor(turn.snapshot, reply.quote);
+      if (!pointer.ok) return {...base, text: reply.text};
+      return {...base, text: reply.text, pointer: pointer.value};
+    }
     case 'failed':
       return {...base, text: `Failed: ${turn.answered ?? 'the turn did not finish'}`};
     case 'interrupted':

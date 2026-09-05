@@ -3,6 +3,8 @@ import {describe, expect, it, mock} from 'bun:test';
 import {act, fireEvent, render} from '@testing-library/react';
 import {undo} from '@codemirror/commands';
 import {EditorView} from '@codemirror/view';
+import {resolveAnchor} from '@inkling/voice';
+import type {Pointer} from '../src/lib/pointer.ts';
 import {EditorPanel} from '../src/components/editor/EditorPanel.tsx';
 
 autoCleanup();
@@ -34,6 +36,7 @@ const MOD: 'metaKey' | 'ctrlKey' = /Mac/.test(globalThis.navigator?.platform ?? 
 type PanelProps = {
   source: string;
   onChange?: (source: string) => void;
+  onSelect?: (selection: Pointer | undefined) => void;
   onSave?: () => void;
   onFocus?: () => void;
 };
@@ -44,7 +47,7 @@ function panel(props: PanelProps) {
       path="drafts/a.md"
       source={props.source}
       onChange={props.onChange ?? function () {}}
-      onSelect={function () {}}
+      onSelect={props.onSelect ?? function () {}}
       onSave={props.onSave ?? function () {}}
       onFocus={props.onFocus ?? function () {}}
       findings={[]}
@@ -130,6 +133,60 @@ describe('EditorPanel', function () {
     });
 
     expect(onFocus).toHaveBeenCalled();
+  });
+
+  it('should report a selection as a pointer at the highlighted passage', function () {
+    const seen: Array<Pointer | undefined> = [];
+    const {view} = mount({
+      source: 'The ending is rather good.',
+      onSelect(selection) {
+        seen.push(selection);
+      },
+    });
+
+    act(function () {
+      view.dispatch({selection: {anchor: 14, head: 25}});
+    });
+
+    expect(seen[seen.length - 1]?.quote).toBe('rather good');
+  });
+
+  // An anchor, not the offsets it was made at: the writer goes on editing, and
+  // the passage has to be findable after they have.
+  it('should report an anchor that still finds the passage after an edit above it', function () {
+    const seen: Array<Pointer | undefined> = [];
+    const {view} = mount({
+      source: 'The ending is rather good.',
+      onSelect(selection) {
+        seen.push(selection);
+      },
+    });
+
+    act(function () {
+      view.dispatch({selection: {anchor: 14, head: 25}});
+    });
+
+    const pointer = seen[seen.length - 1];
+    if (pointer === undefined) throw new Error('the panel reported no selection');
+    const moved = 'A new first sentence. The ending is rather good.';
+
+    expect(resolveAnchor(moved, pointer.anchor)).toEqual({start: 36, end: 47});
+  });
+
+  it('should report nothing when the writer only moves the caret', function () {
+    const seen: Array<Pointer | undefined> = [];
+    const {view} = mount({
+      source: 'The ending is rather good.',
+      onSelect(selection) {
+        seen.push(selection);
+      },
+    });
+
+    act(function () {
+      view.dispatch({selection: {anchor: 6}});
+    });
+
+    expect(seen[seen.length - 1]).toBeUndefined();
   });
 
   // An accepted proposal reaches the editor as a changed `source` prop, and the

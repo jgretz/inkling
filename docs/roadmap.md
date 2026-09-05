@@ -22,18 +22,18 @@ possible.
 
 ## In flight
 
-| Run        | Item                     | Waits on |
-| ---------- | ------------------------ | -------- |
-| `a02a1681` | 4c anchored highlighting | 4b       |
+Nothing.
 
-Phases 1 and 2 are complete and merged, and so are 3 (`370adfa9`) and 4a
-(`69034d50`). 4b (`3d1ae893`) is done and awaiting merge: the turn is derived
-from focus with a pin over it, and both edit paths are built.
+Phases 1 and 2 are complete and merged, and so are 3 (`370adfa9`), 4a
+(`69034d50`) and 4b (`3d1ae893`): the turn is derived from focus with a pin over
+it, and both edit paths are built. 4c (`a02a1681`) is done and awaiting merge:
+both sides point at passages by quote anchor, and the editor reveals and tints
+what they name. Phase 4 is complete.
 
 Phase 4 is split three ways rather than by its numbered items. 4a carries 4.1,
 4.2 and 4.5, because prompt assembly is where voice guidance lands and building
 it twice would be wasteful. 4b is 4.3 and 4c is 4.4. Everything is serialized:
-all four touch the chat panel and `App.tsx`, so parallel runs would collide.
+all three touch the chat panel and `App.tsx`, so parallel runs would collide.
 
 The toryo dependency is met. All four dispatch runs landed, and they delivered
 more than the roadmap assumed: `@toryo/dispatch-client/http` carries a

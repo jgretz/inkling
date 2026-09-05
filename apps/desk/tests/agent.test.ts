@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import type {DocPath} from '@inkling/vault';
 import {contextTokens, emptyContext, estimateTokens} from '../src/lib/agent.ts';
+import {pointerAt} from '../src/lib/pointer.ts';
 import type {ContextReference} from '../src/lib/references.ts';
 
 /** An assembled reference carrying `source`, as `assembleReferences` returns one. */
@@ -36,7 +37,9 @@ describe('contextTokens', function () {
   it('should total the document, the selection and every reference', function () {
     const total = contextTokens({
       doc: {path: 'a.md' as DocPath, title: 'A', source: 'x'.repeat(400)},
-      selection: 'y'.repeat(40),
+      // Only the quote costs anything: the anchor is inkling's own bookkeeping
+      // and never leaves the machine.
+      selection: pointerAt('y'.repeat(40), 0, 40),
       references: [reference('z'.repeat(80))],
     });
 

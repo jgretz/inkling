@@ -13,6 +13,7 @@ import {
 import type {AgentContext} from './lib/agent.ts';
 import {daemonToken, initDaemonToken, refreshDaemonToken} from './lib/daemon-token.ts';
 import {createDispatchTransport, type TokenAccess} from './lib/dispatch-transport.ts';
+import {resolvePointer, type Pointer} from './lib/pointer.ts';
 import {assembleReferences} from './lib/references.ts';
 import {applyEdit, type Edit} from './lib/reply.ts';
 import {cyclePin, deriveMode, indicatorFor, type FocusRegion} from './lib/turn.ts';
@@ -63,7 +64,8 @@ function vaultName(vault: VaultPath | undefined): string {
 export function App() {
   const workspace = useWorkspace();
   const [layout, setLayout] = useState<LayoutSettings>(DEFAULT_SETTINGS.layout);
-  const [selection, setSelection] = useState('');
+  /** What the writer has highlighted, as a pointer. Session-scoped; nothing stores it. */
+  const [selection, setSelection] = useState<Pointer | undefined>(undefined);
   const [restored, setRestored] = useState(false);
   /** Where focus last was, which is what the turn mode is derived from. */
   const [lastFocus, setLastFocus] = useState<FocusRegion | undefined>(undefined);
@@ -212,7 +214,7 @@ export function App() {
           path === undefined || draft === undefined
             ? undefined
             : {path, title: titles.get(path) ?? path, source: draft},
-        selection: selection.length > 0 ? selection : undefined,
+        selection,
         references: assembleReferences(
           path,
           references.rows,
@@ -452,6 +454,31 @@ export function App() {
     [land],
   );
 
+  /**
+   * A passage in the transcript the writer asked to see.
+   *
+   * `resolvePointer` reads the draft as it stands now, never the offsets the
+   * passage had when it was pointed at, which is what lets a pointer survive
+   * the paragraph above it being rewritten. A passage that is genuinely gone is
+   * said to be gone, and nothing moves.
+   *
+   * Revealing sets the editor selection, so the passage becomes the writer's
+   * selection for the next turn, and the focus the reveal takes makes it the
+   * writer's turn. Both by the rules already in `turn.ts` and `EditorPanel`
+   * rather than by anything decided here.
+   */
+  const handlePoint = useCallback(function (pointer: Pointer) {
+    const found = resolvePointer(draftRef.current, pointer);
+    if (!found.ok) {
+      setAgentError(found.reason);
+      return;
+    }
+    setAgentError(undefined);
+    setReveal(function (current) {
+      return {range: found.range, seq: (current?.seq ?? 0) + 1, mark: true};
+    });
+  }, []);
+
   const handlePin = useCallback(function () {
     setLayout(function (current) {
       return {...current, turnPin: cyclePin(current.turnPin)};
@@ -592,6 +619,7 @@ export function App() {
                   onFlush={flush}
                   onAccept={handleAccept}
                   onLand={handleLand}
+                  onPoint={handlePoint}
                   onFocus={handleChatFocus}
                 />
               ) : (

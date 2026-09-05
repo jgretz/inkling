@@ -190,7 +190,7 @@ export function ContextStrip({context, references}: ContextStripProps) {
             <Chip label={context.doc.title} tokens={estimateTokens(context.doc.source)} />
           )}
           {context.selection !== undefined && (
-            <Chip label="Selection" tokens={estimateTokens(context.selection)} />
+            <Chip label="Selection" tokens={estimateTokens(context.selection.quote)} />
           )}
           {context.references.map(function (entry) {
             return (

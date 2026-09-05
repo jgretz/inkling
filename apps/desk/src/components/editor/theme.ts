@@ -51,6 +51,15 @@ const paint = EditorView.theme(
     },
     '.cm-voice-finding:hover': {textDecorationColor: 'var(--color-voice-mark-strong)'},
 
+    // A passage somebody pointed at: a background tint, so it reads as a
+    // different signal from the finding underline above rather than as a second
+    // one of it. Colour and radius only; nothing here touches metrics, so
+    // painting a passage cannot reflow the paragraph around it.
+    '.cm-agent-point': {
+      backgroundColor: 'var(--color-point-mark)',
+      borderRadius: '2px',
+    },
+
     '.cm-tooltip, .cm-tooltip-hover': {
       backgroundColor: 'var(--color-ink-850)',
       border: '1px solid var(--color-ink-700)',

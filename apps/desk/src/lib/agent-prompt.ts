@@ -1,5 +1,6 @@
 import {DEFAULT_VOICE_THRESHOLDS, type ResolvedVoice, type VoiceThresholds} from '@inkling/voice';
 import type {AgentContext} from './agent.ts';
+import type {Pointer} from './pointer.ts';
 import type {ContextReference} from './references.ts';
 import {FENCE} from './reply.ts';
 
@@ -123,7 +124,10 @@ export function followUpPrompt({
   message,
 }: FollowUpTurn): string {
   const draftMoved = context.doc?.source !== previous.doc?.source;
-  const selectionMoved = context.selection !== previous.selection;
+  // The quote, never the pointer. Two selections of the same words are two
+  // objects, so comparing them would re-send the selection block every turn for
+  // the rest of the conversation.
+  const selectionMoved = context.selection?.quote !== previous.selection?.quote;
 
   return blocks([
     rulesBlock(voice),
@@ -175,8 +179,9 @@ function removed(
  */
 const CONTRACT_BLOCK = `## How to reply
 
-Ordinary prose, unless the reply changes the document or asks to. When it does,
-end the reply with one fenced block, and put nothing after it:
+Ordinary prose, unless the reply changes the document, asks to, or points at a
+passage in it. When it does, end the reply with one fenced block, and put
+nothing after it:
 
 ${FENCE}
 {"kind": "proposed", "quote": "the passage exactly as it stands now", "replacement": "what goes there instead"}
@@ -188,9 +193,21 @@ ${FENCE}
   enough to appear in it only once. An edit whose quote inkling cannot find, or
   finds twice, is refused and the writer is told why.
 - \`replacement\` is what goes there instead. An empty string deletes the passage.
-- One block, replacing one passage. A reply carrying two is refused whole.
-- The writer never sees the block. Say what you did, or what you are asking to
-  do, in the prose above it.`;
+- One block, about one passage. A reply carrying two is refused whole.
+- The writer never sees the block. Say what you did, what you are asking to do,
+  or what you are pointing at, in the prose above it.
+
+To point at a passage without changing it, send this instead:
+
+${FENCE}
+{"kind": "point", "quote": "the passage exactly as it stands now"}
+\`\`\`
+
+- The same quote rule: copied exactly, and long enough to appear only once.
+- No \`replacement\`. A point changes nothing, and is legal on either turn.
+- Naming the passage beats describing where it is. "The third paragraph" is
+  something the writer has to go and count; a quote is something inkling can
+  scroll to and highlight for them.`;
 
 /**
  * Which of the two edit kinds is legal on this turn, and what the other one
@@ -253,14 +270,15 @@ ${doc.title} (${doc.path})
 ${doc.source}`;
 }
 
-function selectionBlock(selection: string | undefined): string {
+/** What the writer highlighted, as its own words. Where it was is inkling's. */
+function selectionBlock(selection: Pointer | undefined): string {
   if (selection === undefined) return '## Selection\n\nThe writer has nothing selected.';
 
   return `## Selection
 
 The writer highlighted this:
 
-${selection}`;
+${selection.quote}`;
 }
 
 /**

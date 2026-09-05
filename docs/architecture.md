@@ -218,9 +218,14 @@ after it.
 
 A reply chunk is either prose or the turn's one parsed reply, and the parsing is
 the transport's job rather than the panel's. `lib/reply.ts` is where a turn
-becomes an answer, an edit made, an edit proposed or a refusal with a reason;
-`lib/turn.ts` is where focus and the pin become the authorization that turn was
-sent with. Both are pure, and both are exercised without a window. See
+becomes an answer, an edit made, an edit proposed, a passage pointed at, or a
+refusal with a reason; `lib/turn.ts` is where focus and the pin become the
+authorization that turn was sent with. `lib/pointer.ts` is the third of them: a
+passage anyone pointed at, as its quote plus the anchor that finds it again, over
+`createAnchor` from `@inkling/voice`. The writer's selection and a reply's
+pointer are the same shape, and the exact single-occurrence rule that locates a
+quote lives there once, for edits and pointers alike. All three are pure, and all
+three are exercised without a window. See
 [`turn-taking.md`](./turn-taking.md).
 
 The context strip above the composer lists the text the next turn will carry,

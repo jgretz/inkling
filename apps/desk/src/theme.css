@@ -27,6 +27,11 @@
   --color-voice-mark: #6f645a;
   --color-voice-mark-strong: #b08d5a;
 
+  /* The tint behind a passage the writer or the agent pointed at. Kept clear of
+     both voice marks: a finding and a pointer can cover the same words, and the
+     two have to stay tellable apart. */
+  --color-point-mark: #453720;
+
   --font-prose: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
   --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
   --font-mono: 'SF Mono', 'JetBrains Mono', 'Menlo', ui-monospace, monospace;
