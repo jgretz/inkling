@@ -14,7 +14,7 @@ import {InlineField} from './InlineField.tsx';
  * and three booleans would let two of them be true.
  */
 export type Editing =
-  | {kind: 'newGroup'; parent: GroupPath | undefined}
+  | {kind: 'newGroup'}
   | {kind: 'renameGroup'; group: GroupPath}
   | {kind: 'newDoc'; group: GroupPath | undefined};
 

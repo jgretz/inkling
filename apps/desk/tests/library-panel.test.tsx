@@ -131,6 +131,36 @@ describe('LibraryPanel', function () {
     expect(view.getByText('On writing')).toBeDefined();
   });
 
+  it('should reveal a match inside a group the writer had folded shut', function () {
+    const view = panel();
+    fireEvent.click(header(view, 'drafts'));
+    expect(view.queryByText('On writing')).toBeNull();
+
+    fireEvent.change(view.getByLabelText('Search documents'), {target: {value: 'On writing'}});
+
+    expect(view.getByText('On writing')).toBeDefined();
+  });
+
+  it('should fold the group shut again once the filter is cleared', function () {
+    const view = panel();
+    fireEvent.click(header(view, 'drafts'));
+    fireEvent.change(view.getByLabelText('Search documents'), {target: {value: 'On writing'}});
+
+    fireEvent.change(view.getByLabelText('Search documents'), {target: {value: ''}});
+
+    expect(view.queryByText('On writing')).toBeNull();
+  });
+
+  it('should reveal a match among the ungrouped documents when they are folded shut', function () {
+    const view = panel();
+    fireEvent.click(view.getByRole('button', {name: 'No group'}));
+    expect(view.queryByText('Root piece')).toBeNull();
+
+    fireEvent.change(view.getByLabelText('Search documents'), {target: {value: 'Root piece'}});
+
+    expect(view.getByText('Root piece')).toBeDefined();
+  });
+
   it('should open a document when its row is clicked', function () {
     const onOpen = mock(function () {});
     const {getByText} = panel({onOpen});

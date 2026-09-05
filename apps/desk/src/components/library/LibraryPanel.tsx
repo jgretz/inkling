@@ -1,7 +1,6 @@
 import {useCallback, useDeferredValue, useMemo, useState} from 'react';
 import type {ChangeEvent} from 'react';
-import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down';
-import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right';
+import {match} from 'ts-pattern';
 import FilePlus from 'lucide-react/dist/esm/icons/file-plus';
 import FolderPlus from 'lucide-react/dist/esm/icons/folder-plus';
 import Search from 'lucide-react/dist/esm/icons/search';
@@ -11,11 +10,12 @@ import {
   movedTo,
   type DocPath,
   type DocSummary,
+  type GroupNode,
   type GroupPath,
 } from '@inkling/vault';
-import {DocRow} from './DocRow.tsx';
 import {GroupRow, type Editing} from './GroupRow.tsx';
 import {InlineField} from './InlineField.tsx';
+import {RootSection} from './RootSection.tsx';
 
 type LibraryPanelProps = {
   docs: DocSummary[];
@@ -30,6 +30,9 @@ type LibraryPanelProps = {
   onMoveDoc: (from: DocPath, to: DocPath) => void;
   onCreateDoc: (path: DocPath, title: string) => void;
 };
+
+/** A stable empty list, so a filtered render does not break `GroupRow`'s memo. */
+const NOTHING_COLLAPSED: readonly string[] = [];
 
 const HEADER_ACTION =
   'rounded p-1 text-ink-600 transition-colors duration-100 hover:text-ink-200 focus:outline-none focus:ring-1 focus:ring-accent-muted';
@@ -119,7 +122,7 @@ export function LibraryPanel({
   }, []);
 
   const startNewGroup = useCallback(function () {
-    setEditing({kind: 'newGroup', parent: undefined});
+    setEditing({kind: 'newGroup'});
   }, []);
 
   const startNewDoc = useCallback(function () {
@@ -134,25 +137,36 @@ export function LibraryPanel({
     function (value: string) {
       if (editing === undefined) return;
       setEditing(undefined);
-      if (editing.kind === 'newGroup') {
-        const parent = editing.parent;
-        onCreateGroup((parent === undefined ? value : `${parent}/${value}`) as GroupPath);
-        return;
-      }
-      if (editing.kind === 'renameGroup') {
-        // Only the last segment is editable, so a rename stays a rename: moving
-        // a group somewhere else is a different gesture the panel does not
-        // offer yet.
-        const parent = editing.group.split('/').slice(0, -1).join('/');
-        onRenameGroup(editing.group, (parent === '' ? value : `${parent}/${value}`) as GroupPath);
-        return;
-      }
-      onCreateDoc(movedTo(fileNameFor(value), editing.group), value);
+      // Exhaustive rather than an if-chain ending in a fallthrough: a fourth
+      // kind of field added later must not quietly write a document.
+      match(editing)
+        .with({kind: 'newGroup'}, function () {
+          // A path rather than a name, if that is what the writer typed: the
+          // Rust side makes every group above it that does not exist yet.
+          onCreateGroup(value as GroupPath);
+        })
+        .with({kind: 'renameGroup'}, function ({group}) {
+          // Only the last segment is editable, so a rename stays a rename:
+          // moving a group somewhere else is a different gesture the panel does
+          // not offer yet.
+          const parent = group.split('/').slice(0, -1).join('/');
+          onRenameGroup(group, (parent === '' ? value : `${parent}/${value}`) as GroupPath);
+        })
+        .with({kind: 'newDoc'}, function ({group}) {
+          onCreateDoc(movedTo(fileNameFor(value), group), value);
+        })
+        .exhaustive();
     },
     [editing, onCreateGroup, onRenameGroup, onCreateDoc],
   );
 
   const naming = editing?.kind === 'newDoc' && editing.group === undefined;
+  // While a query is running, every section is open. A filter that leaves its
+  // own matches folded out of sight has not answered the question, and the
+  // writer's own collapse state is still there when they clear the box.
+  const filtering = deferred.trim().length > 0;
+  const foldedShut = filtering ? NOTHING_COLLAPSED : collapsed;
+  const rootShown = rootOpen || filtering;
 
   return (
     <aside className="flex h-full min-w-0 flex-col bg-ink-950">
@@ -220,48 +234,18 @@ export function LibraryPanel({
         ) : (
           <ul className="space-y-0.5">
             {(tree.root.length > 0 || naming) && (
-              <li>
-                <button
-                  type="button"
-                  aria-expanded={rootOpen}
-                  onClick={toggleRoot}
-                  className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] uppercase tracking-wider text-ink-400 transition-colors duration-100 hover:bg-ink-800 hover:text-ink-200"
-                >
-                  {rootOpen ? (
-                    <ChevronDown size={12} className="shrink-0 text-ink-600" aria-hidden />
-                  ) : (
-                    <ChevronRight size={12} className="shrink-0 text-ink-600" aria-hidden />
-                  )}
-                  <span className="truncate">No group</span>
-                </button>
-
-                {naming && (
-                  <InlineField
-                    label="Title of the new document"
-                    placeholder="Document title"
-                    onSubmit={submitEditing}
-                    onCancel={cancelEditing}
-                  />
-                )}
-
-                {rootOpen && (
-                  <ul className="space-y-0.5">
-                    {tree.root.map(function (doc) {
-                      return (
-                        <li key={doc.path}>
-                          <DocRow
-                            doc={doc}
-                            active={doc.path === openPath}
-                            groups={groups}
-                            onOpen={onOpen}
-                            onMove={onMoveDoc}
-                          />
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </li>
+              <RootSection
+                docs={tree.root}
+                openPath={openPath}
+                groups={groups}
+                open={rootShown}
+                naming={naming}
+                onToggle={toggleRoot}
+                onOpen={onOpen}
+                onMove={onMoveDoc}
+                onSubmit={submitEditing}
+                onCancel={cancelEditing}
+              />
             )}
 
             {tree.groups.map(function (node) {
@@ -271,7 +255,7 @@ export function LibraryPanel({
                   node={node}
                   openPath={openPath}
                   groups={groups}
-                  collapsed={collapsed}
+                  collapsed={foldedShut}
                   editing={editing}
                   onToggle={toggleGroup}
                   onOpen={onOpen}
@@ -289,7 +273,7 @@ export function LibraryPanel({
 }
 
 /** Every document in the tree, however deep, for the count in the header. */
-function countDocs(nodes: ReturnType<typeof groupTree>['groups']): number {
+function countDocs(nodes: readonly GroupNode[]): number {
   return nodes.reduce(function (total, node) {
     return total + node.docs.length + countDocs(node.children);
   }, 0);
