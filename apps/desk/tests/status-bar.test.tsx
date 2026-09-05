@@ -34,4 +34,37 @@ describe('StatusBar', function () {
     expect(getByText('not a directory: /gone')).toBeDefined();
     expect(getByText('database unavailable')).toBeDefined();
   });
+
+  it('should show the confirmation when there is one', function () {
+    const {getByText} = render(<StatusBar info="Copied as rich text" />);
+
+    expect(getByText('Copied as rich text')).toBeDefined();
+  });
+
+  it('should say nothing when there is nothing to confirm', function () {
+    const {container} = render(<StatusBar notice="database unavailable" />);
+
+    expect(container.textContent).toBe('database unavailable');
+  });
+
+  // Success is not a degradation. The two lines must be told apart by something
+  // other than their words, or the writer learns to read every line as a warning.
+  it('should style a confirmation as neither an error nor a notice', function () {
+    const {getByText} = render(
+      <StatusBar
+        error="not a directory: /gone"
+        notice="database unavailable"
+        info="Exported to a.md"
+      />,
+    );
+
+    const info = getByText('Exported to a.md');
+    const notice = getByText('database unavailable');
+    const error = getByText('not a directory: /gone');
+
+    expect(info.className).not.toBe(notice.className);
+    expect(info.className).not.toBe(error.className);
+    expect(info.className).not.toContain('amber');
+    expect(info.className).not.toContain('red');
+  });
 });

@@ -11,6 +11,7 @@ apps/desk/            the Tauri desktop app
       findings/       the voice findings strip, under the editor
   src-tauri/          the Rust half
     src/vault.rs      filesystem commands, path containment
+    src/export.rs     one write outside the vault, where the writer pointed
     src/settings.rs   one JSON file in the platform config dir
     src/data.rs       the vault's SQLite database, one connection
     src/voice.rs      dismissed findings, stored against their anchors
@@ -46,6 +47,13 @@ One document, three views of it, left to right.
 | Preview | The document rendered, tracking the editor buffer live | `components/preview` |
 | Editor  | Raw markdown in CodeMirror 6                           | `components/editor`  |
 | Agent   | An open conversation about the document                | `components/chat`    |
+
+The preview's pipeline is the app's only one. `components/preview/DocMarkdown.tsx`
+is the single file that names `react-markdown` and configures `remark-gfm`, and
+`lib/rich-text.tsx` renders that same component with a map of inline-style
+overrides to produce the HTML that goes on the clipboard. A plugin added for the
+preview is on the clipboard the same day, and what the writer reads on screen
+cannot drift from what a mail client receives.
 
 A collapsible library sits left of the preview, showing the vault as the
 writer's own folders arrange it: documents at the root first, in an unnamed
@@ -96,6 +104,13 @@ or not its target exists. `resolve_dir` beside it applies the same containment
 rule to a directory, drops the extension check, and adds two refusals of its
 own: the vault root is not a group, and neither is a segment the listing hides,
 so a writer cannot make a `.drafts` the library could never show them.
+
+Exporting is the one write that goes through neither, because its destination is
+outside the vault on purpose. `export_doc` in `src-tauri/src/export.rs` takes the
+absolute path the OS save dialog returned, and what it refuses instead is a path
+no dialog would produce: a relative one, or one whose parent directory is not
+there. It never creates a directory, so a path from anywhere else fails rather
+than putting the writer's piece somewhere nobody picked.
 
 ## The vault's data directory
 

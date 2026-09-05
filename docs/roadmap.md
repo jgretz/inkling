@@ -170,10 +170,11 @@ conversation that produced it.
 
 ## Phase 6: Output
 
-**6.1 Export.** A clean markdown file, frontmatter stripped or kept by choice.
-
-**6.2 Rich clipboard.** Markdown rendered to HTML and written to the clipboard
-alongside the plain text, so a draft pastes into Apple Mail as formatted text.
+**6.1 Export** and **6.2 Rich clipboard** are in flight as run `3ab6b706`, one
+task because they are one gesture with two destinations. A clean markdown file
+with the frontmatter kept or stripped by choice, and the same document rendered
+to HTML and written to the clipboard beside the plain text, so a draft pastes
+into Apple Mail as formatted text. See "In flight".
 
 **6.3 Revisions.** A button that snapshots the current document into `.inkling/`
 as the next revision, and a list to read them back. Manual, never automatic.

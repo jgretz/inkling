@@ -1,9 +1,15 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {confirm, open} from '@tauri-apps/plugin-dialog';
-import {groupOf, type DocPath, type VaultPath} from '@inkling/vault';
+import {confirm, open, save} from '@tauri-apps/plugin-dialog';
+import {groupOf, parseDoc, type DocPath, type VaultPath} from '@inkling/vault';
 import {resolveVoice, type Finding} from '@inkling/voice';
 import {createHeldSessionClient} from '@inkling/toryo';
-import {isDesktop, loadSettings, saveSettings, tauriConversations} from './lib/bridge.ts';
+import {
+  exportDoc,
+  isDesktop,
+  loadSettings,
+  saveSettings,
+  tauriConversations,
+} from './lib/bridge.ts';
 import {
   DEFAULT_SETTINGS,
   parseSettings,
@@ -11,11 +17,20 @@ import {
   type ToggleKey,
 } from './lib/settings.ts';
 import type {AgentContext} from './lib/agent.ts';
+import {copyRichText, systemClipboard} from './lib/clipboard.ts';
 import {daemonToken, initDaemonToken, refreshDaemonToken} from './lib/daemon-token.ts';
 import {createDispatchTransport, type TokenAccess} from './lib/dispatch-transport.ts';
+import {
+  defaultExportPath,
+  exportDirectory,
+  exportFileName,
+  exportSource,
+  type FrontmatterChoice,
+} from './lib/export.ts';
 import {resolvePointer, type Pointer} from './lib/pointer.ts';
 import {assembleReferences} from './lib/references.ts';
 import {applyEdit, type Edit} from './lib/reply.ts';
+import {docToHtml} from './lib/rich-text.tsx';
 import {cyclePin, deriveMode, indicatorFor, type FocusRegion} from './lib/turn.ts';
 import {useConversations} from './lib/use-conversations.ts';
 import {useFindings} from './lib/use-findings.ts';
@@ -73,6 +88,16 @@ export function App() {
   const [landing, setLanding] = useState(false);
 
   const [agentError, setAgentError] = useState<string | undefined>(undefined);
+  /** An export or a copy that could not happen, said the way a failed save is. */
+  const [outputError, setOutputError] = useState<string | undefined>(undefined);
+  /**
+   * Something that went right, shown for a moment and then dropped. The counter
+   * is what re-arms the timer when the same message is flashed twice, the same
+   * idiom `reveal` uses for revealing the same finding twice.
+   */
+  const [flash, setFlash] = useState<{message: string; seq: number} | undefined>(undefined);
+  /** Where the last export landed, so the next save dialog opens there. */
+  const [lastExportDir, setLastExportDir] = useState<string | undefined>(undefined);
 
   const {chooseVault, openDoc} = workspace;
 
@@ -97,6 +122,7 @@ export function App() {
           if (!live) return;
           const settings = parseSettings(raw);
           setLayout(settings.layout);
+          setLastExportDir(settings.lastExportDir);
           if (settings.vault !== undefined) chooseVault(settings.vault);
           if (settings.lastDoc !== undefined) openDoc(settings.lastDoc as DocPath);
         })
@@ -119,12 +145,33 @@ export function App() {
   useEffect(
     function () {
       if (!restored || !isDesktop()) return;
-      saveSettings({vault, lastDoc: openPath, layout}).catch(function (error) {
+      saveSettings({vault, lastDoc: openPath, lastExportDir, layout}).catch(function (error) {
         console.warn('inkling: could not persist settings', error);
       });
     },
-    [restored, vault, openPath, layout],
+    [restored, vault, openPath, lastExportDir, layout],
   );
+
+  // Cleared on a timer rather than on the next action: the writer's eyes are on
+  // the document, and a line that stayed would become part of the furniture.
+  useEffect(
+    function () {
+      if (flash === undefined) return;
+      const timer = setTimeout(function () {
+        setFlash(undefined);
+      }, 3000);
+      return function () {
+        clearTimeout(timer);
+      };
+    },
+    [flash],
+  );
+
+  const showFlash = useCallback(function (message: string) {
+    setFlash(function (current) {
+      return {message, seq: (current?.seq ?? 0) + 1};
+    });
+  }, []);
 
   const handleChooseVault = useCallback(
     async function () {
@@ -413,6 +460,61 @@ export function App() {
   const draftRef = useRef(draft);
   draftRef.current = draft;
 
+  /**
+   * The document, out to a file the writer picks.
+   *
+   * Cancelling the dialog is not a failure and says nothing at all: the writer
+   * decided against it, and a line confirming that would be noise. What is said
+   * is the landing and the refusal.
+   */
+  const handleExport = useCallback(
+    async function (choice: FrontmatterChoice) {
+      if (!isDesktop() || openPath === undefined) return;
+      try {
+        const chosen = await save({
+          title: 'Export',
+          defaultPath: defaultExportPath(lastExportDir, openPath),
+          filters: [{name: 'Markdown', extensions: ['md']}],
+        });
+        if (chosen === null) return;
+        await exportDoc(chosen, exportSource(draftRef.current, choice));
+        setLastExportDir(exportDirectory(chosen));
+        setOutputError(undefined);
+        showFlash(`Exported to ${exportFileName(chosen)}`);
+      } catch (error) {
+        setOutputError(
+          `could not export: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    },
+    [openPath, lastExportDir, showFlash],
+  );
+
+  /**
+   * The document, onto the clipboard as formatted text and as markdown at once.
+   *
+   * The plain flavour is the body rather than the buffer: someone pasting into
+   * a plain-text field wants the prose, not the metadata block above it.
+   */
+  const handleCopy = useCallback(
+    async function () {
+      if (openPath === undefined) return;
+      const source = draftRef.current;
+      const result = await copyRichText(
+        docToHtml(source),
+        parseDoc(source).body,
+        systemClipboard(),
+      );
+      if (!result.ok) {
+        setOutputError(result.reason);
+        return;
+      }
+      setOutputError(undefined);
+      showFlash('Copied as rich text');
+    },
+    [openPath, showFlash],
+  );
+
   const {editDraft, flush, land} = workspace;
 
   /** A proposal the writer accepted. Buffer only; nothing reaches disk. */
@@ -506,6 +608,9 @@ export function App() {
         turn={indicatorFor(mode, landing)}
         pinned={layout.turnPin !== undefined}
         onPin={handlePin}
+        onExport={handleExport}
+        onCopy={handleCopy}
+        docOpen={workspace.open !== undefined}
       />
 
       <main className="flex min-h-0 flex-1">
@@ -632,10 +737,12 @@ export function App() {
 
       {/* The more fundamental problem first, in both lines. A save that failed
           outranks an agent turn that did, the way a database that will not open
-          outranks a rule set that will not parse. */}
+          outranks a rule set that will not parse. An export that failed comes
+          last of the three: nothing in the vault is at stake in it. */}
       <StatusBar
-        error={workspace.error ?? agentError}
+        error={workspace.error ?? agentError ?? outputError}
         notice={dataNotice(workspace.data) ?? voiceNotice(cascade.problems)}
+        info={flash?.message}
       />
     </div>
   );

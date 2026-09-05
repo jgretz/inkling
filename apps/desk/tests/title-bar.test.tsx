@@ -34,6 +34,9 @@ function bar({turn = 'writer', pinned = false, onPin = noop}: BarProps = {}) {
       turn={turn}
       pinned={pinned}
       onPin={onPin}
+      onExport={noop}
+      onCopy={noop}
+      docOpen
     />,
   );
 }
