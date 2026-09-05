@@ -1,0 +1,12 @@
+[test]
+# Make a bare `bun test` as hermetic as the `test` script, which passes the same
+# file via --preload. Without this, eleven render suites fail on a bare run while
+# passing under `bun run test`, and `bun test` is what CLAUDE.md documents and
+# what anyone reaching for the suite actually types.
+#
+# Naming it in both places is safe: bun's module cache evaluates the file once,
+# so happy-dom is registered once either way.
+#
+# bun resolves this file from the cwd without walking up, so a run started inside
+# a workspace directory does not see it. Those runs delegate to the root.
+preload = ["./scripts/dom-setup.ts"]

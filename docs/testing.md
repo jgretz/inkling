@@ -24,6 +24,14 @@ tests have no `document` without it.
   markup rather than behavior.
 - Tauri wiring, Vite config, the icon script.
 
+## Running the suite
+
+`bun test` from the repo root. `bunfig.toml` preloads `scripts/dom-setup.ts` so
+a bare run has a DOM, and the root `test` script passes the same file so both
+commands behave identically. A run started inside a workspace directory does not
+see `bunfig.toml`, because bun resolves it from the cwd without walking up, so
+scope a run with a path argument rather than by changing directory.
+
 ## Render tests need a DOM, per file
 
 `bun test` has no DOM. A render suite gets one by calling `autoCleanup()` from
