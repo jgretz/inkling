@@ -7,6 +7,7 @@ import {
   type VaultPath,
 } from '@inkling/vault';
 import {
+  createDoc as createDocCommand,
   createGroup as createGroupCommand,
   isoFromEpoch,
   listDocs,
@@ -215,7 +216,9 @@ export function useWorkspace(): Workspace {
   const createDoc = useCallback(
     function (path: DocPath, title: string) {
       if (vault === undefined) return;
-      writeDoc(vault, path, `# ${title}\n\n`)
+      // `createDocCommand`, not `writeDoc`: two titles that slug to the same
+      // filename must not silently overwrite the first one's prose.
+      createDocCommand(vault, path, `# ${title}\n\n`)
         .then(function () {
           refresh();
           openDoc(path);

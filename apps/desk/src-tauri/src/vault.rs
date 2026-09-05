@@ -312,6 +312,24 @@ pub fn write_doc(vault: String, path: String, source: String) -> Result<String, 
     Ok(iso_mtime(&meta))
 }
 
+/// Writes a document that is not there yet. Refuses to clobber.
+///
+/// Separate from [`write_doc`], which must overwrite because it is what the
+/// autosave calls. Creating is the opposite case: two documents a writer titles
+/// the same way slug to the same filename, and an overwrite there would take
+/// the first one's prose with it.
+#[tauri::command]
+pub fn create_doc(vault: String, path: String, source: String) -> Result<(), String> {
+    let resolved = resolve(&vault, &path)?;
+    if resolved.exists() {
+        return Err(format!("already exists: {path}"));
+    }
+    if let Some(parent) = resolved.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    fs::write(&resolved, source).map_err(|error| error.to_string())
+}
+
 /// Moves a document to a new vault-relative path, carrying its dismissals with
 /// it. Refuses to clobber.
 ///
@@ -373,8 +391,8 @@ pub fn delete_doc(vault: String, path: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        create_group, list_docs, list_groups, rename_doc_with, rename_group_with, resolve,
-        resolve_dir,
+        create_doc, create_group, list_docs, list_groups, rename_doc_with, rename_group_with,
+        resolve, resolve_dir,
     };
     use crate::data::VaultDb;
     use crate::voice::{insert, select_for_doc, Suppression};
@@ -520,6 +538,43 @@ mod tests {
         .expect("should create");
 
         assert_eq!(group_paths(vault.path()), vec!["essays", "essays/2026"]);
+    }
+
+    #[test]
+    fn create_doc_writes_a_document_that_is_not_there_yet() {
+        let vault = tempdir().expect("should make a temp dir");
+
+        create_doc(
+            vault.path().to_string_lossy().into_owned(),
+            "essays/on-endings.md".to_string(),
+            "# On Endings\n\n".to_string(),
+        )
+        .expect("should create");
+
+        assert_eq!(
+            fs::read_to_string(vault.path().join("essays/on-endings.md")).expect("should be there"),
+            "# On Endings\n\n"
+        );
+    }
+
+    /// Two documents a writer titles the same way slug to the same filename, so
+    /// the second must be refused rather than written over the first.
+    #[test]
+    fn create_doc_refuses_to_overwrite_a_document_that_is_already_there() {
+        let vault = tempdir().expect("should make a temp dir");
+        fs::write(vault.path().join("a.md"), "# the writer's prose\n").expect("should write");
+
+        let result = create_doc(
+            vault.path().to_string_lossy().into_owned(),
+            "a.md".to_string(),
+            "# On Endings\n\n".to_string(),
+        );
+
+        assert!(result.is_err_and(|error| error.contains("a.md")));
+        assert_eq!(
+            fs::read_to_string(vault.path().join("a.md")).expect("should be there"),
+            "# the writer's prose\n"
+        );
     }
 
     /// A vault with a group, a document inside it and the database open, which

@@ -19,6 +19,7 @@ pub fn run() {
             vault::rename_group,
             vault::read_doc,
             vault::write_doc,
+            vault::create_doc,
             vault::rename_doc,
             vault::delete_doc,
             settings::load_settings,

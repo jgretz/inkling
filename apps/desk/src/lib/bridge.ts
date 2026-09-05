@@ -61,6 +61,14 @@ export function writeDoc(vault: VaultPath, path: DocPath, source: string): Promi
   return invoke<string>('write_doc', {vault, path, source});
 }
 
+/**
+ * Writes a document that is not there yet, rejecting if one already is.
+ * `writeDoc` overwrites because the autosave needs it to; a create must not.
+ */
+export function createDoc(vault: VaultPath, path: DocPath, source: string): Promise<void> {
+  return invoke<void>('create_doc', {vault, path, source});
+}
+
 export function renameDoc(vault: VaultPath, from: DocPath, to: DocPath): Promise<void> {
   return invoke<void>('rename_doc', {vault, from, to});
 }
