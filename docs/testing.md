@@ -36,6 +36,12 @@ Two rules that are not obvious and cost an afternoon each:
   run shares one process. A suite that leaves it registered breaks the next
   suite that speaks HTTP for real, with an error naming a file that has nothing
   to do with a DOM.
+- **Anything a library reads at import time predates the DOM.** Static imports
+  run before `autoCleanup()`'s `beforeAll`, so a library that captures
+  `navigator` on load captures Bun's, not happy-dom's. Bun reports `MacIntel` on
+  a Mac and happy-dom reports `X11; Darwin arm64`, which is why CodeMirror
+  resolves `Mod` to Cmd in tests while happy-dom would suggest Ctrl. Read the
+  same value at the test file's module scope rather than assuming either.
 - **Query off what `render()` returns, never off `screen`.** The global `screen`
   binds `document.body` when the testing library is evaluated, which happens
   before any registration, so it is bound to a document that no longer exists.

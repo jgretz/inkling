@@ -7,6 +7,19 @@ import {EditorPanel} from '../src/components/editor/EditorPanel.tsx';
 autoCleanup();
 
 /**
+ * Which physical modifier CodeMirror's `Mod-s` resolves to here.
+ *
+ * CodeMirror reads `navigator.platform` once, at import time. Static imports run
+ * before `autoCleanup()`'s `beforeAll`, so what it read is Bun's own navigator,
+ * which reports `MacIntel` on a Mac, and not happy-dom's, which reports
+ * `X11; Darwin arm64` and would have made it Ctrl. Reading it here, at this
+ * file's module scope, is reading it at the same moment CodeMirror did.
+ */
+const MOD: 'metaKey' | 'ctrlKey' = /Mac/.test(globalThis.navigator?.platform ?? '')
+  ? 'metaKey'
+  : 'ctrlKey';
+
+/**
  * The editor's behaviour from before findings existed, which this task changes
  * the inside of.
  *
@@ -61,16 +74,15 @@ describe('EditorPanel', function () {
     const onSave = mock(function () {});
     const {view} = mount({source: 'First line.', onSave});
 
-    // Ctrl rather than Cmd: CodeMirror resolves `Mod` off the platform it
-    // detects, and happy-dom's navigator is not a Mac. The binding under test is
-    // the same one; only which physical key reaches it differs.
+    // The binding under test is one binding; only which physical key reaches it
+    // differs by platform. See `MOD` above for why that is decided here.
     act(function () {
       view.contentDOM.dispatchEvent(
         new KeyboardEvent('keydown', {
           key: 's',
           code: 'KeyS',
           keyCode: 83,
-          ctrlKey: true,
+          [MOD]: true,
           bubbles: true,
         }),
       );
