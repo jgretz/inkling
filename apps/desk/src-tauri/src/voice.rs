@@ -58,7 +58,10 @@ fn row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Suppression> {
     })
 }
 
-fn select_for_doc(conn: &Connection, doc_path: &str) -> rusqlite::Result<Vec<Suppression>> {
+pub(crate) fn select_for_doc(
+    conn: &Connection,
+    doc_path: &str,
+) -> rusqlite::Result<Vec<Suppression>> {
     let sql = format!(
         "SELECT {COLUMNS} FROM voice_suppression WHERE doc_path = ?1 ORDER BY created_at, id"
     );
@@ -74,7 +77,7 @@ fn select_for_doc(conn: &Connection, doc_path: &str) -> rusqlite::Result<Vec<Sup
 /// and a check-then-insert would leave a window between the two. The row is
 /// selected afterwards either way, so the caller gets the same answer whether
 /// this insert or an earlier one created it.
-fn insert(
+pub(crate) fn insert(
     conn: &Connection,
     doc_path: &str,
     rule_id: &str,

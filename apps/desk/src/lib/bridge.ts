@@ -1,5 +1,5 @@
 import {invoke} from '@tauri-apps/api/core';
-import type {DocPath, VaultPath} from '@inkling/vault';
+import type {DocPath, GroupPath, VaultPath} from '@inkling/vault';
 
 /**
  * The typed edge of the Rust command surface. Every `invoke` in the app goes
@@ -29,6 +29,27 @@ export function isoFromEpoch(mtime: string): string {
 
 export function listDocs(vault: VaultPath): Promise<DocFile[]> {
   return invoke<DocFile[]>('list_docs', {vault});
+}
+
+/**
+ * Every directory in the vault, so a group with nothing in it yet still shows.
+ * `list_docs` returns files, and an empty group holds none.
+ */
+export function listGroups(vault: VaultPath): Promise<string[]> {
+  return invoke<string[]>('list_groups', {vault});
+}
+
+export function createGroup(vault: VaultPath, path: GroupPath): Promise<void> {
+  return invoke<void>('create_group', {vault, path});
+}
+
+/**
+ * Renames a group, carrying everything stored against the documents inside it.
+ * See the doc comment on `rename_group` in `src-tauri/src/vault.rs` for the
+ * order the two halves happen in.
+ */
+export function renameGroup(vault: VaultPath, from: GroupPath, to: GroupPath): Promise<void> {
+  return invoke<void>('rename_group', {vault, from, to});
 }
 
 export function readDoc(vault: VaultPath, path: DocPath): Promise<DocFile> {

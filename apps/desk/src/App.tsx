@@ -227,10 +227,15 @@ export function App() {
             <div style={{width: layout.libraryWidth}} className="shrink-0">
               <LibraryPanel
                 docs={workspace.docs}
+                groups={workspace.groups}
                 openPath={openPath}
                 vaultName={vaultName(vault)}
                 onOpen={workspace.openDoc}
                 onChooseVault={handleChooseVault}
+                onCreateGroup={workspace.createGroup}
+                onRenameGroup={workspace.renameGroup}
+                onMoveDoc={workspace.moveDoc}
+                onCreateDoc={workspace.createDoc}
               />
             </div>
             <Splitter

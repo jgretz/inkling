@@ -176,6 +176,40 @@ describe('cascadeFor', function () {
   });
 });
 
+/**
+ * The rule sets that actually ship in `examples/vault`, read off disk.
+ *
+ * The point of moving a document between groups is that the cascade governing
+ * it changes, and the rule sets it changes to are files a writer edits. Reading
+ * the real ones is what stops this suite agreeing with a fixture that has
+ * drifted away from what the example vault says.
+ */
+async function exampleRuleSets(): Promise<Record<string, string>> {
+  const root = new URL('../../../examples/vault/', import.meta.url);
+  const [top, drafts] = await Promise.all([
+    Bun.file(new URL('voice.md', root)).text(),
+    Bun.file(new URL('drafts/voice.md', root)).text(),
+  ]);
+  return {'voice.md': top, 'drafts/voice.md': drafts};
+}
+
+/** Four sentences of near-equal length in one paragraph, which is the rule. */
+const METRONOME = [
+  'The room was quiet and the light was low.',
+  'The page was blank and the cursor was still.',
+  'The hour was late and the coffee was cold.',
+  'The words were near and the sentence was gone.',
+].join(' ');
+
+describe('moving a document between groups', function () {
+  it('should turn the drafts rule set off and the root one on', async function () {
+    const files = await exampleRuleSets();
+
+    expect(ruleIds('drafts/a.md', METRONOME, files)).not.toContain('sentence-length-uniformity');
+    expect(ruleIds('a.md', METRONOME, files)).toContain('sentence-length-uniformity');
+  });
+});
+
 describe('voiceNotice', function () {
   it('should say nothing when every rule set parsed', function () {
     expect(voiceNotice([])).toBeUndefined();

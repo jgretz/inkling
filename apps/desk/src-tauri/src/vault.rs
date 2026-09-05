@@ -2,14 +2,19 @@
 //!
 //! A vault is a plain directory of markdown files, so every command here takes
 //! the vault root plus a path relative to it. The frontend never hands over an
-//! absolute path: `resolve` is the single place a relative path becomes one,
-//! and it refuses anything that escapes the root.
+//! absolute path: `resolve` and `resolve_dir` are the only two places a
+//! relative path becomes one, `resolve` for a document and `resolve_dir` for a
+//! group, and both refuse anything that escapes the root.
 
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
+use tauri::State;
+
+use crate::data::VaultDb;
+use crate::paths::{rewrite_exact, rewrite_prefix};
 
 /// One markdown file, as the document list needs it. The body is parsed on the
 /// frontend by `@inkling/vault`, so this stays a byte-level view.
@@ -39,6 +44,51 @@ fn resolve(vault: &str, path: &str) -> Result<PathBuf, String> {
         return Err(format!("not a markdown file: {path}"));
     }
     Ok(Path::new(vault).join(relative))
+}
+
+/// Joins a vault-relative **directory** path onto the root, rejecting traversal.
+///
+/// The same containment rule as [`resolve`], written alongside it rather than
+/// folded into it: a group is not a markdown file, and loosening the extension
+/// check in the one place every document path goes through would be the wrong
+/// trade. Two extra refusals of its own: the vault root is not a group, and
+/// neither is any segment [`is_ignored_dir`] hides, because a group named
+/// `.drafts` is one the library could never list.
+fn resolve_dir(vault: &str, path: &str) -> Result<PathBuf, String> {
+    let relative = Path::new(path);
+    let mut segments = 0;
+    for component in relative.components() {
+        match component {
+            Component::Normal(part) => {
+                if is_ignored_dir(&part.to_string_lossy()) {
+                    return Err(format!("not a group inkling can show: {path}"));
+                }
+                segments += 1;
+            }
+            _ => return Err(format!("path escapes the vault: {path}")),
+        }
+    }
+    if segments == 0 {
+        return Err("the vault root is not a group".to_string());
+    }
+    Ok(Path::new(vault).join(relative))
+}
+
+/// A vault-relative path in the POSIX form the frontend and the database use.
+///
+/// Callers run it on a path `resolve` or `resolve_dir` has already accepted, so
+/// every component is `Normal` and nothing is dropped. It exists so `drafts/`
+/// and `drafts` cannot key the database differently from the directory that
+/// just moved.
+fn posix(path: &str) -> String {
+    Path::new(path)
+        .components()
+        .filter_map(|component| match component {
+            Component::Normal(part) => Some(part.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .collect::<Vec<String>>()
+        .join("/")
 }
 
 fn iso_mtime(meta: &fs::Metadata) -> String {
@@ -118,6 +168,126 @@ pub fn list_docs(vault: String) -> Result<Vec<DocFile>, String> {
     Ok(out)
 }
 
+fn walk_groups(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<(), String> {
+    let entries = fs::read_dir(dir).map_err(|error| format!("{}: {error}", dir.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+
+        if !entry
+            .file_type()
+            .map_err(|error| error.to_string())?
+            .is_dir()
+            || is_ignored_dir(&name)
+        {
+            continue;
+        }
+        let Some(relative) = relative_posix(root, &path) else {
+            continue;
+        };
+        out.push(relative);
+        walk_groups(root, &path, out)?;
+    }
+    Ok(())
+}
+
+/// Every directory under the vault, as vault-relative POSIX paths, sorted.
+///
+/// Separate from [`list_docs`], which returns files: a group a writer has just
+/// made and put nothing in yet holds no markdown, so the document listing
+/// cannot see it and it would vanish at the next scan.
+#[tauri::command]
+pub fn list_groups(vault: String) -> Result<Vec<String>, String> {
+    let root = Path::new(&vault);
+    if !root.is_dir() {
+        return Err(format!("not a directory: {vault}"));
+    }
+    let mut out = Vec::new();
+    walk_groups(root, root, &mut out)?;
+    out.sort();
+    Ok(out)
+}
+
+/// Makes a group, and every group above it that does not exist yet.
+#[tauri::command]
+pub fn create_group(vault: String, path: String) -> Result<(), String> {
+    let resolved = resolve_dir(&vault, &path)?;
+    if resolved.exists() {
+        return Err(format!("already exists: {path}"));
+    }
+    fs::create_dir_all(&resolved).map_err(|error| error.to_string())
+}
+
+/// Renames a group, carrying everything stored against the documents inside it.
+///
+/// The order is: open a transaction, rewrite the rows, rename the directory,
+/// and commit last. That is deliberate and it is the only order with no window
+/// a writer has to clean up after. A SQLite transaction can be abandoned for
+/// nothing, so the half that can be undone straddles the half that cannot: a
+/// failed `fs::rename` drops the transaction on the way out and both halves are
+/// exactly as they were.
+///
+/// One residual case remains, a commit that fails after the directory has
+/// already moved. It is handled by renaming the directory back and reporting
+/// both failures. If that reverse rename also fails, the error says plainly
+/// that the directory moved and the dismissals under it did not, because that
+/// is a state only the writer can resolve.
+///
+/// With no database open there is nothing to carry, so the directory rename
+/// happens alone. That is the same degradation `dataNotice` already explains.
+#[tauri::command]
+pub fn rename_group(
+    vault: String,
+    from: String,
+    to: String,
+    db: State<'_, VaultDb>,
+) -> Result<(), String> {
+    rename_group_with(&vault, &from, &to, &db)
+}
+
+fn rename_group_with(vault: &str, from: &str, to: &str, db: &VaultDb) -> Result<(), String> {
+    let source = resolve_dir(vault, from)?;
+    let target = resolve_dir(vault, to)?;
+    if !source.is_dir() {
+        return Err(format!("not a group: {from}"));
+    }
+    if target.exists() {
+        return Err(format!("already exists: {to}"));
+    }
+
+    let old = posix(from);
+    let new = posix(to);
+    if new == old || new.starts_with(&format!("{old}/")) {
+        return Err(format!("a group cannot move inside itself: {from}"));
+    }
+
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+
+    let carried = db.with(|conn| -> Result<(), String> {
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|error| format!("renaming {from} to {to}: {error}"))?;
+        rewrite_prefix(&tx, &old, &new).map_err(|error| format!("renaming {from} to {to}: {error}"))?;
+
+        fs::rename(&source, &target).map_err(|error| error.to_string())?;
+
+        tx.commit().map_err(|error| match fs::rename(&target, &source) {
+            Ok(()) => format!("renaming {from} to {to}: {error}. Nothing moved."),
+            Err(reverse) => format!(
+                "{to} is now the folder that was {from}, but the dismissals inside it did not move: {error}. Moving it back also failed: {reverse}"
+            ),
+        })
+    });
+
+    match carried {
+        Some(result) => result,
+        None => fs::rename(&source, &target).map_err(|error| error.to_string()),
+    }
+}
+
 #[tauri::command]
 pub fn read_doc(vault: String, path: String) -> Result<DocFile, String> {
     let resolved = resolve(&vault, &path)?;
@@ -142,18 +312,55 @@ pub fn write_doc(vault: String, path: String, source: String) -> Result<String, 
     Ok(iso_mtime(&meta))
 }
 
-/// Moves a document to a new vault-relative path. Refuses to clobber.
+/// Moves a document to a new vault-relative path, carrying its dismissals with
+/// it. Refuses to clobber.
+///
+/// Same order and the same reasoning as [`rename_group`], one document wide.
+/// The `db` argument is injected by Tauri from managed state, so the frontend's
+/// `invoke` payload is unchanged.
 #[tauri::command]
-pub fn rename_doc(vault: String, from: String, to: String) -> Result<(), String> {
-    let source = resolve(&vault, &from)?;
-    let target = resolve(&vault, &to)?;
+pub fn rename_doc(
+    vault: String,
+    from: String,
+    to: String,
+    db: State<'_, VaultDb>,
+) -> Result<(), String> {
+    rename_doc_with(&vault, &from, &to, &db)
+}
+
+fn rename_doc_with(vault: &str, from: &str, to: &str, db: &VaultDb) -> Result<(), String> {
+    let source = resolve(vault, from)?;
+    let target = resolve(vault, to)?;
     if target.exists() {
         return Err(format!("already exists: {to}"));
     }
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
-    fs::rename(&source, &target).map_err(|error| error.to_string())
+
+    let old = posix(from);
+    let new = posix(to);
+
+    let carried = db.with(|conn| -> Result<(), String> {
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|error| format!("moving {from} to {to}: {error}"))?;
+        rewrite_exact(&tx, &old, &new).map_err(|error| format!("moving {from} to {to}: {error}"))?;
+
+        fs::rename(&source, &target).map_err(|error| error.to_string())?;
+
+        tx.commit().map_err(|error| match fs::rename(&target, &source) {
+            Ok(()) => format!("moving {from} to {to}: {error}. Nothing moved."),
+            Err(reverse) => format!(
+                "{to} is now the document that was {from}, but its dismissals did not move: {error}. Moving it back also failed: {reverse}"
+            ),
+        })
+    });
+
+    match carried {
+        Some(result) => result,
+        None => fs::rename(&source, &target).map_err(|error| error.to_string()),
+    }
 }
 
 /// Deletes a document. The caller is responsible for confirming with the writer.
@@ -165,8 +372,12 @@ pub fn delete_doc(vault: String, path: String) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{list_docs, resolve};
+    use super::{
+        create_group, list_docs, list_groups, rename_doc_with, rename_group_with, resolve,
+        resolve_dir,
+    };
     use crate::data::VaultDb;
+    use crate::voice::{insert, select_for_doc, Suppression};
     use std::fs;
     use std::path::Path;
     use tempfile::tempdir;
@@ -222,5 +433,271 @@ mod tests {
 
         assert_eq!(before, vec!["a.md", "drafts/b.md"]);
         assert_eq!(after, vec!["a.md", "drafts/b.md"]);
+    }
+
+    #[test]
+    fn resolve_dir_rejects_parent_traversal() {
+        assert!(resolve_dir("/vault", "../secrets").is_err());
+    }
+
+    #[test]
+    fn resolve_dir_rejects_absolute_paths() {
+        assert!(resolve_dir("/vault", "/etc").is_err());
+    }
+
+    /// A group the library could never list is not a group a writer may make.
+    #[test]
+    fn resolve_dir_rejects_a_directory_the_listing_hides() {
+        assert!(resolve_dir("/vault", ".inkling").is_err());
+        assert!(resolve_dir("/vault", "drafts/.hidden").is_err());
+    }
+
+    #[test]
+    fn resolve_dir_rejects_the_vault_root() {
+        assert!(resolve_dir("/vault", "").is_err());
+    }
+
+    #[test]
+    fn resolve_dir_joins_a_nested_relative_path() {
+        let resolved = resolve_dir("/vault", "drafts/deep").expect("should resolve");
+
+        assert_eq!(resolved.to_string_lossy(), "/vault/drafts/deep");
+    }
+
+    fn group_paths(vault: &Path) -> Vec<String> {
+        list_groups(vault.to_string_lossy().into_owned()).expect("should list")
+    }
+
+    #[test]
+    fn list_groups_reports_a_nested_group_and_skips_the_data_directory() {
+        let vault = tempdir().expect("should make a temp dir");
+        fs::create_dir_all(vault.path().join("drafts/deep")).expect("should make a dir");
+        fs::create_dir_all(vault.path().join(".inkling")).expect("should make a dir");
+        fs::write(vault.path().join("a.md"), "# a\n").expect("should write");
+
+        assert_eq!(group_paths(vault.path()), vec!["drafts", "drafts/deep"]);
+    }
+
+    #[test]
+    fn create_group_refuses_to_escape_the_vault() {
+        let vault = tempdir().expect("should make a temp dir");
+
+        let result = create_group(
+            vault.path().to_string_lossy().into_owned(),
+            "../x".to_string(),
+        );
+
+        assert!(result.is_err());
+        assert!(!vault
+            .path()
+            .parent()
+            .expect("has a parent")
+            .join("x")
+            .exists());
+    }
+
+    #[test]
+    fn create_group_refuses_a_group_that_is_already_there() {
+        let vault = tempdir().expect("should make a temp dir");
+        fs::create_dir_all(vault.path().join("drafts")).expect("should make a dir");
+
+        let result = create_group(
+            vault.path().to_string_lossy().into_owned(),
+            "drafts".to_string(),
+        );
+
+        assert!(result.is_err_and(|error| error.contains("drafts")));
+    }
+
+    #[test]
+    fn create_group_makes_a_group_and_its_missing_parents() {
+        let vault = tempdir().expect("should make a temp dir");
+
+        create_group(
+            vault.path().to_string_lossy().into_owned(),
+            "essays/2026".to_string(),
+        )
+        .expect("should create");
+
+        assert_eq!(group_paths(vault.path()), vec!["essays", "essays/2026"]);
+    }
+
+    /// A vault with a group, a document inside it and the database open, which
+    /// is what every rename test below starts from.
+    fn vault_with_a_group(group: &str) -> (tempfile::TempDir, VaultDb) {
+        let vault = tempdir().expect("should make a temp dir");
+        let db = VaultDb::default();
+        db.open(vault.path()).expect("should open");
+        fs::create_dir_all(vault.path().join(group)).expect("should make a dir");
+        fs::write(vault.path().join(group).join("a.md"), "# a\n").expect("should write");
+        (vault, db)
+    }
+
+    fn dismiss(db: &VaultDb, doc_path: &str) {
+        db.with(|conn| insert(conn, doc_path, "em-dash", "—", "before ", " after", 12))
+            .expect("a vault should be open")
+            .expect("should insert");
+    }
+
+    fn listed(db: &VaultDb, doc_path: &str) -> Vec<Suppression> {
+        db.with(|conn| select_for_doc(conn, doc_path))
+            .expect("a vault should be open")
+            .expect("should select")
+    }
+
+    fn rename_group_in(vault: &Path, db: &VaultDb, from: &str, to: &str) -> Result<(), String> {
+        rename_group_with(&vault.to_string_lossy(), from, to, db)
+    }
+
+    #[test]
+    fn should_read_a_dismissal_at_its_new_path_after_the_group_is_renamed() {
+        let (vault, db) = vault_with_a_group("drafts");
+        dismiss(&db, "drafts/a.md");
+
+        rename_group_in(vault.path(), &db, "drafts", "essays").expect("should rename");
+
+        assert_eq!(listed(&db, "essays/a.md").len(), 1);
+        assert_eq!(listed(&db, "drafts/a.md").len(), 0);
+        assert!(vault.path().join("essays/a.md").is_file());
+        assert!(!vault.path().join("drafts").exists());
+    }
+
+    #[test]
+    fn should_carry_a_dismissal_in_a_group_nested_below_the_renamed_one() {
+        let (vault, db) = vault_with_a_group("drafts/2026");
+        dismiss(&db, "drafts/2026/a.md");
+
+        rename_group_in(vault.path(), &db, "drafts", "essays").expect("should rename");
+
+        assert_eq!(listed(&db, "essays/2026/a.md").len(), 1);
+        assert_eq!(listed(&db, "drafts/2026/a.md").len(), 0);
+        assert!(vault.path().join("essays/2026/a.md").is_file());
+    }
+
+    /// The rename that has to leave nothing half done: the target is already
+    /// there, so neither the directory nor a single row may move.
+    #[test]
+    fn should_change_nothing_at_all_when_the_target_group_already_exists() {
+        let (vault, db) = vault_with_a_group("drafts");
+        dismiss(&db, "drafts/a.md");
+        fs::create_dir_all(vault.path().join("essays")).expect("should make a dir");
+        fs::write(vault.path().join("essays/b.md"), "# b\n").expect("should write");
+        dismiss(&db, "essays/b.md");
+        let before = listed(&db, "drafts/a.md");
+        let target_before = listed(&db, "essays/b.md");
+
+        let result = rename_group_in(vault.path(), &db, "drafts", "essays");
+
+        assert!(result.is_err_and(|error| error.contains("essays")));
+        assert!(vault.path().join("drafts/a.md").is_file());
+        assert_eq!(
+            fs::read_to_string(vault.path().join("essays/b.md")).expect("should still be there"),
+            "# b\n"
+        );
+        assert_eq!(listed(&db, "drafts/a.md"), before);
+        assert_eq!(listed(&db, "essays/b.md"), target_before);
+    }
+
+    /// A group renamed onto a name whose orphaned rows would collide. The
+    /// target directory does not exist, so those rows belong to nothing.
+    #[test]
+    fn should_replace_orphaned_rows_left_at_the_target_name() {
+        let (vault, db) = vault_with_a_group("drafts");
+        dismiss(&db, "drafts/a.md");
+        // The same anchor, filed against a document at the target path that is
+        // not on disk: exactly what an earlier `essays/` left behind.
+        dismiss(&db, "essays/a.md");
+
+        rename_group_in(vault.path(), &db, "drafts", "essays").expect("should rename");
+
+        assert_eq!(listed(&db, "essays/a.md").len(), 1);
+        assert_eq!(listed(&db, "drafts/a.md").len(), 0);
+    }
+
+    /// A rename of `drafts` must not touch `drafts2`, which shares its first
+    /// six characters and nothing else.
+    #[test]
+    fn should_leave_a_sibling_group_with_a_longer_name_alone() {
+        let (vault, db) = vault_with_a_group("drafts");
+        fs::create_dir_all(vault.path().join("drafts2")).expect("should make a dir");
+        fs::write(vault.path().join("drafts2/a.md"), "# a\n").expect("should write");
+        dismiss(&db, "drafts2/a.md");
+
+        rename_group_in(vault.path(), &db, "drafts", "essays").expect("should rename");
+
+        assert_eq!(listed(&db, "drafts2/a.md").len(), 1);
+        assert!(vault.path().join("drafts2/a.md").is_file());
+    }
+
+    /// The claim the whole order exists to make: the rows are rewritten first,
+    /// so a directory that will not move takes the rewrite down with it.
+    ///
+    /// A read-only vault root is the cheapest way to make `fs::rename` fail
+    /// after the transaction is already open. `.inkling/` keeps its own mode, so
+    /// SQLite can still write while the rename cannot.
+    #[cfg(unix)]
+    #[test]
+    fn should_leave_every_row_where_it_was_when_the_directory_will_not_move() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (vault, db) = vault_with_a_group("drafts");
+        dismiss(&db, "drafts/a.md");
+        let before = listed(&db, "drafts/a.md");
+        fs::set_permissions(vault.path(), fs::Permissions::from_mode(0o555))
+            .expect("should make the vault read-only");
+
+        let result = rename_group_in(vault.path(), &db, "drafts", "essays");
+
+        fs::set_permissions(vault.path(), fs::Permissions::from_mode(0o755))
+            .expect("should restore the vault");
+        assert!(
+            result.is_err(),
+            "a read-only vault should refuse the rename"
+        );
+        assert_eq!(listed(&db, "drafts/a.md"), before);
+        assert_eq!(listed(&db, "essays/a.md").len(), 0);
+        assert!(vault.path().join("drafts/a.md").is_file());
+    }
+
+    #[test]
+    fn should_still_move_the_directory_when_no_vault_database_is_open() {
+        let vault = tempdir().expect("should make a temp dir");
+        let db = VaultDb::default();
+        fs::create_dir_all(vault.path().join("drafts")).expect("should make a dir");
+        fs::write(vault.path().join("drafts/a.md"), "# a\n").expect("should write");
+
+        rename_group_in(vault.path(), &db, "drafts", "essays").expect("should rename");
+
+        assert!(vault.path().join("essays/a.md").is_file());
+        assert!(!vault.path().join("drafts").exists());
+    }
+
+    #[test]
+    fn should_refuse_to_move_a_group_inside_itself() {
+        let (vault, db) = vault_with_a_group("drafts");
+
+        let result = rename_group_in(vault.path(), &db, "drafts", "drafts/inner");
+
+        assert!(result.is_err());
+        assert!(vault.path().join("drafts/a.md").is_file());
+    }
+
+    #[test]
+    fn should_read_a_dismissal_at_the_new_path_after_a_document_moves() {
+        let (vault, db) = vault_with_a_group("drafts");
+        fs::create_dir_all(vault.path().join("essays")).expect("should make a dir");
+        dismiss(&db, "drafts/a.md");
+
+        rename_doc_with(
+            &vault.path().to_string_lossy(),
+            "drafts/a.md",
+            "essays/a.md",
+            &db,
+        )
+        .expect("should move");
+
+        assert_eq!(listed(&db, "essays/a.md").len(), 1);
+        assert_eq!(listed(&db, "drafts/a.md").len(), 0);
+        assert!(vault.path().join("essays/a.md").is_file());
     }
 }

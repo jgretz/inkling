@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import type {DocPath, DocSummary, VaultPath} from '@inkling/vault';
+import type {DocPath, DocSummary, GroupPath, VaultPath} from '@inkling/vault';
 import {
   dataNotice,
   INITIAL_WORKSPACE,
@@ -37,15 +37,42 @@ describe('sortDocs', function () {
   });
 });
 
+/** A scan result, as `use-workspace.ts` dispatches one. */
+function scanned(state: WorkspaceState, groups: string[]): WorkspaceState {
+  return workspaceReducer(state, {
+    type: 'docsLoaded',
+    docs: [summary(first, '2026-01-01T00:00:00.000Z')],
+    groups: groups as GroupPath[],
+    sources: new Map(),
+  });
+}
+
 describe('workspaceReducer', function () {
   it('should clear the previous vault entirely when a new one is chosen', function () {
-    const state = opened('body');
+    const state = scanned(opened('body'), ['drafts']);
 
     const next = workspaceReducer(state, {type: 'vaultChosen', vault: '/other' as VaultPath});
 
     expect(next.open).toBeUndefined();
     expect(next.docs).toEqual([]);
+    expect(next.groups).toEqual([]);
     expect(next.vault).toBe('/other' as VaultPath);
+  });
+
+  it('should carry the vault’s groups on the scan that found them', function () {
+    const next = scanned(INITIAL_WORKSPACE, ['drafts', 'drafts/2026']);
+
+    expect(next.groups).toEqual(['drafts', 'drafts/2026'] as GroupPath[]);
+  });
+
+  it('should order groups so a parent comes before the groups inside it', function () {
+    const next = scanned(INITIAL_WORKSPACE, ['essays', 'drafts/2026', 'drafts']);
+
+    expect(next.groups).toEqual(['drafts', 'drafts/2026', 'essays'] as GroupPath[]);
+  });
+
+  it('should start a workspace with no groups at all', function () {
+    expect(INITIAL_WORKSPACE.groups).toEqual([]);
   });
 
   it('should open a document clean', function () {
