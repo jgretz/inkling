@@ -24,6 +24,14 @@
  * Registering per file and handing the globals back keeps the blast radius to
  * the file that asked for a DOM.
  *
+ * A file only ever unregisters what it registered. `scripts/dom-setup.ts`
+ * registers once at preload, so in the normal `bun run test` run no file
+ * registers and no file unregisters; the per-file path is what a bare
+ * `bun test` on a single suite still gets. Unregistering unconditionally is
+ * what broke: the first DOM suite handed back globals it never took, and every
+ * file loaded afterwards evaluated its module scope against Bun's navigator
+ * while modules cached from the earlier load still held happy-dom's.
+ *
  * One thing this cannot buy: the library's global `screen` binds `document.body`
  * when `@testing-library/dom` is evaluated, which is the `cleanup` import below
  * and therefore before any registration. **Query off the object `render()`
@@ -44,10 +52,15 @@ declare global {
 
 /** Wire the DOM and cleanup for the calling test file. Call once at its top level. */
 export function autoCleanup(): void {
+  let registeredHere = false;
+
   beforeAll(function () {
     // Guarded rather than assumed: a second `register()` throws, and more than
     // one suite in a run may want a DOM.
-    if (!GlobalRegistrator.isRegistered) GlobalRegistrator.register();
+    if (!GlobalRegistrator.isRegistered) {
+      GlobalRegistrator.register();
+      registeredHere = true;
+    }
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   });
 
@@ -55,7 +68,10 @@ export function autoCleanup(): void {
 
   afterAll(async function () {
     await drainReactScheduler();
-    if (GlobalRegistrator.isRegistered) await GlobalRegistrator.unregister();
+    if (registeredHere && GlobalRegistrator.isRegistered) {
+      await GlobalRegistrator.unregister();
+      registeredHere = false;
+    }
   });
 }
 

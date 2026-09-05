@@ -30,8 +30,9 @@ collapsible library sits left of the preview.
    and the summariser are testable without a filesystem or a window; keep them
    that way. See [`docs/testing.md`](./docs/testing.md).
 4. Path handling on the Rust side rejects traversal before touching the disk.
-   `resolve` in `apps/desk/src-tauri/src/vault.rs` is the only place a
-   vault-relative path becomes an absolute one.
+   `resolve` and `resolve_dir` in `apps/desk/src-tauri/src/vault.rs`, one for a
+   document and one for a group, are the only two places a vault-relative path
+   becomes an absolute one.
 
 ## Commands
 

@@ -1,6 +1,23 @@
 import {useCallback, useEffect, useMemo, useReducer, useRef} from 'react';
-import {summarize, type DocPath, type VaultPath} from '@inkling/vault';
-import {isoFromEpoch, listDocs, openVaultDb, readDoc, writeDoc} from './bridge.ts';
+import {
+  rewriteUnder,
+  summarize,
+  type DocPath,
+  type GroupPath,
+  type VaultPath,
+} from '@inkling/vault';
+import {
+  createDoc as createDocCommand,
+  createGroup as createGroupCommand,
+  isoFromEpoch,
+  listDocs,
+  listGroups,
+  openVaultDb,
+  readDoc,
+  renameDoc,
+  renameGroup as renameGroupCommand,
+  writeDoc,
+} from './bridge.ts';
 import {
   INITIAL_WORKSPACE,
   isDirty,
@@ -19,6 +36,14 @@ export type Workspace = WorkspaceState & {
   /** Writes the open draft now, bypassing the autosave delay. */
   saveNow: () => void;
   refresh: () => void;
+  /** Makes a group, and every group above it that does not exist yet. */
+  createGroup: (path: GroupPath) => void;
+  /** Renames a group, carrying everything stored against the documents inside. */
+  renameGroup: (from: GroupPath, to: GroupPath) => void;
+  /** Moves one document to another group, or out to the vault root. */
+  moveDoc: (from: DocPath, to: DocPath) => void;
+  /** Writes a new, near-empty document and opens it. */
+  createDoc: (path: DocPath, title: string) => void;
   dirty: boolean;
 };
 
@@ -41,8 +66,10 @@ export function useWorkspace(): Workspace {
     function () {
       if (vault === undefined) return;
       dispatch({type: 'loadingStarted'});
-      listDocs(vault)
-        .then(function (files) {
+      // One round trip's latency rather than two: neither listing needs the
+      // other's answer.
+      Promise.all([listDocs(vault), listGroups(vault)])
+        .then(function ([files, dirs]) {
           const docs = files.map(function (file) {
             return summarize(file.path as DocPath, file.source, isoFromEpoch(file.mtime));
           });
@@ -51,7 +78,7 @@ export function useWorkspace(): Workspace {
               return [file.path as DocPath, file.source];
             }),
           );
-          dispatch({type: 'docsLoaded', docs, sources});
+          dispatch({type: 'docsLoaded', docs, groups: dirs as GroupPath[], sources});
         })
         .catch(function (error) {
           console.error('inkling: failed to scan the vault', error);
@@ -135,6 +162,75 @@ export function useWorkspace(): Workspace {
   const openRef = useRef(state.open);
   openRef.current = state.open;
 
+  const createGroup = useCallback(
+    function (path: GroupPath) {
+      if (vault === undefined) return;
+      createGroupCommand(vault, path)
+        .then(refresh)
+        .catch(function (error) {
+          console.error(`inkling: failed to make the group ${path}`, error);
+          dispatch({type: 'failed', message: message(error)});
+        });
+    },
+    [vault, refresh],
+  );
+
+  const renameGroup = useCallback(
+    function (from: GroupPath, to: GroupPath) {
+      if (vault === undefined) return;
+      renameGroupCommand(vault, from, to)
+        .then(function () {
+          refresh();
+          // The open document's path has just changed underneath it. Reopening
+          // at the new one is what stops the next autosave writing to a file
+          // that is no longer there.
+          const path = openRef.current?.path;
+          if (path === undefined) return;
+          const moved = rewriteUnder(path, from, to) as DocPath;
+          if (moved !== path) openDoc(moved);
+        })
+        .catch(function (error) {
+          console.error(`inkling: failed to rename ${from} to ${to}`, error);
+          dispatch({type: 'failed', message: message(error)});
+        });
+    },
+    [vault, refresh, openDoc],
+  );
+
+  const moveDoc = useCallback(
+    function (from: DocPath, to: DocPath) {
+      if (vault === undefined) return;
+      renameDoc(vault, from, to)
+        .then(function () {
+          refresh();
+          if (openRef.current?.path === from) openDoc(to);
+        })
+        .catch(function (error) {
+          console.error(`inkling: failed to move ${from} to ${to}`, error);
+          dispatch({type: 'failed', message: message(error)});
+        });
+    },
+    [vault, refresh, openDoc],
+  );
+
+  const createDoc = useCallback(
+    function (path: DocPath, title: string) {
+      if (vault === undefined) return;
+      // `createDocCommand`, not `writeDoc`: two titles that slug to the same
+      // filename must not silently overwrite the first one's prose.
+      createDocCommand(vault, path, `# ${title}\n\n`)
+        .then(function () {
+          refresh();
+          openDoc(path);
+        })
+        .catch(function (error) {
+          console.error(`inkling: failed to create ${path}`, error);
+          dispatch({type: 'failed', message: message(error)});
+        });
+    },
+    [vault, refresh, openDoc],
+  );
+
   const save = useCallback(
     function () {
       const open = openRef.current;
@@ -173,5 +269,18 @@ export function useWorkspace(): Workspace {
     [state.open],
   );
 
-  return {...state, chooseVault, openDoc, closeDoc, editDraft, saveNow: save, refresh, dirty};
+  return {
+    ...state,
+    chooseVault,
+    openDoc,
+    closeDoc,
+    editDraft,
+    saveNow: save,
+    refresh,
+    createGroup,
+    renameGroup,
+    moveDoc,
+    createDoc,
+    dirty,
+  };
 }

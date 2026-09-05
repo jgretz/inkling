@@ -10,6 +10,17 @@ export type VaultPath = string & {readonly __brand: 'VaultPath'};
 /** Path of a document relative to its vault root, always POSIX separated. */
 export type DocPath = string & {readonly __brand: 'DocPath'};
 
+/**
+ * Path of a group relative to its vault root, always POSIX separated and never
+ * empty.
+ *
+ * A group is a directory, so this is exactly the directory portion of the paths
+ * of the documents inside it. There is nothing else to a group: no id, no row,
+ * no membership list. The vault root is not one, which is why the empty string
+ * is not a `GroupPath`.
+ */
+export type GroupPath = string & {readonly __brand: 'GroupPath'};
+
 /** The kinds of writing inkling is built for. Drives templates and prompts. */
 export const DOC_KINDS = ['article', 'essay', 'note', 'talk', 'thread'] as const;
 

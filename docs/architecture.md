@@ -7,12 +7,14 @@ apps/desk/            the Tauri desktop app
   src/                React frontend
     lib/              state, settings, the Rust boundary, the agent boundary
     components/       one directory per panel
+      library/        the document tree: groups, filter, create, rename, move
       findings/       the voice findings strip, under the editor
   src-tauri/          the Rust half
     src/vault.rs      filesystem commands, path containment
     src/settings.rs   one JSON file in the platform config dir
     src/data.rs       the vault's SQLite database, one connection
     src/voice.rs      dismissed findings, stored against their anchors
+    src/paths.rs      the columns a rename has to rewrite
     src/migrations.rs the schema history, as data
     migrations/       one .sql file per migration
 packages/vault/       markdown parsing and document summaries, pure
@@ -36,9 +38,11 @@ One document, three views of it, left to right.
 | Editor  | Raw markdown in CodeMirror 6                           | `components/editor`  |
 | Agent   | An open conversation about the document                | `components/chat`    |
 
-A collapsible library sits left of the preview, listing every markdown file in
-the vault. Each panel toggles from the title bar and each boundary is a
-draggable splitter; the widths persist across restarts.
+A collapsible library sits left of the preview, showing the vault as the
+writer's own folders arrange it: documents at the root first, in an unnamed
+section, then a group per directory, nested as deep as they go. Each panel
+toggles from the title bar and each boundary is a draggable splitter; the widths
+persist across restarts.
 
 ## State
 
@@ -69,9 +73,20 @@ live draft wins over the scan wherever the two describe the same file, both for
 the document's own `voice:` key and for a `voice.md` the writer has open, so
 turning a rule off takes effect as it is typed rather than at the next scan.
 
-Path safety is one function. `resolve` in `src-tauri/src/vault.rs` rejects
-`..`, absolute components and non-markdown extensions before touching the disk,
-so a hostile path fails identically whether or not its target exists.
+Groups are directories. `list_groups` returns every directory in the vault
+alongside the documents, because a group a writer has just made and put nothing
+in yet holds no markdown and a listing of files cannot see it. Nothing else
+records a group: no table, no id, no membership, which is what `docs/model.md`
+means by a hierarchy that needs no storage of its own. `packages/vault/src/groups.ts`
+derives the tree, the filter and every path rewrite from the paths alone.
+
+Path safety is two functions, one per kind of path. `resolve` in
+`src-tauri/src/vault.rs` rejects `..`, absolute components and non-markdown
+extensions before touching the disk, so a hostile path fails identically whether
+or not its target exists. `resolve_dir` beside it applies the same containment
+rule to a directory, drops the extension check, and adds two refusals of its
+own: the vault root is not a group, and neither is a segment the listing hides,
+so a writer cannot make a `.drafts` the library could never show them.
 
 ## The vault's data directory
 
@@ -102,8 +117,30 @@ it would let one dismissal be stored twice at two positions.
 
 Rows are kept until the writer restores one. There is no sweep for anchors that
 no longer resolve, because anything keyed on "this document is gone" would
-delete dismissals the first time a writer renamed a folder in Finder. Following
-a rename belongs with the rest of the path bookkeeping in roadmap 2.2.
+delete dismissals the first time a writer renamed a folder in Finder.
+
+A rename inside inkling does follow. `src-tauri/src/paths.rs` holds
+`PATH_KEYED`, the list of `(table, column)` pairs that store a document path,
+and the two rewrites over it: one for a group's prefix, one for a single
+document. The matching is `substr`, never `LIKE`, because a group a writer named
+`50%_done` would make a `LIKE` pattern match paths that have nothing to do with
+it.
+
+The order the two halves happen in is the whole design. A transaction opens, the
+rows are rewritten, `fs::rename` runs, and the commit comes last. The half that
+can be abandoned for nothing straddles the half that cannot, so a failed rename
+drops the transaction on the way out and leaves both halves exactly as they
+were. The one residual case, a commit that fails after the directory has moved,
+renames the directory back and reports both failures; if that reverse rename
+also fails, the error says plainly that the folder moved and the dismissals
+under it did not. With no database open the directory rename happens alone,
+which is the same degradation the status bar already explains.
+
+Rows already sitting at the target path are deleted first, inside the same
+transaction. The target does not exist on disk at that point, so they are
+orphans of a group or a document that has gone, and leaving them would fail the
+rename on the anchor's unique index with a constraint error the writer cannot
+act on. They are the only rows any of this deletes.
 
 Adding a migration is three things: a new `src-tauri/migrations/NNNN_name.sql`,
 one appended entry in `MIGRATIONS`, and the line in the catalog test that pins

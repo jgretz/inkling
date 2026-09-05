@@ -5,9 +5,20 @@ export type {
   DocPath,
   DocSummary,
   Frontmatter,
+  GroupPath,
   ParsedDoc,
   VaultPath,
 } from './types.ts';
 
 export {emptyFrontmatter, parseDoc, serializeDoc} from './frontmatter.ts';
 export {countWords, firstHeading, loadDoc, summarize, titleFromPath} from './summary.ts';
+export {
+  filterTree,
+  groupName,
+  groupOf,
+  groupTree,
+  movedTo,
+  parentGroup,
+  rewriteUnder,
+} from './groups.ts';
+export type {GroupNode, GroupTree} from './groups.ts';

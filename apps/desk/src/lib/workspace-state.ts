@@ -1,5 +1,5 @@
 import {match} from 'ts-pattern';
-import type {DocPath, DocSummary, VaultPath} from '@inkling/vault';
+import type {DocPath, DocSummary, GroupPath, VaultPath} from '@inkling/vault';
 
 /**
  * The workspace reducer: every change to which document is open and what the
@@ -35,6 +35,12 @@ export type WorkspaceState = {
   vault: VaultPath | undefined;
   docs: DocSummary[];
   /**
+   * Every directory in the vault, which is every group. Carried separately from
+   * `docs` because a group holding no documents yet is invisible to a listing
+   * of files, and the library still has to show it.
+   */
+  groups: GroupPath[];
+  /**
    * Every document's body, keyed by path. The vault scan reads them anyway, so
    * keeping them lets the agent's context picker and full-text search work
    * without a read per file. See the note on `list_docs` in `vault.rs`.
@@ -50,7 +56,12 @@ export type WorkspaceState = {
 
 export type WorkspaceAction =
   | {type: 'vaultChosen'; vault: VaultPath}
-  | {type: 'docsLoaded'; docs: DocSummary[]; sources: ReadonlyMap<DocPath, string>}
+  | {
+      type: 'docsLoaded';
+      docs: DocSummary[];
+      groups: GroupPath[];
+      sources: ReadonlyMap<DocPath, string>;
+    }
   | {type: 'docOpened'; path: DocPath; source: string}
   | {type: 'docClosed'}
   | {type: 'draftEdited'; path: DocPath; draft: string}
@@ -65,6 +76,7 @@ export type WorkspaceAction =
 export const INITIAL_WORKSPACE: WorkspaceState = {
   vault: undefined,
   docs: [],
+  groups: [],
   sources: new Map(),
   open: undefined,
   loading: false,
@@ -118,8 +130,15 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       // A new vault invalidates everything the old one populated.
       return {...INITIAL_WORKSPACE, vault, loading: true};
     })
-    .with({type: 'docsLoaded'}, function ({docs, sources}) {
-      return {...state, docs: sortDocs(docs), sources, loading: false, error: undefined};
+    .with({type: 'docsLoaded'}, function ({docs, groups, sources}) {
+      return {
+        ...state,
+        docs: sortDocs(docs),
+        groups: [...groups].sort(),
+        sources,
+        loading: false,
+        error: undefined,
+      };
     })
     .with({type: 'docOpened'}, function ({path, source}) {
       return {

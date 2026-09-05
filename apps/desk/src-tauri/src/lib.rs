@@ -1,5 +1,6 @@
 mod data;
 mod migrations;
+mod paths;
 mod settings;
 mod vault;
 mod voice;
@@ -13,8 +14,12 @@ pub fn run() {
         .manage(data::VaultDb::default())
         .invoke_handler(tauri::generate_handler![
             vault::list_docs,
+            vault::list_groups,
+            vault::create_group,
+            vault::rename_group,
             vault::read_doc,
             vault::write_doc,
+            vault::create_doc,
             vault::rename_doc,
             vault::delete_doc,
             settings::load_settings,
