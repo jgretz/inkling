@@ -22,19 +22,26 @@ possible.
 
 ## In flight
 
-| Run        | Item                                          | Waits on |
-| ---------- | --------------------------------------------- | -------- |
-| `2740f7f5` | 2.2 groups as directories, plus 2.4 filtering | nothing  |
-| `6d91f2a4` | 2.3 document kinds                            | 2.2      |
+| Run        | Item                                    | Waits on |
+| ---------- | --------------------------------------- | -------- |
+| `370adfa9` | 3 references and assembled context      | nothing  |
+| `69034d50` | 4a transport, sessions, prompt assembly | 3        |
+| `3d1ae893` | 4b turn taking                          | 4a       |
+| `a02a1681` | 4c anchored highlighting                | 4b       |
 
-2.4 is folded into 2.2 rather than run separately: both live in the library
-panel and would collide there. 2.3 is chained because it hangs the kind onto the
-document-creation affordance 2.2 builds.
+Phases 1 and 2 are complete and merged.
 
-Phase 1 is complete and merged, as is 2.1. 2.1 was pulled forward out of phase
-two because 1.3 stores suppressions in the database it creates, and those
-suppressions are keyed by document path, which is why renaming a group in 2.2 is
-the hard part of that task rather than a filesystem call.
+Phase 4 is split three ways rather than by its numbered items. 4a carries 4.1,
+4.2 and 4.5, because prompt assembly is where voice guidance lands and building
+it twice would be wasteful. 4b is 4.3 and 4c is 4.4. Everything is serialized:
+all four touch the chat panel and `App.tsx`, so parallel runs would collide.
+
+The toryo dependency is met. All four dispatch runs landed, and they delivered
+more than the roadmap assumed: `@toryo/dispatch-client/http` carries a
+**held-session** plane, not only resumable jobs. A session is a live process the
+app pushes messages into, so 4a is built on `openSession` and `postMessage`
+rather than one job per turn. Eviction is the lifecycle rather than an error: a
+410 carries a `resumeSessionId`, and re-opening with it is a resume.
 
 ## Shared files
 
