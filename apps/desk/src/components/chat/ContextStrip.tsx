@@ -29,13 +29,15 @@ type ContextStripProps = {
   references: ReferenceControls;
 };
 
+/** One word on why a chip carries nothing, when it carries nothing. */
+type ChipState = 'missing' | 'off';
+
 type ChipProps = {
   label: string;
   tokens: number;
   /** The group an inherited reference came from. */
   from?: string;
-  /** One word on why this chip carries nothing: `missing`, or `off`. */
-  state?: string;
+  state?: ChipState;
   action?: {label: string; kind: 'remove' | 'restore'; onClick: () => void};
 };
 
@@ -74,7 +76,7 @@ function Chip({label, tokens, from, state, action}: ChipProps) {
 }
 
 /** Why a reference carries nothing, when it carries nothing. */
-function stateOf(entry: ContextReference): string | undefined {
+function stateOf(entry: ContextReference): ChipState | undefined {
   if (entry.suppressedBy !== undefined) return 'off';
   if (entry.missing) return 'missing';
   return undefined;
