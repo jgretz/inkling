@@ -1,7 +1,7 @@
 # inkling
 
-A macOS desktop app for writing articles, essays and talks in markdown, with an
-agent in the room.
+A macOS desktop app for writing articles, emails and proposals in markdown, with
+an agent in the room.
 
 Bun monorepo: `apps/*` + `packages/*` workspaces, `@inkling/*` package scope.
 Tauri 2 + React 19 + Vite 7 + Tailwind 4.
@@ -13,6 +13,7 @@ markdown editor, and an open conversation with an agent that can see both. A
 collapsible library sits left of the preview.
 
 - [`docs/model.md`](./docs/model.md) is what inkling is built around.
+- [`docs/kinds.md`](./docs/kinds.md) is the four kinds a document can be.
 - [`docs/roadmap.md`](./docs/roadmap.md) is the order it gets built in.
 - [`docs/turn-taking.md`](./docs/turn-taking.md) is who may write when.
 - [`docs/architecture.md`](./docs/architecture.md) is how the code is laid out.

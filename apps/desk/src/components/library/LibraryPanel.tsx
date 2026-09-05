@@ -8,6 +8,7 @@ import {
   filterTree,
   groupTree,
   movedTo,
+  type DocKind,
   type DocPath,
   type DocSummary,
   type GroupNode,
@@ -28,7 +29,7 @@ type LibraryPanelProps = {
   onCreateGroup: (path: GroupPath) => void;
   onRenameGroup: (from: GroupPath, to: GroupPath) => void;
   onMoveDoc: (from: DocPath, to: DocPath) => void;
-  onCreateDoc: (path: DocPath, title: string) => void;
+  onCreateDoc: (path: DocPath, title: string, kind: DocKind) => void;
 };
 
 /** A stable empty list, so a filtered render does not break `GroupRow`'s memo. */
@@ -133,8 +134,11 @@ export function LibraryPanel({
     setEditing(undefined);
   }, []);
 
+  // `kind` is optional because two of the three fields this serves name a group
+  // and have no kind to give. Only the new-document field passes one, and only
+  // the arm that writes a document reads it.
   const submitEditing = useCallback(
-    function (value: string) {
+    function (value: string, kind?: DocKind) {
       if (editing === undefined) return;
       setEditing(undefined);
       // Exhaustive rather than an if-chain ending in a fallthrough: a fourth
@@ -153,7 +157,10 @@ export function LibraryPanel({
           onRenameGroup(group, (parent === '' ? value : `${parent}/${value}`) as GroupPath);
         })
         .with({kind: 'newDoc'}, function ({group}) {
-          onCreateDoc(movedTo(fileNameFor(value), group), value);
+          // Dropped rather than defaulted: the kind picks the template, and a
+          // document written from a guessed one is worse than one not written.
+          if (kind === undefined) return;
+          onCreateDoc(movedTo(fileNameFor(value), group), value, kind);
         })
         .exhaustive();
     },

@@ -1,9 +1,9 @@
 import {memo} from 'react';
 import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down';
 import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right';
-import type {DocPath, DocSummary, GroupPath} from '@inkling/vault';
+import type {DocKind, DocPath, DocSummary, GroupPath} from '@inkling/vault';
 import {DocRow} from './DocRow.tsx';
-import {InlineField} from './InlineField.tsx';
+import {NewDocField} from './NewDocField.tsx';
 
 type RootSectionProps = {
   docs: readonly DocSummary[];
@@ -16,7 +16,7 @@ type RootSectionProps = {
   onToggle: () => void;
   onOpen: (path: DocPath) => void;
   onMove: (from: DocPath, to: DocPath) => void;
-  onSubmit: (value: string) => void;
+  onSubmit: (value: string, kind: DocKind) => void;
   onCancel: () => void;
 };
 
@@ -55,8 +55,9 @@ export const RootSection = memo(function RootSection({
       </button>
 
       {naming && (
-        <InlineField
+        <NewDocField
           label="Title of the new document"
+          kindLabel="Kind of the new document"
           placeholder="Document title"
           onSubmit={onSubmit}
           onCancel={onCancel}

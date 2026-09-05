@@ -3,9 +3,10 @@ import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down';
 import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right';
 import FilePlus from 'lucide-react/dist/esm/icons/file-plus';
 import Pencil from 'lucide-react/dist/esm/icons/pencil';
-import type {DocPath, GroupNode, GroupPath} from '@inkling/vault';
+import type {DocKind, DocPath, GroupNode, GroupPath} from '@inkling/vault';
 import {DocRow} from './DocRow.tsx';
 import {InlineField} from './InlineField.tsx';
+import {NewDocField} from './NewDocField.tsx';
 
 /**
  * Which inline field is open, and what it will name when it is submitted.
@@ -67,8 +68,11 @@ type GroupRowProps = {
   onOpen: (path: DocPath) => void;
   onMove: (from: DocPath, to: DocPath) => void;
   onEdit: (editing: Editing | undefined) => void;
-  /** Applies whatever `editing` names to the value the writer typed. */
-  onSubmit: (value: string) => void;
+  /**
+   * Applies whatever `editing` names to the value the writer typed. The kind is
+   * carried only by the new-document field; the rename field has none to give.
+   */
+  onSubmit: (value: string, kind?: DocKind) => void;
 };
 
 /** One group, its documents, and every group below it. */
@@ -161,8 +165,9 @@ export const GroupRow = memo(function GroupRow({
       )}
 
       {naming && (
-        <InlineField
+        <NewDocField
           label={`Title of the new document in ${label}`}
+          kindLabel={`Kind of the new document in ${label}`}
           placeholder="Document title"
           onSubmit={onSubmit}
           onCancel={handleCancel}

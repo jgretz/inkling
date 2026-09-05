@@ -228,7 +228,11 @@ describe('LibraryPanel', function () {
     fireEvent.change(field, {target: {value: 'On Endings'}});
     fireEvent.submit(field);
 
-    expect(onCreateDoc).toHaveBeenCalledWith('drafts/on-endings.md' as DocPath, 'On Endings');
+    expect(onCreateDoc).toHaveBeenCalledWith(
+      'drafts/on-endings.md' as DocPath,
+      'On Endings',
+      'article',
+    );
   });
 
   it('should create a new document at the vault root', function () {
@@ -240,7 +244,73 @@ describe('LibraryPanel', function () {
     fireEvent.change(field, {target: {value: 'On Endings'}});
     fireEvent.submit(field);
 
-    expect(onCreateDoc).toHaveBeenCalledWith('on-endings.md' as DocPath, 'On Endings');
+    expect(onCreateDoc).toHaveBeenCalledWith('on-endings.md' as DocPath, 'On Endings', 'article');
+  });
+
+  it('should offer every kind inkling writes, in the order they are declared', function () {
+    const {getByLabelText} = panel();
+
+    fireEvent.click(getByLabelText('New document'));
+    const select = getByLabelText('Kind of the new document');
+
+    expect(
+      Array.from(select.querySelectorAll('option')).map(function (option) {
+        return option.textContent;
+      }),
+    ).toEqual(['article', 'email', 'proposal', 'note']);
+  });
+
+  it('should create the kind the writer picked at the vault root', function () {
+    const onCreateDoc = mock(function () {});
+    const {getByLabelText} = panel({onCreateDoc});
+
+    fireEvent.click(getByLabelText('New document'));
+    fireEvent.change(getByLabelText('Kind of the new document'), {target: {value: 'proposal'}});
+    const field = getByLabelText('Title of the new document');
+    fireEvent.change(field, {target: {value: 'On Endings'}});
+    fireEvent.submit(field);
+
+    expect(onCreateDoc).toHaveBeenCalledWith('on-endings.md' as DocPath, 'On Endings', 'proposal');
+  });
+
+  it('should create the kind the writer picked inside a group', function () {
+    const onCreateDoc = mock(function () {});
+    const {getByLabelText} = panel({onCreateDoc});
+
+    fireEvent.click(getByLabelText('New document in drafts'));
+    fireEvent.change(getByLabelText('Kind of the new document in drafts'), {
+      target: {value: 'proposal'},
+    });
+    const field = getByLabelText('Title of the new document in drafts');
+    fireEvent.change(field, {target: {value: 'On Endings'}});
+    fireEvent.submit(field);
+
+    expect(onCreateDoc).toHaveBeenCalledWith(
+      'drafts/on-endings.md' as DocPath,
+      'On Endings',
+      'proposal',
+    );
+  });
+
+  it('should cancel rather than create a document when the title is submitted empty', function () {
+    const onCreateDoc = mock(function () {});
+    const {getByLabelText, queryByLabelText} = panel({onCreateDoc});
+
+    fireEvent.click(getByLabelText('New document'));
+    fireEvent.submit(getByLabelText('Title of the new document'));
+
+    expect(onCreateDoc).not.toHaveBeenCalled();
+    expect(queryByLabelText('Title of the new document')).toBeNull();
+  });
+
+  it('should close the new-document field on Escape', function () {
+    const {getByLabelText, queryByLabelText} = panel();
+
+    fireEvent.click(getByLabelText('New document'));
+    fireEvent.keyDown(getByLabelText('Title of the new document'), {key: 'Escape'});
+
+    expect(queryByLabelText('Title of the new document')).toBeNull();
+    expect(queryByLabelText('Kind of the new document')).toBeNull();
   });
 
   it('should cancel rather than create when the field is submitted empty', function () {

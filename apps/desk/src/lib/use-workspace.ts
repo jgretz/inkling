@@ -2,6 +2,9 @@ import {useCallback, useEffect, useMemo, useReducer, useRef} from 'react';
 import {
   rewriteUnder,
   summarize,
+  templateFor,
+  templatePathFor,
+  type DocKind,
   type DocPath,
   type GroupPath,
   type VaultPath,
@@ -42,8 +45,8 @@ export type Workspace = WorkspaceState & {
   renameGroup: (from: GroupPath, to: GroupPath) => void;
   /** Moves one document to another group, or out to the vault root. */
   moveDoc: (from: DocPath, to: DocPath) => void;
-  /** Writes a new, near-empty document and opens it. */
-  createDoc: (path: DocPath, title: string) => void;
+  /** Writes a new document from its kind's template, and opens it. */
+  createDoc: (path: DocPath, title: string, kind: DocKind) => void;
   dirty: boolean;
 };
 
@@ -162,6 +165,12 @@ export function useWorkspace(): Workspace {
   const openRef = useRef(state.open);
   openRef.current = state.open;
 
+  // The same trick for the vault's sources, which `createDoc` reads a template
+  // override out of. Depending on the map itself would give `createDoc` a new
+  // identity after every vault scan, and re-render every memoised group row.
+  const sourcesRef = useRef(state.sources);
+  sourcesRef.current = state.sources;
+
   const createGroup = useCallback(
     function (path: GroupPath) {
       if (vault === undefined) return;
@@ -214,11 +223,15 @@ export function useWorkspace(): Workspace {
   );
 
   const createDoc = useCallback(
-    function (path: DocPath, title: string) {
+    function (path: DocPath, title: string, kind: DocKind) {
       if (vault === undefined) return;
+      // A writer's own `templates/<kind>.md` wins over the built-in skeleton.
+      // It is already in hand: the vault scan loaded every document's source,
+      // so this is a map lookup rather than a second read of the disk.
+      const override = sourcesRef.current.get(templatePathFor(kind));
       // `createDocCommand`, not `writeDoc`: two titles that slug to the same
       // filename must not silently overwrite the first one's prose.
-      createDocCommand(vault, path, `# ${title}\n\n`)
+      createDocCommand(vault, path, templateFor(kind, title, new Date().toISOString(), override))
         .then(function () {
           refresh();
           openDoc(path);
