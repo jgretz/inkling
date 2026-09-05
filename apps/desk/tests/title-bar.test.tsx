@@ -8,22 +8,26 @@ import {TitleBar} from '../src/components/shell/TitleBar.tsx';
 autoCleanup();
 
 /**
- * The turn indicator, which is the only place whose turn it is is visible.
+ * The two things in the bar that are behaviour rather than markup: the turn
+ * indicator, which is the only place whose turn it is is visible, and the
+ * document menu, which is the writer's way out.
  *
- * The rest of the bar is layout toggles and a save label, and a test over those
- * would pin markup rather than behaviour. What is behaviour is that the three
- * states are distinguishable, that the pin shows, and that clicking cycles it.
+ * The rest is layout toggles and a save label, and a test over those would pin
+ * markup. What is behaviour here is that the three turn states are
+ * distinguishable, that the pin shows, that clicking cycles it, and that the
+ * menu is mounted and told whether there is a document to give anyone.
  */
 
 type BarProps = {
   turn?: TurnIndicator;
   pinned?: boolean;
   onPin?: () => void;
+  docOpen?: boolean;
 };
 
 function noop() {}
 
-function bar({turn = 'writer', pinned = false, onPin = noop}: BarProps = {}) {
+function bar({turn = 'writer', pinned = false, onPin = noop, docOpen = true}: BarProps = {}) {
   return render(
     <TitleBar
       title="The piece"
@@ -36,7 +40,7 @@ function bar({turn = 'writer', pinned = false, onPin = noop}: BarProps = {}) {
       onPin={onPin}
       onExport={noop}
       onCopy={noop}
-      docOpen
+      docOpen={docOpen}
     />,
   );
 }
@@ -87,5 +91,30 @@ describe('the turn indicator', function () {
     fireEvent.click(view.getByLabelText(indicatorLabel('writer', false)));
 
     expect(asked).toBe(1);
+  });
+});
+
+/**
+ * The document menu has its own suite, which renders it directly. This is the
+ * other half: that the bar mounts it at all, and hands it whether there is a
+ * document. Without these, the control could be taken out of the bar entirely
+ * and every suite would still pass.
+ */
+describe('the document menu in the bar', function () {
+  it('should offer the ways out when a document is open', function () {
+    const view = bar({docOpen: true});
+
+    fireEvent.click(view.getByLabelText('Document actions'));
+
+    expect(view.getByText('Export…')).toBeDefined();
+    expect(view.getByText('Copy as rich text')).toBeDefined();
+  });
+
+  it('should refuse with no document open', function () {
+    const view = bar({docOpen: false});
+
+    fireEvent.click(view.getByLabelText('Document actions'));
+
+    expect(view.queryByRole('menu')).toBeNull();
   });
 });

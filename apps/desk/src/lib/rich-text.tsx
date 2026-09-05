@@ -70,7 +70,10 @@ const STYLES = {
   td: {border: RULE, padding: '0.4em 0.6em'},
   hr: {border: 'none', borderTop: RULE, margin: '1.5em 0'},
   img: {maxWidth: '100%'},
-} as const satisfies Record<string, CSSProperties>;
+  // Keyed by tag rather than by any string: a key the renderer never emits is a
+  // silent no-op, and the element it was meant for would keep the class name
+  // this map exists to strip.
+} as const satisfies Partial<Record<keyof Components, CSSProperties>>;
 
 /** What the renderer hands an override on top of the element's own props. */
 type ExtraProps = {node?: unknown};

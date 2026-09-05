@@ -6,6 +6,11 @@ import {docToHtml} from '../src/lib/rich-text.tsx';
  * string and needs no DOM.
  */
 
+/**
+ * A document reaching every element the override map claims, so the guards
+ * below cover the whole map rather than whichever tags a shorter fixture
+ * happened to produce.
+ */
 const DOC = `---
 title: A piece
 tags:
@@ -15,7 +20,19 @@ odd_key: sensitive-value
 
 # A piece
 
-A paragraph with **bold** and a [link](https://example.com).
+A paragraph with **bold**, *slanted*, \`inline()\` and a [link](https://example.com).
+
+## A second heading
+
+### A third
+
+#### A fourth
+
+- first
+- second
+
+1. one
+2. two
 
 | Column | Second |
 | ------ | ------ |
@@ -26,6 +43,10 @@ const x = 1;
 \`\`\`
 
 > A quote.
+
+![A picture](https://example.com/picture.png)
+
+---
 `;
 
 describe('docToHtml', function () {
@@ -39,11 +60,49 @@ describe('docToHtml', function () {
     expect(html).not.toContain('language-ts');
   });
 
-  it('should style its elements inline', function () {
+  // Every tag the map claims, not one of them. An override quietly dropped, or
+  // keyed to a tag the renderer never emits, leaves that element bare in Mail
+  // and is invisible to an assertion that only looks at a paragraph.
+  it('should style every element it renders inline', function () {
     const html = docToHtml(DOC);
 
-    expect(html).toContain('style=');
-    expect(html).toMatch(/<p style="[^"]+">/);
+    // `tbody` and `tr` are in the map to be stripped, not styled: they carry no
+    // declarations, and React writes no attribute for an empty style object.
+    const styled = [
+      'h1',
+      'h2',
+      'h3',
+      'h4',
+      'p',
+      'a',
+      'strong',
+      'em',
+      'ul',
+      'ol',
+      'li',
+      'blockquote',
+      'code',
+      'pre',
+      'table',
+      'thead',
+      'th',
+      'td',
+      'hr',
+      'img',
+    ];
+
+    const bare = styled.filter(function (tag) {
+      return !new RegExp(`<${tag}\\b[^>]*\\sstyle="[^"]+"`).test(html);
+    });
+
+    expect(bare).toEqual([]);
+  });
+
+  it('should carry an images source and text through the override', function () {
+    const html = docToHtml(DOC);
+
+    expect(html).toContain('src="https://example.com/picture.png"');
+    expect(html).toContain('alt="A picture"');
   });
 
   it('should carry no frontmatter key or value into the output', function () {
