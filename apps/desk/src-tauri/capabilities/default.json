@@ -8,6 +8,14 @@
     "opener:allow-open-url",
     "dialog:allow-open",
     "dialog:allow-message",
-    "dialog:allow-confirm"
+    "dialog:allow-confirm",
+    {
+      "identifier": "fs:scope",
+      "allow": [{"path": "$HOME/.toryo/daemon-token"}]
+    },
+    {
+      "identifier": "fs:allow-read-text-file",
+      "allow": [{"path": "$HOME/.toryo/daemon-token"}]
+    }
   ]
 }

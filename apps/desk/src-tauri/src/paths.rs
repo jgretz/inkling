@@ -19,9 +19,9 @@
 //! points at? The two want opposite treatment at the destination, which is why
 //! the role is stored rather than assumed. See [`Role`].
 //!
-//! Roadmap 4.2 (conversations) adds path-keyed tables too, and this is the file
-//! they append to, so a rename keeps working without every caller learning the
-//! new table's name.
+//! Every table keyed by a path appends here, so a rename keeps working without
+//! any caller learning the new table's name. `conversation` is the most recent
+//! to do so.
 //!
 //! The matching is `substr`, never `LIKE`. `LIKE` reads `%` and `_` in its
 //! pattern, so a group a writer named `50%_done` would match paths that have
@@ -64,6 +64,7 @@ pub const PATH_KEYED: &[(&str, &str, Role)] = &[
     ("reference", "doc_path", Subject),
     ("reference", "target_path", Pointer),
     ("reference_suppression", "doc_path", Subject),
+    ("conversation", "doc_path", Subject),
 ];
 
 /// Every (table, column) pair holding a vault-relative group path.
@@ -168,6 +169,7 @@ mod tests {
                 ("reference", "doc_path", Subject),
                 ("reference", "target_path", Pointer),
                 ("reference_suppression", "doc_path", Subject),
+                ("conversation", "doc_path", Subject),
             ]
         );
     }

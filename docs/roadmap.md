@@ -10,12 +10,12 @@ Phases one through three depend on nothing outside this repo and can proceed
 while the toryo dispatch work lands. Phase four waits on toryo. Phases five and
 six follow it.
 
-| toryo run                              | Gives inkling                 | Blocks                         |
-| -------------------------------------- | ----------------------------- | ------------------------------ |
-| `b7c44602` HTTP write plane            | The transport                 | `82bcbabe`                     |
-| `82bcbabe` browser-safe client subpath | What inkling actually imports | Phase 4                        |
-| `b18e6297` resumable sessions          | Warm turns                    | Phase 4 quality, not its start |
-| `20b2dd3f` held-open sessions          | Conversational latency        | Nothing; upside only           |
+| toryo run                              | Gives inkling                   | Blocks                         |
+| -------------------------------------- | ------------------------------- | ------------------------------ |
+| `b7c44602` HTTP write plane            | The transport                   | `82bcbabe`                     |
+| `82bcbabe` browser-safe client subpath | What inkling's own copy follows | Phase 4                        |
+| `b18e6297` resumable sessions          | Warm turns                      | Phase 4 quality, not its start |
+| `20b2dd3f` held-open sessions          | Conversational latency          | Nothing; upside only           |
 
 Phase four can start on `82bcbabe` alone. Resume makes it good rather than
 possible.
@@ -42,6 +42,12 @@ more than the roadmap assumed: `@toryo/dispatch-client/http` carries a
 app pushes messages into, so 4a is built on `openSession` and `postMessage`
 rather than one job per turn. Eviction is the lifecycle rather than an error: a
 410 carries a `resumeSessionId`, and re-opening with it is a resume.
+
+What 4a could not do is depend on that package. Nothing in toryo's `packages/` is
+published and every one of them is private with `workspace:*` dependencies, so
+`packages/toryo/` is a vendored, dependency-free copy of the held-session half
+instead. Publishing a browser-safe subset would collapse it into a dependency,
+and that is toryo's task rather than inkling's.
 
 ## Shared files
 
@@ -116,8 +122,8 @@ would carry.
 Waits on toryo `82bcbabe`.
 
 **4.1 Dispatch transport.** Replace `stubTransport`. Read the token from
-`$HOME/.toryo/daemon-token` through a Tauri fs scope and pass it to
-`createHttpClient`. The path is pinned rather than following `TORYO_HOME`,
+`$HOME/.toryo/daemon-token` through a Tauri fs scope and pass it to the
+held-session client. The path is pinned rather than following `TORYO_HOME`,
 decided in toryo run `369e3146` for the same reason `crashDir` and
 `sequenceDraftsDir` are pinned: a Tauri capability is static JSON baked into the
 binary and cannot follow an environment variable.
@@ -128,11 +134,12 @@ failure, but distinguish the two causes. A changed file means retry and carry on
 An absent one means every request will 401 forever, so stop and say the token is
 missing and the daemon needs restarting to mint a new one.
 
-Enqueue with the working directory at the vault root and `writeScope` naming
-exactly the files a turn may touch, so two conversations in two groups do not
-block each other. Stream over Server-Sent Events; `/events` is deliberately
-ungated, so plain `EventSource` works. Daemon down shows an error. Done when a
-turn round-trips and the panel streams it.
+Open a held session with the working directory at the vault root and an empty
+`writeScope`, since a 4a conversation writes nothing. Stream the session's own
+Server-Sent Events, which are gated: the token travels in a request header, and
+the browser's built-in event-stream API takes a URL and cannot set one, so the
+stream is read with `fetch` instead. Daemon down shows an error. Done when a turn
+round-trips and the panel streams it.
 
 **4.2 Sessions.** Several conversations per document, persisted in SQLite, one
 turn record per round trip with the pre-turn snapshot. Resume a pending turn on

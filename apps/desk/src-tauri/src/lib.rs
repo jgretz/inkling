@@ -1,3 +1,4 @@
+mod conversations;
 mod data;
 mod migrations;
 mod paths;
@@ -35,6 +36,14 @@ pub fn run() {
             references::list_reference_suppressions,
             references::add_reference_suppression,
             references::remove_reference_suppression,
+            conversations::list_conversations,
+            conversations::create_conversation,
+            conversations::rename_conversation,
+            conversations::delete_conversation,
+            conversations::set_conversation_session,
+            conversations::list_turns,
+            conversations::start_turn,
+            conversations::finish_turn,
         ])
         .run(tauri::generate_context!())
         .expect("error while running inkling");

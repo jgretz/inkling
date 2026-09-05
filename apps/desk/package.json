@@ -16,6 +16,7 @@
     "@codemirror/language": "^6.11.0",
     "@codemirror/state": "^6.7.1",
     "@codemirror/view": "^6.43.9",
+    "@inkling/toryo": "workspace:*",
     "@inkling/vault": "workspace:*",
     "@inkling/voice": "workspace:*",
     "@lezer/highlight": "^1.2.1",

@@ -1,6 +1,7 @@
 import {invoke} from '@tauri-apps/api/core';
 import type {DocPath, GroupPath, VaultPath} from '@inkling/vault';
 import type {ReferenceKind, StoredReference, StoredReferenceSuppression} from './references.ts';
+import type {Conversation, ConversationStore, StoredTurn, TurnState} from './conversations.ts';
 
 /**
  * The typed edge of the Rust command surface. Every `invoke` in the app goes
@@ -201,6 +202,92 @@ export function addReferenceSuppression(
 export function removeReferenceSuppression(id: number): Promise<void> {
   return invoke<void>('remove_reference_suppression', {id});
 }
+
+/**
+ * The stored conversation shapes, re-exported so callers reach one module for
+ * the wire.
+ *
+ * Declared in `conversations.ts` for the same reason the reference rows are
+ * declared in `references.ts`: the transform that reads them must not name this
+ * file, which imports `@tauri-apps/api`.
+ * `serialises_to_the_shape_the_frontend_reads` in `src-tauri/src/conversations.rs`
+ * pins the other end of both.
+ */
+export type {Conversation, StoredTurn};
+
+export function listConversations(docPath: DocPath): Promise<Conversation[]> {
+  return invoke<Conversation[]>('list_conversations', {docPath});
+}
+
+/** Resolves to the row the database created, whose id every later call needs. */
+export function createConversation(docPath: DocPath, title: string): Promise<Conversation> {
+  return invoke<Conversation>('create_conversation', {docPath, title});
+}
+
+export function renameConversation(id: number, title: string): Promise<void> {
+  return invoke<void>('rename_conversation', {id, title});
+}
+
+/** Removes the conversation and, through the table's cascade, its turns. */
+export function deleteConversation(id: number): Promise<void> {
+  return invoke<void>('delete_conversation', {id});
+}
+
+/**
+ * Points a conversation at a daemon session, or at none.
+ *
+ * Both ids are sent explicitly, `null` for the one that is not in play, because
+ * they only mean anything as a pair: an evicted conversation keeps its resume id
+ * and loses its session id.
+ */
+export function setConversationSession(
+  id: number,
+  sessionId: string | null,
+  resumeSessionId: string | null,
+): Promise<void> {
+  return invoke<void>('set_conversation_session', {id, sessionId, resumeSessionId});
+}
+
+export function listTurns(conversationId: number): Promise<StoredTurn[]> {
+  return invoke<StoredTurn[]>('list_turns', {conversationId});
+}
+
+/** Records a turn as asked, with the document as it stood before it. */
+export function startTurn(
+  conversationId: number,
+  asked: string,
+  snapshot: string,
+): Promise<StoredTurn> {
+  return invoke<StoredTurn>('start_turn', {conversationId, asked, snapshot});
+}
+
+/** Ends a turn. `answered` carries the reply, or the failure's own words. */
+export function finishTurn(
+  id: number,
+  state: Exclude<TurnState, 'pending'>,
+  answered: string | null,
+): Promise<StoredTurn> {
+  return invoke<StoredTurn>('finish_turn', {id, state, answered});
+}
+
+/**
+ * The eight calls above as one value, which is what the transport and the
+ * conversation hook actually take.
+ *
+ * Assembled here and passed down from `App.tsx` rather than imported where it is
+ * used, so neither of those modules names this file and both stay drivable with
+ * no webview. See `ConversationStore` in `conversations.ts`.
+ */
+export const tauriConversations: ConversationStore = {
+  list: listConversations,
+  create: createConversation,
+  rename: renameConversation,
+  remove: deleteConversation,
+  setSession: setConversationSession,
+  listTurns,
+  startTurn,
+  finishTurn,
+};
 
 export function loadSettings(): Promise<unknown> {
   return invoke<unknown>('load_settings');

@@ -15,9 +15,11 @@ apps/desk/            the Tauri desktop app
     src/data.rs       the vault's SQLite database, one connection
     src/voice.rs      dismissed findings, stored against their anchors
     src/references.rs what a document or a group carries into a turn
+    src/conversations.rs conversations and their turns, per document
     src/paths.rs      the columns a rename has to rewrite
     src/migrations.rs the schema history, as data
     migrations/       one .sql file per migration
+packages/toryo/       a vendored held-session client for toryo's dispatch daemon
 packages/vault/       markdown parsing and document summaries, pure
 packages/voice/       the sixteen voice detectors and `check`, pure
   src/rules.ts        rule sets: parsed, validated, cascaded
@@ -28,6 +30,12 @@ scripts/              repo tooling
 
 `packages/*` holds logic that needs no filesystem and no window. `apps/*` holds
 everything that touches the outside world.
+
+`packages/toryo` is the one that speaks HTTP, and it is not an exception to that
+rule so much as the narrowest reading of it: it takes its `fetch` as a parameter,
+declares no dependency, and names no `node:` builtin, which is what lets it run
+in the webview bundle and in a test with no daemon alike.
+`tests/package-purity.test.ts` there holds each of those three.
 
 ## The three panels
 
@@ -137,6 +145,20 @@ vault scan already loaded, root-most group first and the document's own last.
 A reference naming a file the vault no longer holds is kept and shown as broken,
 for the same reason a dismissal survives a folder rename in Finder.
 
+Conversations are the third set of rows. One per conversation, keyed by the
+document's path, holding the daemon session it is talking to and the id a re-open
+resumes from; one per turn beneath it, with what was asked, what came back, how
+the turn ended, and the document as it stood before it was asked. That snapshot
+is written and nothing reads it yet: it is the one column here that cannot be
+reconstructed afterwards, because the writer keeps typing while the agent
+answers. The foreign key cascade sweeps a conversation's turns with it, the way
+detaching a reference sweeps the suppressions filed against it.
+
+The session ids are the exception to everything else in this file. They are
+handles to a process that dies with the daemon, so a stored one is a claim to
+check rather than a fact, and the transport asks the daemon about it before using
+it. The prose either side of a session is what survives.
+
 A rename inside inkling does follow. `src-tauri/src/paths.rs` holds two
 registries of stored columns and the two rewrites over them. `PATH_KEYED` lists
 the columns holding a **document** path and `GROUP_KEYED` the columns holding a
@@ -173,9 +195,10 @@ A pointer column sweeps nothing: a row there names a file the vault does not
 hold and is shown as broken, and the rename putting a file back at that path is
 the moment it becomes whole again. Its unique index is settled by `OR REPLACE`
 on the update instead, which merges only the two references a rename has pointed
-at one file. Those are every row a rename deletes. Outside a rename, the
-suppressions the reference cascade takes with a detached reference are the only
-rows anything deletes.
+at one file. Those are every row a rename deletes. Outside a rename, everything
+deleted is deleted because the writer asked: a detached reference, which takes
+the suppressions filed against it through the cascade, and a deleted
+conversation, which takes its turns the same way.
 
 Adding a migration is three things: a new `src-tauri/migrations/NNNN_name.sql`,
 one appended entry in `MIGRATIONS`, and the line in the catalog test that pins
@@ -187,14 +210,27 @@ in the wild have already run it. The applied version is SQLite's own
 
 `lib/agent.ts` defines the contract and nothing else. A transport takes a turn
 and yields reply chunks; the panel handles streaming, cancellation and errors
-around it. The shipped transport is a stub that reports what it was handed.
+around it. The shipped transport is `lib/dispatch-transport.ts`, one held session
+on toryo's dispatch daemon per conversation, over the vendored client in
+`packages/toryo`. What it sends is built by `lib/agent-prompt.ts`, which is pure:
+the whole context on a session's first turn and only what moved on every turn
+after it.
 
-The context strip above the composer lists every piece of text the next turn
-will carry, with its token estimate: the open document, the selection, and the
-assembled reference cascade, each inherited entry naming the group it came from.
-That is the app's honesty surface, and nothing should ever reach a model that is
-not named there. It is also the only place a reference is attached or detached
-in this build, which is why the picker lives beside the chips rather than in the
+The context strip above the composer lists the text the next turn will carry,
+with its token estimate: the open document, the selection, and the assembled
+reference cascade, each inherited entry naming the group it came from. That is
+the app's honesty surface, and no document should ever reach a model that is not
+named there. It is also the only place a reference is attached or detached in
+this build, which is why the picker lives beside the chips rather than in the
 library.
 
-See [`agent.md`](./agent.md) for what is still undecided.
+One thing does reach a turn without a chip of its own: the voice cascade, as a
+line of rule names in every turn and as the writer's own `voice.md` prose on the
+first turn of a session. It is not retrieval, it is the writer's own file, and
+the library shows it and the editor opens it. The strip should still account for
+it, and that it does not is a gap rather than a decision.
+
+A conversation is stored per document and the panel is keyed on its id, so
+switching conversations remounts rather than merging one conversation's replies
+into another's. See [`agent.md`](./agent.md) for the backend's four decisions and
+for what is still undecided.

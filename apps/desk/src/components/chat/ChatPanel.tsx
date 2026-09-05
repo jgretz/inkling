@@ -3,14 +3,35 @@ import type {ChangeEvent, KeyboardEvent} from 'react';
 import ArrowUp from 'lucide-react/dist/esm/icons/arrow-up';
 import Square from 'lucide-react/dist/esm/icons/square';
 import type {AgentContext, AgentTransport, Message} from '../../lib/agent.ts';
+import type {Conversation} from '../../lib/conversations.ts';
 import {ContextStrip, type ReferenceControls} from './ContextStrip.tsx';
+
+/** The conversations of the open document, and how the writer moves between them. */
+export type ConversationControls = {
+  all: readonly Conversation[];
+  activeId: number | undefined;
+  onSelect: (id: number) => void;
+  onCreate: () => void;
+};
 
 type ChatPanelProps = {
   transport: AgentTransport;
   context: AgentContext;
   /** Attaching and detaching, which happens in the context strip and nowhere else. */
   references: ReferenceControls;
+  /**
+   * The active conversation's stored turns, seeding the message list.
+   *
+   * Read once, at mount. The panel owns its history from that point, which is
+   * why `App.tsx` gives it a `key` of the conversation id: switching remounts
+   * rather than merging one conversation's messages into another's.
+   */
+  initial: Message[];
+  conversations: ConversationControls;
 };
+
+/** The value of the switcher's last entry, which is not a conversation id. */
+const NEW_CONVERSATION = 'new';
 
 let counter = 0;
 
@@ -43,8 +64,14 @@ function Bubble({message}: {message: Message}) {
  * workspace: a chat is about a document but is not part of it, and nothing in
  * the editor or preview should re-render because a reply streamed in.
  */
-export function ChatPanel({transport, context, references}: ChatPanelProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+export function ChatPanel({
+  transport,
+  context,
+  references,
+  initial,
+  conversations,
+}: ChatPanelProps) {
+  const [messages, setMessages] = useState<Message[]>(initial);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const abort = useRef<AbortController | null>(null);
@@ -149,11 +176,39 @@ export function ChatPanel({transport, context, references}: ChatPanelProps) {
     setInput(event.target.value);
   }, []);
 
+  const {onSelect, onCreate} = conversations;
+  const handleSwitch = useCallback(
+    function (event: ChangeEvent<HTMLSelectElement>) {
+      const picked = event.target.value;
+      if (picked === NEW_CONVERSATION) onCreate();
+      else onSelect(Number(picked));
+    },
+    [onSelect, onCreate],
+  );
+
   return (
     <section className="flex h-full min-w-0 flex-col border-l border-ink-800 bg-ink-950">
       <div className="flex shrink-0 items-baseline justify-between px-3 pb-1 pt-3">
         <span className="text-[11px] font-medium uppercase tracking-wider text-ink-400">Agent</span>
         <span className="text-[10px] text-ink-600">{transport.name}</span>
+      </div>
+
+      <div className="shrink-0 px-3 pb-2">
+        <select
+          value={conversations.activeId ?? ''}
+          onChange={handleSwitch}
+          aria-label="Conversation"
+          className="w-full rounded-md bg-ink-850 px-2 py-1 text-[12px] text-ink-200 focus:outline-none focus:ring-1 focus:ring-accent-muted"
+        >
+          {conversations.all.map(function (entry) {
+            return (
+              <option key={entry.id} value={entry.id}>
+                {entry.title}
+              </option>
+            );
+          })}
+          <option value={NEW_CONVERSATION}>New conversation</option>
+        </select>
       </div>
 
       <div className="flex-1 space-y-2 overflow-y-auto px-3 py-2">
