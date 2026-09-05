@@ -142,12 +142,14 @@ export function useConversations({store, docPath, ready, sessionState}: Options)
           return;
         }
 
-        const held = allRef.current.find(function (entry) {
-          return entry.id === activeId;
-        })?.sessionId;
-        const state =
-          held === null || held === undefined ? undefined : await probeRef.current(held);
-        if (held !== null && held !== undefined && state !== 'live') {
+        const held =
+          allRef.current.find(function (entry) {
+            return entry.id === activeId;
+          })?.sessionId ?? null;
+        // Demoted to a resume id unless the daemon still calls it live, so the
+        // next turn opens a new session with it rather than pushing a message
+        // into a process that has gone.
+        if (held !== null && (await probeRef.current(held)) !== 'live') {
           await store.setSession(activeId, null, held);
           if (live) {
             setAll(function (current) {
