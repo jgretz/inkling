@@ -1,12 +1,15 @@
-export {
-  createHeldSessionClient,
-  isHeldSessionStatus,
-  toSessionError,
-  toStreamFrame,
-} from './held.ts';
-export {HeldStreamError} from './held.ts';
-export {sseFrames, SseConnectError} from './sse.ts';
-export {DAEMON_ENDPOINT, DAEMON_TOKEN_HEADER} from './wire.ts';
+/**
+ * What a consumer of this package may name.
+ *
+ * The client and the types its methods mention, and nothing else. The frame
+ * reader, the two mappings onto those types and the status guard are how the
+ * client is built rather than what it offers, and the two wire literals are its
+ * own address; all of them stay behind this file, and the tests that cover them
+ * import their module directly. Widening this is a decision about the package's
+ * surface, not a convenience.
+ */
+
+export {createHeldSessionClient, HeldStreamError} from './held.ts';
 
 export type {
   HeldResult,
@@ -18,4 +21,3 @@ export type {
   HeldStreamFrame,
   HeldStreamTurn,
 } from './held.ts';
-export type {SseFrame, SseFramesOptions} from './sse.ts';
