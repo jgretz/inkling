@@ -135,9 +135,13 @@ async function readToken(): Promise<string | null> {
     const path = await primitives.join(home, TOKEN_DIR, TOKEN_FILE);
     const token = (await primitives.readTextFile(path)).trim();
     return token || null;
-  } catch {
-    // No file yet (no daemon has served HTTP), an unreadable one, or no Tauri
-    // at all. All three mean the same thing to a caller: nothing to present.
+  } catch (error) {
+    // No file yet (no daemon has served HTTP), an unreadable one, or no Tauri at
+    // all. All three mean the same thing to a caller: nothing to present. They do
+    // not mean the same thing to whoever has to fix it, and the writer is told
+    // the same sentence either way, so the reason goes to the console. Rare
+    // enough to be worth a line: this runs at launch and on a 401, not per turn.
+    console.warn('inkling: no toryo daemon token to present', error);
     return null;
   }
 }
