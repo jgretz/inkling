@@ -6,8 +6,12 @@ The panel codes against `AgentTransport` in `apps/desk/src/lib/agent.ts`. One
 method, streaming, cancellable. Swapping the backend is one file.
 
 Context is explicit. A turn carries the open document, the editor selection and
-any pinned vault files, and every one of them appears in the context strip with
-a token estimate before it is sent.
+the assembled reference cascade: what each group above the document attached,
+then what the document attached itself. Every entry appears in the context strip
+with a token estimate and the level it was inherited from before it is sent. An
+entry carrying nothing (a web link, a file the vault has lost, one this document
+turned off) shows at zero rather than disappearing, so the strip accounts for
+every attachment and not merely for every byte.
 
 ## Not decided
 

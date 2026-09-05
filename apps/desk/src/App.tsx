@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {open} from '@tauri-apps/plugin-dialog';
-import type {DocPath, VaultPath} from '@inkling/vault';
+import {groupOf, type DocPath, type VaultPath} from '@inkling/vault';
 import {resolveVoice, type Finding} from '@inkling/voice';
 import {isDesktop, loadSettings, saveSettings} from './lib/bridge.ts';
 import {
@@ -10,7 +10,9 @@ import {
   type ToggleKey,
 } from './lib/settings.ts';
 import {stubTransport, type AgentContext} from './lib/agent.ts';
+import {assembleReferences} from './lib/references.ts';
 import {useFindings} from './lib/use-findings.ts';
+import {useReferences} from './lib/use-references.ts';
 import {useSuppressions} from './lib/use-suppressions.ts';
 import {useWorkspace} from './lib/use-workspace.ts';
 import {cascadeFor, voiceNotice} from './lib/voice-cascade.ts';
@@ -24,6 +26,7 @@ import {PreviewPanel} from './components/preview/PreviewPanel.tsx';
 import {EditorPanel, type Reveal} from './components/editor/EditorPanel.tsx';
 import {FindingsStrip, type DismissedFinding} from './components/findings/FindingsStrip.tsx';
 import {ChatPanel} from './components/chat/ChatPanel.tsx';
+import type {ReferenceControls} from './components/chat/ContextStrip.tsx';
 
 /** No document open, so no rule set governs anything. Held still for the memos. */
 const NO_CASCADE = Object.freeze({sets: [], problems: []});
@@ -38,7 +41,6 @@ export function App() {
   const workspace = useWorkspace();
   const [layout, setLayout] = useState<LayoutSettings>(DEFAULT_SETTINGS.layout);
   const [selection, setSelection] = useState('');
-  const [pinned, setPinned] = useState<DocPath[]>([]);
   const [restored, setRestored] = useState(false);
 
   const {chooseVault, openDoc} = workspace;
@@ -130,14 +132,6 @@ export function App() {
     [resize],
   );
 
-  const unpin = useCallback(function (path: DocPath) {
-    setPinned(function (current) {
-      return current.filter(function (entry) {
-        return entry !== path;
-      });
-    });
-  }, []);
-
   const titles = useMemo(
     function () {
       return new Map(
@@ -149,8 +143,30 @@ export function App() {
     [workspace.docs],
   );
 
-  // The vault scan already read every body, so pinning is a map lookup rather
-  // than a file read. See the note on `list_docs` in `src-tauri/src/vault.rs`.
+  // Memoised because `useReferences` re-reads the stored rows whenever this
+  // list changes: a new one means the vault was scanned, and a scan follows the
+  // rename that moved the paths those rows hold.
+  const docPaths = useMemo(
+    function () {
+      return workspace.docs.map(function (doc) {
+        return doc.path;
+      });
+    },
+    [workspace.docs],
+  );
+
+  const dataReady = workspace.data.kind === 'ready';
+  const references = useReferences({
+    vault,
+    docPath: openPath,
+    ready: dataReady,
+    taken: docPaths,
+    onNoteWritten: workspace.refresh,
+  });
+
+  // The vault scan already read every body, so a reference is a map lookup
+  // rather than a file read. See the note on `list_docs` in
+  // `src-tauri/src/vault.rs`.
   const context: AgentContext = useMemo(
     function () {
       const draft = workspace.open?.draft;
@@ -161,14 +177,48 @@ export function App() {
             ? undefined
             : {path, title: titles.get(path) ?? path, source: draft},
         selection: selection.length > 0 ? selection : undefined,
-        pinned: pinned.flatMap(function (entry) {
-          const source = workspace.sources.get(entry);
-          if (source === undefined) return [];
-          return [{path: entry, title: titles.get(entry) ?? entry, source}];
-        }),
+        references: assembleReferences(
+          path,
+          references.rows,
+          workspace.sources,
+          references.suppressions,
+        ),
       };
     },
-    [workspace.open?.draft, workspace.open?.path, workspace.sources, titles, pinned, selection],
+    [
+      workspace.open?.draft,
+      workspace.open?.path,
+      workspace.sources,
+      titles,
+      selection,
+      references.rows,
+      references.suppressions,
+    ],
+  );
+
+  const referenceControls: ReferenceControls = useMemo(
+    function () {
+      return {
+        docs: workspace.docs,
+        group: openPath === undefined ? undefined : groupOf(openPath),
+        // Nowhere to store a reference and nothing to attach it to, so the
+        // strip shows no controls at all rather than ones that fail silently.
+        canAttach: dataReady && openPath !== undefined,
+        onAttach: references.attach,
+        onDetach: references.detach,
+        onSuppress: references.suppress,
+        onRestore: references.restore,
+      };
+    },
+    [
+      workspace.docs,
+      openPath,
+      dataReady,
+      references.attach,
+      references.detach,
+      references.suppress,
+      references.restore,
+    ],
   );
 
   const draft = workspace.open?.draft ?? '';
@@ -191,7 +241,7 @@ export function App() {
     [cascade],
   );
 
-  const {dismissals, dismiss, restore} = useSuppressions(openPath, workspace.data.kind === 'ready');
+  const {dismissals, dismiss, restore} = useSuppressions(openPath, dataReady);
   const {kept, suppressed} = useFindings(draft, voice, dismissals);
   const [reveal, setReveal] = useState<Reveal | undefined>(undefined);
 
@@ -315,7 +365,11 @@ export function App() {
               label="Resize the agent panel"
             />
             <div style={{width: layout.chatWidth}} className="shrink-0">
-              <ChatPanel transport={stubTransport} context={context} onUnpin={unpin} />
+              <ChatPanel
+                transport={stubTransport}
+                context={context}
+                references={referenceControls}
+              />
             </div>
           </>
         )}

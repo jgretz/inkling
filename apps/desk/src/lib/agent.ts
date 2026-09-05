@@ -1,4 +1,5 @@
 import type {DocPath} from '@inkling/vault';
+import type {ContextReference} from './references.ts';
 
 /**
  * The agent boundary.
@@ -29,8 +30,12 @@ export type AgentContext = {
   doc: {path: DocPath; title: string; source: string} | undefined;
   /** Text the writer highlighted in the editor, when they selected any. */
   selection: string | undefined;
-  /** Other vault documents the writer pinned into the conversation. */
-  pinned: {path: DocPath; title: string; source: string}[];
+  /**
+   * The assembled reference cascade: what the document's groups attached, then
+   * what the document attached itself. Built by `assembleReferences`, which is
+   * also what fixes the order and the token estimate of each entry.
+   */
+  references: ContextReference[];
 };
 
 export type Turn = {
@@ -47,7 +52,7 @@ export type AgentTransport = {
 };
 
 export function emptyContext(): AgentContext {
-  return {doc: undefined, selection: undefined, pinned: []};
+  return {doc: undefined, selection: undefined, references: []};
 }
 
 /** Roughly four characters per token; good enough for a context budget meter. */
@@ -55,11 +60,19 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+/**
+ * What the next turn would cost, in the same estimate the strip shows per chip.
+ *
+ * A reference's `source` is empty when it carries no body: a link, a file the
+ * vault has lost, or one this document turned off. So they total to zero here
+ * rather than needing a rule of their own, and the header cannot disagree with
+ * the chips beneath it.
+ */
 export function contextTokens(context: AgentContext): number {
   const parts = [
     context.doc?.source ?? '',
     context.selection ?? '',
-    ...context.pinned.map(function (entry) {
+    ...context.references.map(function (entry) {
       return entry.source;
     }),
   ];

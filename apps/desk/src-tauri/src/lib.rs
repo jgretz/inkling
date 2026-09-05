@@ -1,6 +1,7 @@
 mod data;
 mod migrations;
 mod paths;
+mod references;
 mod settings;
 mod vault;
 mod voice;
@@ -28,6 +29,12 @@ pub fn run() {
             voice::list_suppressions,
             voice::add_suppression,
             voice::remove_suppression,
+            references::list_references,
+            references::add_reference,
+            references::remove_reference,
+            references::list_reference_suppressions,
+            references::add_reference_suppression,
+            references::remove_reference_suppression,
         ])
         .run(tauri::generate_context!())
         .expect("error while running inkling");

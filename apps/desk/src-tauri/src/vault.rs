@@ -395,6 +395,10 @@ mod tests {
         resolve, resolve_dir,
     };
     use crate::data::VaultDb;
+    use crate::references::{
+        insert as attach, insert_suppression, select_all, select_all_suppressions, NewReference,
+        Reference,
+    };
     use crate::voice::{insert, select_for_doc, Suppression};
     use std::fs;
     use std::path::Path;
@@ -735,6 +739,276 @@ mod tests {
 
         assert!(result.is_err());
         assert!(vault.path().join("drafts/a.md").is_file());
+    }
+
+    /// A link attached to a group, which is the case `GROUP_KEYED` exists for:
+    /// the stored value is the group's own path, not a path under it.
+    fn attach_to_group(db: &VaultDb, group: &str, url: &str) -> Reference {
+        db.with(|conn| {
+            attach(
+                conn,
+                &NewReference {
+                    doc_path: None,
+                    group_path: Some(group),
+                    kind: "link",
+                    target_path: None,
+                    url: Some(url),
+                    title: "The style guide",
+                },
+            )
+        })
+        .expect("a vault should be open")
+        .expect("should attach")
+    }
+
+    /// A document referring to another document, which puts a path in both the
+    /// owner column and the target column.
+    fn attach_to_doc(db: &VaultDb, owner: &str, target: &str) -> Reference {
+        db.with(|conn| {
+            attach(
+                conn,
+                &NewReference {
+                    doc_path: Some(owner),
+                    group_path: None,
+                    kind: "doc",
+                    target_path: Some(target),
+                    url: None,
+                    title: "Notes on endings",
+                },
+            )
+        })
+        .expect("a vault should be open")
+        .expect("should attach")
+    }
+
+    /// A group's reference naming another document, which is the only shape a
+    /// suppression may be filed against.
+    fn attach_to_group_doc(db: &VaultDb, group: &str, target: &str) -> Reference {
+        db.with(|conn| {
+            attach(
+                conn,
+                &NewReference {
+                    doc_path: None,
+                    group_path: Some(group),
+                    kind: "doc",
+                    target_path: Some(target),
+                    url: None,
+                    title: "Notes on endings",
+                },
+            )
+        })
+        .expect("a vault should be open")
+        .expect("should attach")
+    }
+
+    fn references(db: &VaultDb) -> Vec<Reference> {
+        db.with(select_all)
+            .expect("a vault should be open")
+            .expect("should select")
+    }
+
+    /// The one reference in the vault, for the tests that store exactly one.
+    fn only_reference(db: &VaultDb) -> Reference {
+        let mut all = references(db);
+        assert_eq!(all.len(), 1, "expected exactly one reference");
+        all.remove(0)
+    }
+
+    #[test]
+    fn should_read_a_group_reference_at_the_new_group_after_it_is_renamed() {
+        let (vault, db) = vault_with_a_group("drafts");
+        attach_to_group(&db, "drafts", "https://example.com");
+
+        rename_group_in(vault.path(), &db, "drafts", "essays").expect("should rename");
+
+        assert_eq!(only_reference(&db).group_path.as_deref(), Some("essays"));
+    }
+
+    /// The exact-match half of the group rewrite is new code, so the sibling
+    /// case is asserted for the group column too: `drafts2` shares six
+    /// characters with `drafts` and nothing else.
+    #[test]
+    fn should_leave_a_sibling_groups_reference_alone_when_a_group_is_renamed() {
+        let (vault, db) = vault_with_a_group("drafts");
+        fs::create_dir_all(vault.path().join("drafts2")).expect("should make a dir");
+        attach_to_group(&db, "drafts2", "https://example.com");
+
+        rename_group_in(vault.path(), &db, "drafts", "essays").expect("should rename");
+
+        assert_eq!(only_reference(&db).group_path.as_deref(), Some("drafts2"));
+    }
+
+    #[test]
+    fn should_carry_a_reference_owned_by_a_document_below_the_renamed_group() {
+        let (vault, db) = vault_with_a_group("drafts/2026");
+        attach_to_doc(&db, "drafts/2026/a.md", "notes/b.md");
+
+        rename_group_in(vault.path(), &db, "drafts", "essays").expect("should rename");
+
+        let row = only_reference(&db);
+        assert_eq!(row.doc_path.as_deref(), Some("essays/2026/a.md"));
+        // The target was outside the renamed group, so it must not have moved.
+        assert_eq!(row.target_path.as_deref(), Some("notes/b.md"));
+    }
+
+    #[test]
+    fn should_carry_a_reference_whose_target_is_inside_the_renamed_group() {
+        let (vault, db) = vault_with_a_group("drafts");
+        attach_to_doc(&db, "notes/x.md", "drafts/a.md");
+
+        rename_group_in(vault.path(), &db, "drafts", "essays").expect("should rename");
+
+        let row = only_reference(&db);
+        assert_eq!(row.target_path.as_deref(), Some("essays/a.md"));
+        assert_eq!(row.doc_path.as_deref(), Some("notes/x.md"));
+    }
+
+    #[test]
+    fn should_carry_a_turned_off_reference_when_its_document_moves_under_a_rename() {
+        let (vault, db) = vault_with_a_group("drafts");
+        let inherited = attach_to_group(&db, "drafts", "https://example.com");
+        db.with(|conn| insert_suppression(conn, "drafts/a.md", inherited.id))
+            .expect("a vault should be open")
+            .expect("should turn it off");
+
+        rename_group_in(vault.path(), &db, "drafts", "essays").expect("should rename");
+
+        let off = db
+            .with(select_all_suppressions)
+            .expect("a vault should be open")
+            .expect("should select");
+        assert_eq!(off.len(), 1);
+        assert_eq!(off[0].doc_path, "essays/a.md");
+        assert_eq!(off[0].reference_id, inherited.id);
+    }
+
+    /// A reference whose file went missing outside inkling is kept and shown
+    /// broken, so a rename that puts a file back at that path has to leave it
+    /// alone rather than sweep it as an orphan. The target column points at
+    /// another row's subject; it does not identify this one.
+    #[test]
+    fn should_revive_a_broken_reference_when_a_group_rename_puts_its_target_back() {
+        let (vault, db) = vault_with_a_group("drafts");
+        attach_to_doc(&db, "notes/x.md", "essays/a.md");
+
+        rename_group_in(vault.path(), &db, "drafts", "essays").expect("should rename");
+
+        assert_eq!(
+            only_reference(&db).target_path.as_deref(),
+            Some("essays/a.md")
+        );
+    }
+
+    /// The same, one document wide, through `rewrite_exact`.
+    #[test]
+    fn should_revive_a_broken_reference_when_a_document_moves_onto_its_target() {
+        let (vault, db) = vault_with_a_group("drafts");
+        fs::create_dir_all(vault.path().join("essays")).expect("should make a dir");
+        attach_to_doc(&db, "notes/x.md", "essays/a.md");
+
+        rename_doc_with(
+            &vault.path().to_string_lossy(),
+            "drafts/a.md",
+            "essays/a.md",
+            &db,
+        )
+        .expect("should move");
+
+        assert_eq!(
+            only_reference(&db).target_path.as_deref(),
+            Some("essays/a.md")
+        );
+    }
+
+    /// Two of one document's references collapsing onto one file: the rename
+    /// must merge them rather than fail on the unique index, and the row that
+    /// followed the file is the one that survives.
+    #[test]
+    fn should_merge_two_references_a_rename_points_at_the_same_file() {
+        let (vault, db) = vault_with_a_group("drafts");
+        fs::create_dir_all(vault.path().join("essays")).expect("should make a dir");
+        let following = attach_to_doc(&db, "notes/x.md", "drafts/a.md");
+        attach_to_doc(&db, "notes/x.md", "essays/a.md");
+
+        rename_doc_with(
+            &vault.path().to_string_lossy(),
+            "drafts/a.md",
+            "essays/a.md",
+            &db,
+        )
+        .expect("should move");
+
+        let row = only_reference(&db);
+        assert_eq!(row.id, following.id);
+        assert_eq!(row.target_path.as_deref(), Some("essays/a.md"));
+    }
+
+    /// The merge above deletes a row, so the foreign key has to sweep what was
+    /// filed against it. A suppression left pointing at a gone reference is
+    /// either a dangling row or a constraint failure that fails the rename.
+    #[test]
+    fn should_sweep_a_suppression_filed_against_a_reference_a_rename_merges_away() {
+        let (vault, db) = vault_with_a_group("drafts");
+        fs::create_dir_all(vault.path().join("essays")).expect("should make a dir");
+        let following = attach_to_group_doc(&db, "drafts", "drafts/a.md");
+        let merged = attach_to_group_doc(&db, "drafts", "essays/a.md");
+        db.with(|conn| insert_suppression(conn, "drafts/x.md", merged.id))
+            .expect("a vault should be open")
+            .expect("should turn it off");
+
+        rename_doc_with(
+            &vault.path().to_string_lossy(),
+            "drafts/a.md",
+            "essays/a.md",
+            &db,
+        )
+        .expect("should move");
+
+        assert_eq!(only_reference(&db).id, following.id);
+        let off = db
+            .with(select_all_suppressions)
+            .expect("a vault should be open")
+            .expect("should select");
+        assert!(off.is_empty(), "left a suppression behind: {off:?}");
+    }
+
+    #[test]
+    fn should_carry_a_reference_target_when_one_document_moves() {
+        let (vault, db) = vault_with_a_group("drafts");
+        fs::create_dir_all(vault.path().join("essays")).expect("should make a dir");
+        attach_to_doc(&db, "notes/x.md", "drafts/a.md");
+
+        rename_doc_with(
+            &vault.path().to_string_lossy(),
+            "drafts/a.md",
+            "essays/a.md",
+            &db,
+        )
+        .expect("should move");
+
+        assert_eq!(
+            only_reference(&db).target_path.as_deref(),
+            Some("essays/a.md")
+        );
+    }
+
+    /// Moving a document changes no group, so the group column must be left
+    /// exactly where it is. This is why `rewrite_exact` loops `PATH_KEYED` only.
+    #[test]
+    fn should_leave_a_group_reference_alone_when_one_document_moves() {
+        let (vault, db) = vault_with_a_group("drafts");
+        fs::create_dir_all(vault.path().join("essays")).expect("should make a dir");
+        attach_to_group(&db, "drafts", "https://example.com");
+
+        rename_doc_with(
+            &vault.path().to_string_lossy(),
+            "drafts/a.md",
+            "essays/a.md",
+            &db,
+        )
+        .expect("should move");
+
+        assert_eq!(only_reference(&db).group_path.as_deref(), Some("drafts"));
     }
 
     #[test]
