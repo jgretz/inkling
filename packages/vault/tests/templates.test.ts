@@ -93,12 +93,30 @@ describe('templateFor', function () {
     expect(body).toBe('# A Title\n\nDear reader,');
   });
 
+  it('should carry an override’s tags into every document made from it', function () {
+    const override = ['---', 'tags:', '  - draft', '---', '', '# {{title}}'].join('\n');
+
+    const {frontmatter} = parseDoc(templateFor('article', 'A Title', CREATED, override));
+
+    expect(frontmatter.tags).toEqual(['draft']);
+  });
+
+  it('should write a title holding a substitution pattern as the writer typed it', function () {
+    // `$&` and `$'` are replacement patterns to `String.replace`, so a title
+    // carrying one must not be read as an instruction about the match.
+    const {frontmatter, body} = parseDoc(templateFor('proposal', "Save $& Spend $'", CREATED));
+
+    expect(frontmatter.title).toBe("Save $& Spend $'");
+    expect(body).toContain("# Save $& Spend $'");
+  });
+
   it('should still own the title, kind and created date when an override names them', function () {
     const override = [
       '---',
       'title: Whatever The Override Says',
       'kind: note',
       'createdAt: 1999-01-01T00:00:00.000Z',
+      'updatedAt: 1999-01-01T00:00:00.000Z',
       '---',
       '',
       'Body.',
@@ -109,6 +127,7 @@ describe('templateFor', function () {
     expect(frontmatter.title).toBe('A Title');
     expect(frontmatter.kind).toBe('proposal');
     expect(frontmatter.createdAt).toBe(CREATED);
+    expect(frontmatter.updatedAt).toBeUndefined();
   });
 
   it('should drop the built-in conventions when an override supplies its own', function () {

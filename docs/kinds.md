@@ -68,11 +68,16 @@ Hi,
 That file's body and its frontmatter keys replace the built-in skeleton's, value
 and all, so a key is worth writing as an empty string rather than leaving bare:
 a bare `to:` is YAML for null, and every document made from the template would
-carry a literal `to: null`.
+carry a literal `to: null`. Tags carry through the same way, so a template that
+declares `tags: [draft]` starts every document it makes as a draft.
 
 `{{title}}` anywhere in the body becomes the document's title. `title`, `kind`
 and `createdAt` are still inkling's to write, so an override that names them is
 describing the template rather than the document, and its values are dropped.
+An `updatedAt` is dropped too, because nothing in inkling refreshes one.
+
+A template is an ordinary markdown file in the vault, so `templates/` shows in
+the library as a group like any other, and is edited like anything else.
 
 A vault with no `templates/` directory is not missing anything. The built-in
 skeletons are the default precisely so that pointing inkling at a fresh

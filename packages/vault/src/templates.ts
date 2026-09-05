@@ -1,25 +1,6 @@
 import {parseDoc, serializeDoc} from './frontmatter.ts';
 import {type DocKind, type DocPath} from './types.ts';
 
-/**
- * What a new document of each kind starts as.
- *
- * A skeleton is frontmatter conventions plus a body. Every convention key is
- * written with an empty value on purpose: the key is inkling's suggestion and
- * the value is the writer's, so guessing at a publication or a client would put
- * words in their mouth that they then have to notice and delete.
- *
- * The keys live in the frontmatter's `extra` bag rather than in `Frontmatter`
- * itself. `title`, `kind`, `tags`, `createdAt` and `updatedAt` are what inkling
- * reads; a `publication` or a `client` is the writer's own metadata, and
- * `extra` already round-trips it untouched.
- *
- * Nothing here writes `updatedAt`. Saving a document does not set that key, and
- * the library falls back to the file's mtime when it is absent, so a template
- * that wrote one would freeze the "updated" column at the creation date for the
- * life of the document.
- */
-
 /** The directory a vault keeps its own template overrides in. */
 export const TEMPLATE_DIR = 'templates';
 
@@ -32,6 +13,24 @@ type Skeleton = {
   body: string;
 };
 
+/**
+ * What a new document of each kind starts as: frontmatter conventions, a body.
+ *
+ * Every convention key is written with an empty value on purpose: the key is
+ * inkling's suggestion and the value is the writer's, so guessing at a
+ * publication or a client would put words in their mouth that they then have to
+ * notice and delete.
+ *
+ * The keys live in the frontmatter's `extra` bag rather than in `Frontmatter`
+ * itself. `title`, `kind`, `tags`, `createdAt` and `updatedAt` are what inkling
+ * reads; a `publication` or a `client` is the writer's own metadata, and
+ * `extra` already round-trips it untouched.
+ *
+ * Nothing here writes `updatedAt`. Saving a document does not set that key, and
+ * the library falls back to the file's mtime when it is absent, so a template
+ * that wrote one would freeze the "updated" column at the creation date for the
+ * life of the document.
+ */
 const SKELETONS: Record<DocKind, Skeleton> = {
   article: {
     extra: {publication: ''},
@@ -76,11 +75,12 @@ export function templatePathFor(kind: DocKind): DocPath {
  * test assert on one.
  *
  * `override` is the raw source of the writer's own `templates/<kind>.md`, when
- * they have one. It supplies the body and any extra frontmatter keys, replacing
- * the built-in skeleton's. It does not supply `title`, `kind` or `createdAt`:
- * those describe the document being made, not the shape it is being made in, so
- * an override's own values for them are dropped rather than copied into every
- * document created from it.
+ * they have one. It supplies the body, its tags and any extra frontmatter keys,
+ * replacing the built-in skeleton's. It does not supply `title`, `kind` or
+ * `createdAt`: those describe the document being made, not the shape it is being
+ * made in, so an override's own values for them are dropped rather than copied
+ * into every document created from it. An `updatedAt` is dropped for the reason
+ * on [`SKELETONS`].
  */
 export function templateFor(
   kind: DocKind,
@@ -94,7 +94,11 @@ export function templateFor(
   const body = source === undefined ? skeleton.body : source.body;
 
   return serializeDoc({
-    frontmatter: {title, kind, createdAt, extra: {...extra}},
-    body: body.replace(TITLE_TOKEN, title),
+    frontmatter: {title, kind, createdAt, tags: source?.frontmatter.tags, extra: {...extra}},
+    // Replaced through a function, so a title holding `$&` or `$'` lands as the
+    // writer typed it rather than as a substitution pattern.
+    body: body.replace(TITLE_TOKEN, function () {
+      return title;
+    }),
   });
 }
