@@ -22,26 +22,19 @@ possible.
 
 ## In flight
 
-| Run        | Item                                 | Waits on |
-| ---------- | ------------------------------------ | -------- |
-| `0f335217` | 1.3 voice rule sets and suppressions | 1.2      |
+| Run        | Item                                          | Waits on |
+| ---------- | --------------------------------------------- | -------- |
+| `2740f7f5` | 2.2 groups as directories, plus 2.4 filtering | nothing  |
+| `6d91f2a4` | 2.3 document kinds                            | 2.2      |
 
-1.1, 1.1b, 1.2 and 2.1 are merged. 1.3 is the last of phase one, and lands it.
+2.4 is folded into 2.2 rather than run separately: both live in the library
+panel and would collide there. 2.3 is chained because it hangs the kind onto the
+document-creation affordance 2.2 builds.
 
-2.1 was pulled forward out of phase two because 1.3 stores suppressions in the
-database it creates. The phase numbering records what each item is, not the
-order it is built in.
-
-1.2 and 1.3 were serialized rather than run in parallel: 1.2 built the findings
-strip and 1.3 added the dismiss affordance to it, so they would have collided in
-the same files.
-
-1.1b exists because 1.1's detectors were tuned against specification prose
-written by someone thinking about the rules, which never breaks them. Against
-1,867 words of real writing in `examples/vault/personal-readme.md` they showed
-two bugs in `rule-of-three`, a false positive in `negative-parallelism`, and one
-missing rule: the spaced hyphen, which appears 43 times in that file and was
-caught zero times.
+Phase 1 is complete and merged, as is 2.1. 2.1 was pulled forward out of phase
+two because 1.3 stores suppressions in the database it creates, and those
+suppressions are keyed by document path, which is why renaming a group in 2.2 is
+the hard part of that task rather than a filesystem call.
 
 ## Shared files
 
