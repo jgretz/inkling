@@ -34,7 +34,8 @@ The mode picks the path, and they are genuinely different mechanisms.
 and replaces the buffer from what disk returned rather than from what was sent.
 The agent never holds a write tool: the session runs with a hard write deny, and
 opening one that could write is a decision at `openSession` that a live session
-cannot take back.
+cannot take back. The landing queues behind the autosave rather than racing it,
+so the two writers over one file cannot leave disk holding the older text.
 
 **Writer's turn.** The reply carries the proposed text and the turn writes
 nothing. Inkling renders the replacement and the passage it replaces for accept
@@ -90,6 +91,12 @@ are refusals rather than guesses:
 Matching is exact and single-occurrence. A quote that is gone, and a quote that
 appears twice, are both answered with a sentence in the status bar. Tolerant
 anchors are 4c.
+
+The document is captured with the authorization, and for the same reason. An
+edit lands only in the file the turn actually carried: a writer who opened
+something else while the agent was thinking gets a sentence instead, because two
+documents made from one template share passages and a quote can match in the
+wrong one.
 
 ## Authorization is captured at send time
 

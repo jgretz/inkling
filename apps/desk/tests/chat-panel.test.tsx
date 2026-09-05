@@ -3,7 +3,13 @@ import {describe, expect, it} from 'bun:test';
 import {useState} from 'react';
 import {act, fireEvent, render} from '@testing-library/react';
 import type {DocPath} from '@inkling/vault';
-import {emptyContext, type AgentTransport, type Message, type Turn} from '../src/lib/agent.ts';
+import {
+  emptyContext,
+  type AgentContext,
+  type AgentTransport,
+  type Message,
+  type Turn,
+} from '../src/lib/agent.ts';
 import type {Conversation} from '../src/lib/conversations.ts';
 import type {Edit} from '../src/lib/reply.ts';
 import type {TurnMode} from '../src/lib/turn.ts';
@@ -69,9 +75,11 @@ type HarnessProps = {
   all?: readonly Conversation[];
   transport?: AgentTransport;
   mode?: TurnMode;
+  /** The document the turn carries, so a swap mid-turn is testable. */
+  context?: AgentContext;
   onFlush?: () => Promise<void>;
   onAccept?: (edit: Edit) => void;
-  onLand?: (edit: Edit) => void;
+  onLand?: (edit: Edit, path: DocPath | undefined) => void;
   onFocus?: () => void;
 };
 
@@ -82,6 +90,7 @@ function Harness({
   all = ALL,
   transport = SILENT,
   mode = 'writer',
+  context = emptyContext(),
   onFlush = noFlush,
   onAccept = noop,
   onLand = noop,
@@ -93,7 +102,7 @@ function Harness({
     <ChatPanel
       key={activeId}
       transport={transport}
-      context={emptyContext()}
+      context={context}
       references={{
         docs: [],
         group: undefined,
@@ -123,6 +132,11 @@ function panel(props: Partial<HarnessProps> = {}) {
 }
 
 const EDIT: Edit = {quote: 'rather good', replacement: 'good'};
+
+/** A context carrying one open document, which is all the landing path needs. */
+function about(path: DocPath): AgentContext {
+  return {...emptyContext(), doc: {path, title: 'A draft', source: 'The ending is rather good.'}};
+}
 
 /** Types a message and presses send, letting the turn run as far as it can. */
 async function ask(view: ReturnType<typeof render>, text = 'Tighten this'): Promise<void> {
@@ -359,6 +373,38 @@ describe('whose turn a send is', function () {
     });
 
     expect(landed).toEqual([EDIT]);
+  });
+
+  // The document is captured with the authorization, for the same reason. A
+  // writer who opened another document mid-turn must not have the agent's edit
+  // offered against a file the turn never read: two documents made from one
+  // template share passages, so a quote can match in the wrong one.
+  it('should report the document the turn carried, not the one open when it lands', async function () {
+    const held = gate();
+    const {transport} = scripted({pause: held.promise});
+    const targets: Array<DocPath | undefined> = [];
+    const props: Partial<HarnessProps> = {
+      started: 3,
+      transport,
+      mode: 'agent',
+      context: about('asked-about.md' as DocPath),
+      onLand(_edit: Edit, path: DocPath | undefined) {
+        targets.push(path);
+      },
+    };
+    const view = render(harness(props));
+
+    await ask(view);
+
+    await act(async function () {
+      view.rerender(harness({...props, context: about('opened-since.md' as DocPath)}));
+    });
+    await act(async function () {
+      held.open();
+      await drainReactScheduler();
+    });
+
+    expect(targets).toEqual(['asked-about.md' as DocPath]);
   });
 });
 

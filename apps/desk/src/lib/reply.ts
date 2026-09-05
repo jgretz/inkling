@@ -6,9 +6,10 @@
  * and nothing else, so `outputSchema` is not available to inkling. The contract
  * is therefore prose in the prompt (see `agent-prompt.ts`) and a validator here.
  *
- * Everything in this file is pure: no window, no clock, no network. The three
- * kinds a reply can be are a union rather than a flag, because the permission
- * prompt cannot exist unless the distinction is structural.
+ * Everything in this file is pure: no window, no clock, no network. What a turn
+ * comes back as is a union rather than a flag, because the permission prompt
+ * cannot exist unless the distinction is structural: the three kinds the agent
+ * may send, plus the refusal inkling answers a fourth thing with.
  */
 
 /** Opens the one fenced block a reply may carry. See `openingPrompt`. */

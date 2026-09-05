@@ -4,6 +4,7 @@ import {match} from 'ts-pattern';
 import ArrowUp from 'lucide-react/dist/esm/icons/arrow-up';
 import Square from 'lucide-react/dist/esm/icons/square';
 import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
+import type {DocPath} from '@inkling/vault';
 import type {AgentContext, AgentTransport, Message} from '../../lib/agent.ts';
 import type {Conversation} from '../../lib/conversations.ts';
 import type {AgentReply, Edit} from '../../lib/reply.ts';
@@ -49,8 +50,12 @@ type ChatPanelProps = {
   onFlush: () => Promise<void>;
   /** A proposal the writer accepted. The caller applies it to the buffer. */
   onAccept: (edit: Edit) => void;
-  /** An edit the agent made on its own turn. The caller lands it on disk. */
-  onLand: (edit: Edit) => void;
+  /**
+   * An edit the agent made on its own turn, with the document the turn was
+   * about. The caller lands it on disk, and the path is what lets it refuse
+   * when the writer moved to another document while the agent was thinking.
+   */
+  onLand: (edit: Edit, path: DocPath | undefined) => void;
   /** Fires when focus lands in the panel anywhere but the composer. */
   onFocus: () => void;
 };
@@ -223,12 +228,12 @@ export function ChatPanel({
 
   /** What a turn's one parsed reply leaves behind, if it leaves anything. */
   const receive = useCallback(
-    function (replyId: string, reply: AgentReply): void {
+    function (replyId: string, reply: AgentReply, target: DocPath | undefined): void {
       match(reply)
         // Prose, already on screen from the chunks it streamed in as.
         .with({kind: 'answer'}, function () {})
         .with({kind: 'made'}, function ({edit}) {
-          onLand(edit);
+          onLand(edit, target);
         })
         .with({kind: 'proposed'}, function ({edit}) {
           setOutcomes(function (current) {
@@ -271,6 +276,11 @@ export function ChatPanel({
       // stays authorized: re-deriving mid-flight is a race, and the race is
       // worse than the edge case.
       const authorized = mode === 'agent';
+      // One snapshot, read here for the same reason: an edit belongs to the
+      // document the turn actually carried, whatever is open by the time it
+      // comes back, and the two cannot disagree if they are the same read.
+      const snapshot = contextRef.current;
+      const target = snapshot.doc?.path;
 
       const writerMessage: Message = {
         id: nextId(),
@@ -300,13 +310,13 @@ export function ChatPanel({
 
         const turn = {
           message: text,
-          context: contextRef.current,
+          context: snapshot,
           history: historyRef.current,
           authorized,
         };
         for await (const chunk of transport.send(turn, controller.signal)) {
           if (chunk.kind === 'reply') {
-            receive(replyId, chunk.reply);
+            receive(replyId, chunk.reply, target);
             continue;
           }
           const {text: piece} = chunk;

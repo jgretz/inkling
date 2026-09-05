@@ -39,16 +39,21 @@ function bar({turn = 'writer', pinned = false, onPin = noop}: BarProps = {}) {
 }
 
 describe('the turn indicator', function () {
+  // The visible word as well as the accessible name. The name is composed by
+  // `indicatorLabel`, which its own suite pins, so asserting on it alone would
+  // leave a bar that rendered no word at all passing.
   it('should name the writers turn when it is theirs', function () {
     const view = bar({turn: 'writer'});
 
     expect(view.getByLabelText(indicatorLabel('writer', false))).toBeDefined();
+    expect(view.getByText('You')).toBeDefined();
   });
 
   it('should name the agents turn when it is its own', function () {
     const view = bar({turn: 'agent'});
 
     expect(view.getByLabelText(indicatorLabel('agent', false))).toBeDefined();
+    expect(view.getByText('Agent')).toBeDefined();
   });
 
   // The third state is transient and is about a write actually in flight, so it
@@ -57,7 +62,9 @@ describe('the turn indicator', function () {
     const view = bar({turn: 'landing'});
 
     expect(view.getByLabelText(indicatorLabel('landing', false))).toBeDefined();
+    expect(view.getByText('Writing…')).toBeDefined();
     expect(view.queryByLabelText(indicatorLabel('agent', false))).toBeNull();
+    expect(view.queryByText('Agent')).toBeNull();
   });
 
   it('should say when a pin rather than the focus rule decided it', function () {

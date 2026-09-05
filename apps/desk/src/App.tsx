@@ -435,7 +435,7 @@ export function App() {
    * one write in the middle of it.
    */
   const handleLand = useCallback(
-    function (edit: Edit) {
+    function (edit: Edit, path: DocPath | undefined) {
       const applied = applyEdit(draftRef.current, edit);
       if (!applied.ok) {
         setAgentError(applied.reason);
@@ -443,7 +443,9 @@ export function App() {
       }
       setAgentError(undefined);
       setLanding(true);
-      void land(applied.value).finally(function () {
+      // `path` is the document the turn carried, and `land` refuses when it is
+      // no longer the open one rather than writing into whatever took its place.
+      void land(applied.value, path).finally(function () {
         setLanding(false);
       });
     },

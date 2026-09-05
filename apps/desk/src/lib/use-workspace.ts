@@ -81,13 +81,13 @@ export type Workspace = WorkspaceState & {
    */
   flush: () => Promise<void>;
   /**
-   * Writes `source` to the open document and replaces the buffer with what
-   * reading the file back returns.
+   * Writes `source` to `path` and replaces the buffer with what reading the
+   * file back returns. Refuses when `path` is not the open document.
    *
    * The read-back is the point: the buffer ends up holding what disk actually
    * holds, never what inkling believed it had written.
    */
-  land: (source: string) => Promise<void>;
+  land: (source: string, path: DocPath | undefined) => Promise<void>;
   refresh: () => void;
   /** Makes a group, and every group above it that does not exist yet. */
   createGroup: (path: GroupPath) => void;
@@ -102,6 +102,14 @@ export type Workspace = WorkspaceState & {
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** What the writer is told when an agent's edit arrived for another document. */
+function strayEdit(path: DocPath | undefined): string {
+  if (path === undefined) {
+    return 'The agent sent an edit, but its turn was not about any document.';
+  }
+  return `The agent's edit was for ${path}, which is not the open document any more.`;
 }
 
 /**
@@ -301,6 +309,30 @@ export function useWorkspace(bridge: WorkspaceBridge = TAURI_WORKSPACE): Workspa
   );
 
   /**
+   * One writer for the open document, in the order the calls arrived.
+   *
+   * The autosave and an agent's landing are two callers reaching for the same
+   * file, and unordered they can leave disk holding the older of the two: the
+   * landing writes the edit, an autosave that was already in flight finishes
+   * afterwards with the draft the edit replaced, and the landing's read-back
+   * has already marked the buffer clean, so nothing ever writes the edit again.
+   * Queued, the landing simply waits its turn, and a save that reaches the
+   * front of the queue with nothing left to do finds the buffer clean and
+   * writes nothing.
+   *
+   * Every guard below therefore reads `openRef` inside the queued work rather
+   * than when the call was made.
+   */
+  const writing = useRef<Promise<void>>(Promise.resolve());
+  const enqueue = useCallback(function (work: () => Promise<void>): Promise<void> {
+    // Both settled paths, because one rejection would otherwise leave the chain
+    // rejected and every later write unqueued. Neither caller's work rejects.
+    const next = writing.current.then(work, work);
+    writing.current = next;
+    return next;
+  }, []);
+
+  /**
    * Writes the open draft, and resolves when it is on disk.
    *
    * The promise is what `flush` is: an autosave that nobody awaits and an agent
@@ -310,51 +342,64 @@ export function useWorkspace(bridge: WorkspaceBridge = TAURI_WORKSPACE): Workspa
    */
   const save = useCallback(
     function (): Promise<void> {
-      const open = openRef.current;
-      if (vault === undefined || open === undefined || !isDirty(open)) return Promise.resolve();
-      const {path, draft} = open;
-      dispatch({type: 'saveStarted', path});
-      return bridge
-        .writeDoc(vault, path, draft)
-        .then(function () {
-          dispatch({type: 'saveSucceeded', path, source: draft});
-        })
-        .catch(function (error) {
-          console.error(`inkling: failed to save ${path}`, error);
-          dispatch({type: 'saveFailed', path, message: message(error)});
-        });
+      return enqueue(function () {
+        const open = openRef.current;
+        if (vault === undefined || open === undefined || !isDirty(open)) return Promise.resolve();
+        const {path, draft} = open;
+        dispatch({type: 'saveStarted', path});
+        return bridge
+          .writeDoc(vault, path, draft)
+          .then(function () {
+            dispatch({type: 'saveSucceeded', path, source: draft});
+          })
+          .catch(function (error) {
+            console.error(`inkling: failed to save ${path}`, error);
+            dispatch({type: 'saveFailed', path, message: message(error)});
+          });
+      });
     },
-    [vault, bridge],
+    [vault, bridge, enqueue],
   );
 
   /**
    * Writes an agent's edit and replaces the buffer with what disk came back
    * with, rather than with what was sent.
    *
-   * Unconditional where `save` is guarded on dirtiness: a landing may be the
-   * only change in flight, and one whose result matched the draft byte for byte
-   * would otherwise never reach the file.
+   * Guarded on the document rather than on dirtiness: a landing may be the only
+   * change in flight, and one whose result matched the draft byte for byte
+   * would never reach the file if it were guarded the way `save` is.
    */
   const land = useCallback(
-    function (source: string): Promise<void> {
-      const open = openRef.current;
-      if (vault === undefined || open === undefined) return Promise.resolve();
-      const {path} = open;
-      dispatch({type: 'saveStarted', path});
-      return bridge
-        .writeDoc(vault, path, source)
-        .then(function () {
-          return bridge.readDoc(vault, path);
-        })
-        .then(function (file) {
-          dispatch({type: 'docReloaded', path, source: file.source});
-        })
-        .catch(function (error) {
-          console.error(`inkling: failed to land an edit in ${path}`, error);
-          dispatch({type: 'saveFailed', path, message: message(error)});
-        });
+    function (source: string, path: DocPath | undefined): Promise<void> {
+      return enqueue(function () {
+        const open = openRef.current;
+        if (vault === undefined || open === undefined) return Promise.resolve();
+        // The document the turn was about, not whichever one is open now. A
+        // writer who moved on while the agent was thinking must not have its
+        // edit written into a file it never read, and a quoted passage that two
+        // documents share (they were made from the same template) would
+        // otherwise match in the wrong one. Said out loud rather than dropped:
+        // the agent's reply claims an edit that is not going to happen.
+        if (path !== open.path) {
+          dispatch({type: 'failed', message: strayEdit(path)});
+          return Promise.resolve();
+        }
+        dispatch({type: 'saveStarted', path});
+        return bridge
+          .writeDoc(vault, path, source)
+          .then(function () {
+            return bridge.readDoc(vault, path);
+          })
+          .then(function (file) {
+            dispatch({type: 'docReloaded', path, source: file.source});
+          })
+          .catch(function (error) {
+            console.error(`inkling: failed to land an edit in ${path}`, error);
+            dispatch({type: 'saveFailed', path, message: message(error)});
+          });
+      });
     },
-    [vault, bridge],
+    [vault, bridge, enqueue],
   );
 
   const draft = state.open?.draft;

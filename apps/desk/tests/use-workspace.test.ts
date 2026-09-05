@@ -167,7 +167,7 @@ describe('land', function () {
     const before = state.reads;
 
     await act(async function () {
-      await result.current.land('The ending, tightened.');
+      await result.current.land('The ending, tightened.', DOC);
     });
 
     expect(state.writes).toEqual(['The ending, tightened.']);
@@ -185,7 +185,7 @@ describe('land', function () {
     const {result} = await opened(state);
 
     await act(async function () {
-      await result.current.land('Replaced wholesale.');
+      await result.current.land('Replaced wholesale.', DOC);
     });
 
     expect(state.writes).toEqual(['Replaced wholesale.']);
@@ -199,7 +199,7 @@ describe('land', function () {
     const {result} = await opened(state);
 
     await act(async function () {
-      await result.current.land('The ending, tightened.');
+      await result.current.land('The ending, tightened.', DOC);
     });
 
     expect(result.current.open?.save).toEqual({
@@ -207,5 +207,80 @@ describe('land', function () {
       message: 'read-only file system',
     });
     expect(result.current.open?.draft).toBe('The ending.\n');
+  });
+
+  // The writer moved to another document while the agent was thinking. A quote
+  // two documents share, because they came from the same template, would match
+  // in the wrong one, so the landing is refused on the path rather than on
+  // whether the passage happens to be findable.
+  it('should refuse an edit meant for a document that is not the open one', async function () {
+    const state = disk('The ending.\n');
+    const {result} = await opened(state);
+
+    await act(async function () {
+      await result.current.land('The ending, tightened.', 'elsewhere.md' as DocPath);
+    });
+
+    expect(state.writes).toEqual([]);
+    expect(result.current.open?.draft).toBe('The ending.\n');
+  });
+
+  // Said out loud. The agent's reply claims an edit that is not going to
+  // happen, and a writer told nothing would have no way to know.
+  it('should say which document the refused edit was for', async function () {
+    const state = disk('The ending.\n');
+    const {result} = await opened(state);
+
+    await act(async function () {
+      await result.current.land('The ending, tightened.', 'elsewhere.md' as DocPath);
+    });
+
+    expect(result.current.error).toContain('elsewhere.md');
+  });
+
+  it('should refuse an edit from a turn that carried no document at all', async function () {
+    const state = disk('The ending.\n');
+    const {result} = await opened(state);
+
+    await act(async function () {
+      await result.current.land('The ending, tightened.', undefined);
+    });
+
+    expect(state.writes).toEqual([]);
+  });
+});
+
+describe('two writers over one file', function () {
+  // The autosave and a landing both write the whole document. Unordered, a save
+  // that was already in flight can finish after the landing and leave disk
+  // holding the draft the edit replaced, with the buffer already marked clean
+  // by the read-back, so nothing ever writes the edit again.
+  it('should hold a landing behind a write that was already in flight', async function () {
+    const state = disk('The ending.\n');
+    const {result} = await opened(state);
+    state.hold = gate();
+
+    await act(async function () {
+      result.current.editDraft('The ending, typed.');
+    });
+
+    let flushing: Promise<void> = Promise.resolve();
+    let landing: Promise<void> = Promise.resolve();
+    await act(async function () {
+      flushing = result.current.flush();
+      landing = result.current.land('The ending, typed and tightened.', DOC);
+    });
+
+    // The landing has not begun: the flush's write still has the file.
+    expect(state.writes).toEqual(['The ending, typed.']);
+
+    await act(async function () {
+      state.hold?.open();
+      await flushing;
+      await landing;
+    });
+
+    expect(state.writes).toEqual(['The ending, typed.', 'The ending, typed and tightened.']);
+    expect(result.current.open?.draft).toBe('The ending, typed and tightened.\n');
   });
 });
