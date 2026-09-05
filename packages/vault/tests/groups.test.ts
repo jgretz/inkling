@@ -79,7 +79,7 @@ describe('ancestorGroups', function () {
     );
   });
 
-  it('should return the groups above a group path, itself last', function () {
+  it('should return the groups above a group path, excluding the group itself', function () {
     expect(ancestorGroups('drafts/2026/june')).toEqual(groups('drafts', 'drafts/2026'));
   });
 });

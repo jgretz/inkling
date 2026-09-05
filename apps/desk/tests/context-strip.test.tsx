@@ -251,6 +251,38 @@ describe('ContextStrip', function () {
     });
   });
 
+  /**
+   * A note names no target here: `useReferences` writes its markdown body
+   * first and only then knows the path the row points at.
+   */
+  it('should attach a note as a title alone', function () {
+    const onAttach = mock(noop);
+    const view = strip({}, {onAttach});
+
+    fireEvent.click(view.getByLabelText('Attach a reference'));
+    fireEvent.change(view.getByLabelText('Kind of reference'), {target: {value: 'note'}});
+    fireEvent.change(view.getByLabelText('Note title'), {target: {value: 'On endings'}});
+    fireEvent.click(view.getByText('Attach'));
+
+    expect(onAttach).toHaveBeenCalledWith({
+      level: 'document',
+      kind: 'note',
+      title: 'On endings',
+      targetPath: undefined,
+      url: undefined,
+    });
+  });
+
+  it('should refuse to attach a note until it has a title to name its file', function () {
+    const view = strip({}, {onAttach: noop});
+
+    fireEvent.click(view.getByLabelText('Attach a reference'));
+    fireEvent.change(view.getByLabelText('Kind of reference'), {target: {value: 'note'}});
+    fireEvent.change(view.getByLabelText('Note title'), {target: {value: '   '}});
+
+    expect(view.getByText('Attach').hasAttribute('disabled')).toBe(true);
+  });
+
   it('should refuse to attach a document until one is chosen', function () {
     const view = strip({}, {onAttach: noop});
 
