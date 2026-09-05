@@ -2,6 +2,7 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import type {ChangeEvent, KeyboardEvent} from 'react';
 import ArrowUp from 'lucide-react/dist/esm/icons/arrow-up';
 import Square from 'lucide-react/dist/esm/icons/square';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
 import type {AgentContext, AgentTransport, Message} from '../../lib/agent.ts';
 import type {Conversation} from '../../lib/conversations.ts';
 import {ContextStrip, type ReferenceControls} from './ContextStrip.tsx';
@@ -12,6 +13,14 @@ export type ConversationControls = {
   activeId: number | undefined;
   onSelect: (id: number) => void;
   onCreate: () => void;
+  /**
+   * Ends the active conversation and everything said in it.
+   *
+   * The asking is the caller's, not the panel's: a conversation takes its turns
+   * with it and nothing puts them back, so `App.tsx` confirms first. Keeping the
+   * dialog out here is also what leaves this component drivable with no webview.
+   */
+  onDelete: () => void;
 };
 
 type ChatPanelProps = {
@@ -193,12 +202,12 @@ export function ChatPanel({
         <span className="text-[10px] text-ink-600">{transport.name}</span>
       </div>
 
-      <div className="shrink-0 px-3 pb-2">
+      <div className="flex shrink-0 items-center gap-1.5 px-3 pb-2">
         <select
           value={conversations.activeId ?? ''}
           onChange={handleSwitch}
           aria-label="Conversation"
-          className="w-full rounded-md bg-ink-850 px-2 py-1 text-[12px] text-ink-200 focus:outline-none focus:ring-1 focus:ring-accent-muted"
+          className="min-w-0 flex-1 rounded-md bg-ink-850 px-2 py-1 text-[12px] text-ink-200 focus:outline-none focus:ring-1 focus:ring-accent-muted"
         >
           {conversations.all.map(function (entry) {
             return (
@@ -209,6 +218,17 @@ export function ChatPanel({
           })}
           <option value={NEW_CONVERSATION}>New conversation</option>
         </select>
+        {/* Off for the last one: the panel needs a conversation to put the next
+            turn in, and deleting it would leave the writer typing into nothing. */}
+        <button
+          type="button"
+          onClick={conversations.onDelete}
+          disabled={conversations.all.length <= 1}
+          aria-label="Delete conversation"
+          className="shrink-0 rounded p-1 text-ink-600 transition-colors duration-100 hover:bg-ink-800 hover:text-ink-200 disabled:pointer-events-none disabled:opacity-30"
+        >
+          <Trash2 size={12} aria-hidden />
+        </button>
       </div>
 
       <div className="flex-1 space-y-2 overflow-y-auto px-3 py-2">

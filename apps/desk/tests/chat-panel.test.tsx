@@ -34,7 +34,9 @@ function conversation(id: number, title: string): Conversation {
   };
 }
 
-const ALL = [conversation(1, 'On endings'), conversation(2, 'On openings')];
+const ENDINGS = conversation(1, 'On endings');
+const OPENINGS = conversation(2, 'On openings');
+const ALL = [ENDINGS, OPENINGS];
 
 /** What each conversation has already said, as the store would return it. */
 const STORED: Record<number, Message[]> = {
@@ -53,7 +55,15 @@ const STORED: Record<number, Message[]> = {
  * hands over that one's stored turns, and keys the panel on the id so switching
  * remounts rather than merging one conversation's replies into another's.
  */
-function Harness({started, onCreate = noop}: {started: number; onCreate?: () => void}) {
+type HarnessProps = {
+  started: number;
+  onCreate?: () => void;
+  onDelete?: () => void;
+  /** The document's conversations, so a document down to its last one is testable. */
+  all?: readonly Conversation[];
+};
+
+function Harness({started, onCreate = noop, onDelete = noop, all = ALL}: HarnessProps) {
   const [activeId, setActiveId] = useState(started);
 
   return (
@@ -71,13 +81,13 @@ function Harness({started, onCreate = noop}: {started: number; onCreate?: () => 
         onRestore: noop,
       }}
       initial={STORED[activeId] ?? []}
-      conversations={{all: ALL, activeId, onSelect: setActiveId, onCreate}}
+      conversations={{all, activeId, onSelect: setActiveId, onCreate, onDelete}}
     />
   );
 }
 
-function panel(props: {started?: number; onCreate?: () => void} = {}) {
-  return render(<Harness started={props.started ?? 1} onCreate={props.onCreate} />);
+function panel(props: Partial<HarnessProps> = {}) {
+  return render(<Harness {...props} started={props.started ?? 1} />);
 }
 
 describe('the conversation switcher', function () {
@@ -124,6 +134,37 @@ describe('the conversation switcher', function () {
     // Still on the conversation it was on: the new one arrives through the
     // store, not by the panel guessing an id.
     expect(view.getByText('Cut the last line.')).toBeDefined();
+  });
+
+  it('should ask to delete the active conversation', function () {
+    let asked = 0;
+    const view = panel({
+      onDelete() {
+        asked += 1;
+      },
+    });
+
+    fireEvent.click(view.getByLabelText('Delete conversation'));
+
+    expect(asked).toBe(1);
+  });
+
+  // Deleting it would leave the writer typing into nothing: the panel needs a
+  // conversation to put the next turn in.
+  it('should refuse to delete the last conversation about a document', function () {
+    let asked = 0;
+    const view = panel({
+      all: [ENDINGS],
+      onDelete() {
+        asked += 1;
+      },
+    });
+
+    const button = view.getByLabelText('Delete conversation') as HTMLButtonElement;
+    fireEvent.click(button);
+
+    expect(button.disabled).toBe(true);
+    expect(asked).toBe(0);
   });
 });
 

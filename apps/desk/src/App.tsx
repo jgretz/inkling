@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {open} from '@tauri-apps/plugin-dialog';
+import {confirm, open} from '@tauri-apps/plugin-dialog';
 import {groupOf, type DocPath, type VaultPath} from '@inkling/vault';
 import {resolveVoice, type Finding} from '@inkling/voice';
 import {createHeldSessionClient} from '@inkling/toryo';
@@ -342,6 +342,28 @@ export function App() {
     [transport],
   );
 
+  // Asked before rather than undone after: a conversation takes every turn of it
+  // through the table's cascade, and the prose either side of a session is the
+  // part of this that cannot be recovered.
+  const {remove: removeConversation} = conversations;
+  const handleDeleteConversation = useCallback(
+    function () {
+      const doomed = conversationRef.current;
+      if (doomed === undefined) return;
+      void confirm(`Delete "${doomed.title}" and everything said in it?`, {
+        title: 'Delete conversation',
+        kind: 'warning',
+      })
+        .then(function (agreed) {
+          if (agreed) removeConversation(doomed.id);
+        })
+        .catch(function (error) {
+          console.warn('inkling: could not ask about deleting a conversation', error);
+        });
+    },
+    [removeConversation],
+  );
+
   const conversationControls = useMemo(
     function () {
       return {
@@ -349,9 +371,16 @@ export function App() {
         activeId: conversationId,
         onSelect: conversations.select,
         onCreate: conversations.create,
+        onDelete: handleDeleteConversation,
       };
     },
-    [conversations.all, conversationId, conversations.select, conversations.create],
+    [
+      conversations.all,
+      conversationId,
+      conversations.select,
+      conversations.create,
+      handleDeleteConversation,
+    ],
   );
 
   // The counter increments on every pick because the editor honours one reveal
