@@ -144,16 +144,6 @@ pub(crate) fn insert(
         .map_err(named)
 }
 
-pub(crate) fn rename(conn: &Connection, id: i64, title: &str) -> Result<usize, String> {
-    if title.trim().is_empty() {
-        return Err("a conversation needs a title".to_string());
-    }
-
-    let sql = format!("UPDATE conversation SET title = ?1, updated_at = {NOW} WHERE id = ?2");
-    conn.execute(&sql, rusqlite::params![title, id])
-        .map_err(|error| format!("renaming conversation {id}: {error}"))
-}
-
 /// Removing a conversation sweeps its turns, through the cascade the table
 /// declares. Nothing in the vault moves: a conversation is entirely inkling's.
 pub(crate) fn delete(conn: &Connection, id: i64) -> rusqlite::Result<usize> {
@@ -284,13 +274,6 @@ pub fn create_conversation(
 }
 
 #[tauri::command]
-pub fn rename_conversation(id: i64, title: String, db: State<'_, VaultDb>) -> Result<(), String> {
-    db.with(|conn| rename(conn, id, &title))
-        .ok_or_else(|| NO_CONNECTION.to_string())?
-        .map(|_| ())
-}
-
-#[tauri::command]
 pub fn delete_conversation(id: i64, db: State<'_, VaultDb>) -> Result<(), String> {
     db.with(|conn| delete(conn, id))
         .ok_or_else(|| NO_CONNECTION.to_string())?
@@ -350,8 +333,8 @@ pub fn finish_turn(
 #[cfg(test)]
 mod tests {
     use super::{
-        delete, final_states, finish, insert, insert_turn, rename, select_for, select_turns,
-        set_session, Conversation, Turn, STATES,
+        delete, final_states, finish, insert, insert_turn, select_for, select_turns, set_session,
+        Conversation, Turn, STATES,
     };
     use crate::data::VaultDb;
     use tempfile::tempdir;
@@ -435,31 +418,6 @@ mod tests {
             .expect("a vault should be open");
 
         assert!(result.is_err_and(|error| error.contains("needs a title")));
-    }
-
-    #[test]
-    fn should_refuse_to_rename_a_conversation_to_nothing() {
-        let (_vault, db) = open_vault();
-        let started = start(&db, "drafts/a.md", "On endings");
-
-        let result = db
-            .with(|conn| rename(conn, started.id, ""))
-            .expect("a vault should be open");
-
-        assert!(result.is_err_and(|error| error.contains("needs a title")));
-        assert_eq!(listed(&db, "drafts/a.md")[0].title, "On endings");
-    }
-
-    #[test]
-    fn should_rename_a_conversation() {
-        let (_vault, db) = open_vault();
-        let started = start(&db, "drafts/a.md", "On endings");
-
-        db.with(|conn| rename(conn, started.id, "On last lines"))
-            .expect("a vault should be open")
-            .expect("should rename");
-
-        assert_eq!(listed(&db, "drafts/a.md")[0].title, "On last lines");
     }
 
     #[test]

@@ -38,7 +38,6 @@ pub fn run() {
             references::remove_reference_suppression,
             conversations::list_conversations,
             conversations::create_conversation,
-            conversations::rename_conversation,
             conversations::delete_conversation,
             conversations::set_conversation_session,
             conversations::list_turns,

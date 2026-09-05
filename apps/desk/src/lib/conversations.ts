@@ -61,7 +61,6 @@ export type StoredTurn = {
 export type ConversationStore = {
   list: (docPath: DocPath) => Promise<Conversation[]>;
   create: (docPath: DocPath, title: string) => Promise<Conversation>;
-  rename: (id: number, title: string) => Promise<void>;
   remove: (id: number) => Promise<void>;
   /** Points a conversation at a session, or at none. Both ids move together. */
   setSession: (

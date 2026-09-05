@@ -61,11 +61,6 @@ function vault(rows: Conversation[], turns: StoredTurn[]) {
       rows.push(started);
       return Promise.resolve(started);
     },
-    rename(id, title) {
-      const row = rows.find((entry) => entry.id === id);
-      if (row) row.title = title;
-      return Promise.resolve();
-    },
     remove(id) {
       const at = rows.findIndex((entry) => entry.id === id);
       if (at !== -1) rows.splice(at, 1);

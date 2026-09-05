@@ -224,10 +224,6 @@ export function createConversation(docPath: DocPath, title: string): Promise<Con
   return invoke<Conversation>('create_conversation', {docPath, title});
 }
 
-export function renameConversation(id: number, title: string): Promise<void> {
-  return invoke<void>('rename_conversation', {id, title});
-}
-
 /** Removes the conversation and, through the table's cascade, its turns. */
 export function deleteConversation(id: number): Promise<void> {
   return invoke<void>('delete_conversation', {id});
@@ -271,7 +267,7 @@ export function finishTurn(
 }
 
 /**
- * The eight calls above as one value, which is what the transport and the
+ * The seven calls above as one value, which is what the transport and the
  * conversation hook actually take.
  *
  * Assembled here and passed down from `App.tsx` rather than imported where it is
@@ -281,7 +277,6 @@ export function finishTurn(
 export const tauriConversations: ConversationStore = {
   list: listConversations,
   create: createConversation,
-  rename: renameConversation,
   remove: deleteConversation,
   setSession: setConversationSession,
   listTurns,
