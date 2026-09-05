@@ -38,6 +38,8 @@ type Call = {
   path: string;
   body: {payload?: Record<string, unknown>; text?: string} | undefined;
   token: string | null;
+  /** The caller's abort signal, which a long-lived stream answers to. */
+  signal: AbortSignal | null;
 };
 
 function live(sessionId: string, resumeSessionId: string | null = null): Response {
@@ -56,6 +58,27 @@ function stream(...frames: string[]): Response {
     }),
     {status: 200, headers: {'content-type': 'text/event-stream'}},
   );
+}
+
+/**
+ * An SSE response that sends what it was given and then stays open, the way a
+ * session mid-answer does. Aborting the request errors the body, which is what a
+ * real `fetch` does and what the writer's stop button reaches.
+ */
+function held(...frames: string[]) {
+  return function (call: Call): Response {
+    return new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(frames.join('')));
+          call.signal?.addEventListener('abort', function () {
+            controller.error(new DOMException('The operation was aborted.', 'AbortError'));
+          });
+        },
+      }),
+      {status: 200, headers: {'content-type': 'text/event-stream'}},
+    );
+  };
 }
 
 function said(text: string): string {
@@ -85,6 +108,7 @@ function daemon(script: ReadonlyArray<(call: Call) => Response>) {
       path: target.pathname,
       body: typeof raw === 'string' ? JSON.parse(raw) : undefined,
       token: new Headers(init?.headers).get('x-toryo-daemon-token'),
+      signal: init?.signal ?? null,
     };
     calls.push(call);
     const answer = script[calls.length - 1];
@@ -108,9 +132,6 @@ function recording() {
     },
     create() {
       return Promise.resolve(CONVERSATION);
-    },
-    rename() {
-      return Promise.resolve();
     },
     remove() {
       return Promise.resolve();
@@ -169,6 +190,8 @@ type Harness = {
   /** How many times the transport cleared the writer-facing failure. */
   cleared: () => number;
   send: (message: string, context?: AgentContext) => Promise<string>;
+  /** Sends, then stops the turn the moment the first chunk lands. */
+  stopAfterFirstChunk: (message: string) => Promise<string>;
 };
 
 function harness(
@@ -221,6 +244,18 @@ function harness(
         controller.signal,
       )) {
         text += chunk;
+      }
+      return text;
+    },
+    async stopAfterFirstChunk(message) {
+      const controller = new AbortController();
+      let text = '';
+      for await (const chunk of transport.send(
+        {message, context: emptyContext(), history: []},
+        controller.signal,
+      )) {
+        text += chunk;
+        controller.abort();
       }
       return text;
     },
@@ -389,6 +424,34 @@ describe('a turn that goes through', function () {
   });
 });
 
+describe('a turn the writer stopped', function () {
+  // Stopping is not failing: what arrived is on screen, and the row should hold
+  // it rather than an error the writer caused on purpose.
+  it('should keep what arrived and record the turn as answered', async function () {
+    const app = harness([() => live('s-1'), held(HELLO, said('Half a th'))]);
+
+    const reply = await app.stopAfterFirstChunk('Tighten this');
+
+    expect(reply).toBe('Half a th');
+    expect(app.turns[0]?.state).toBe('answered');
+    expect(app.turns[0]?.answered).toBe('Half a th');
+    expect(app.errors).toEqual([]);
+  });
+
+  // The generator is driven by hand rather than by `for await`, so nothing but
+  // the transport's own `finally` cancels the stream when a turn is stopped.
+  it('should not re-open the session it was stopped against', async function () {
+    const app = harness([() => live('s-1'), held(HELLO, said('Half a th'))]);
+
+    await app.stopAfterFirstChunk('Tighten this');
+
+    expect(app.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      'POST /sessions',
+      'GET /sessions/s-1/events',
+    ]);
+  });
+});
+
 describe('a session that was evicted', function () {
   it('should re-open with the resume id and deliver the reply on the same send', async function () {
     const app = harness([
@@ -435,6 +498,23 @@ describe('a session that crashed', function () {
     expect(app.errors).toHaveLength(1);
     expect(app.errors[0]).toContain('panic: out of memory');
     expect(app.calls).toHaveLength(2);
+  });
+
+  // A crash never re-opens, so the one-re-open budget has nothing to say about
+  // it. Letting that budget answer first would report the second failure of a
+  // turn as a bare daemon line with the tail dropped.
+  it('should still surface the tail when the crash follows an eviction', async function () {
+    const app = harness([
+      () => live('s-1'),
+      () => gone({error: 'evicted', reason: 'evicted', resumeSessionId: 's-2'}),
+      () => live('s-3', 's-2'),
+      () => gone({error: 'the session crashed', reason: 'crashed', tail: 'panic: out of memory'}),
+    ]);
+
+    expect(await failure(app.send('Tighten this'))).toContain('panic: out of memory');
+    expect(app.errors).toHaveLength(1);
+    expect(app.errors[0]).toContain('panic: out of memory');
+    expect(app.calls).toHaveLength(4);
   });
 
   // Otherwise the crash the writer has already read sits in the status bar for

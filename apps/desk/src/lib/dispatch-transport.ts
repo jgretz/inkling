@@ -314,6 +314,22 @@ export function createDispatchTransport(deps: DispatchTransportDeps): DispatchTr
       } catch (error) {
         if (!(error instanceof HeldStreamError)) throw error;
         const failure = error.error;
+
+        // A crash is surfaced however far into the turn it reached. It is the
+        // one reason that never re-opens, so the budget below has nothing to say
+        // about it, and answering it there would drop the daemon's tail on any
+        // turn that had already delivered a word or re-opened once.
+        if (failure.reason === 'crashed') {
+          const message = crashed(failure);
+          deps.onError(message);
+          await remember(null, resumeSessionId);
+          throw new Error(message);
+        }
+
+        // One re-open per turn, and none once the writer is reading: restarting
+        // a reply underneath them would be worse than the failure, and a session
+        // evicted twice inside one turn is a daemon problem rather than an idle
+        // timeout.
         if (delivered.any || reopened) throw new Error(failure.message);
 
         switch (failure.reason) {
@@ -329,12 +345,6 @@ export function createDispatchTransport(deps: DispatchTransportDeps): DispatchTr
             await remember(null, failure.resumeSessionId ?? resumeSessionId);
             reopened = true;
             continue;
-          case 'crashed': {
-            const message = crashed(failure);
-            deps.onError(message);
-            await remember(null, resumeSessionId);
-            throw new Error(message);
-          }
           default:
             throw new Error(failure.message);
         }
