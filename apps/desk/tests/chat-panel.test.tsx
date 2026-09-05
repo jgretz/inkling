@@ -606,7 +606,14 @@ describe('a reply that points', function () {
 
     await ask(view);
 
-    expect(view.getByText('not in the document any more', {exact: false})).toBeDefined();
+    // One notice, reading as one sentence: the miss finishes the clause the
+    // refusal opened rather than starting a capitalised one of its own.
+    expect(
+      view.getByText(
+        'Inkling did not act on this reply: the passage it quoted is not in the document the turn carried',
+        {exact: false},
+      ),
+    ).toBeDefined();
     expect(view.queryByLabelText(/^Show the passage the agent pointed at/)).toBeNull();
   });
 

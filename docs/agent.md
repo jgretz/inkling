@@ -7,8 +7,9 @@ method, streaming, cancellable. Swapping the backend is one file.
 
 Context is explicit. A turn carries the open document, the editor selection as a
 quote anchor, and the assembled reference cascade: what each group above the
-document attached, then what the document attached itself. Every entry appears in the context strip
-with a token estimate and the level it was inherited from before it is sent. An
+document attached, then what the document attached itself. Every entry appears
+in the context strip with a token estimate and the level it was inherited from
+before it is sent. An
 entry carrying nothing (a web link, a file the vault has lost, one this document
 turned off) shows at zero rather than disappearing, so the strip accounts for
 every attachment and not merely for every byte.
@@ -88,9 +89,9 @@ shows the replacement and the passage it replaces.
 Decided in 4c: **a passage anyone points at is a quote plus an anchor**, and
 nothing anywhere holds a range. The writer's selection reaches the turn that way,
 and the fenced block gains a third kind, `point`, which names a passage the reply
-is about without changing it. Clicking either one in the transcript resolves the anchor
-against the draft as it stands then, scrolls to the passage and tints it; a
-passage that has gone is said to have gone.
+is about without changing it. Clicking either one in the transcript resolves the
+anchor against the draft as it stands then, scrolls to the passage and tints it;
+a passage that has gone is said to have gone.
 
 Only the quote leaves the machine, and only the quote is stored. That is what
 makes a transcript still point after a restart with no schema change: the stored

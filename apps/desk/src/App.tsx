@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {confirm, open} from '@tauri-apps/plugin-dialog';
 import {groupOf, type DocPath, type VaultPath} from '@inkling/vault';
-import {resolveAnchor, resolveVoice, type Finding} from '@inkling/voice';
+import {resolveVoice, type Finding} from '@inkling/voice';
 import {createHeldSessionClient} from '@inkling/toryo';
 import {isDesktop, loadSettings, saveSettings, tauriConversations} from './lib/bridge.ts';
 import {
@@ -13,7 +13,7 @@ import {
 import type {AgentContext} from './lib/agent.ts';
 import {daemonToken, initDaemonToken, refreshDaemonToken} from './lib/daemon-token.ts';
 import {createDispatchTransport, type TokenAccess} from './lib/dispatch-transport.ts';
-import type {Pointer} from './lib/pointer.ts';
+import {resolvePointer, type Pointer} from './lib/pointer.ts';
 import {assembleReferences} from './lib/references.ts';
 import {applyEdit, type Edit} from './lib/reply.ts';
 import {cyclePin, deriveMode, indicatorFor, type FocusRegion} from './lib/turn.ts';
@@ -457,10 +457,10 @@ export function App() {
   /**
    * A passage in the transcript the writer asked to see.
    *
-   * The anchor is resolved against the draft as it stands now, never against
-   * the offsets the passage had when it was pointed at, which is what lets a
-   * pointer survive the paragraph above it being rewritten. A passage that is
-   * genuinely gone is said to be gone, and nothing moves.
+   * `resolvePointer` reads the draft as it stands now, never the offsets the
+   * passage had when it was pointed at, which is what lets a pointer survive
+   * the paragraph above it being rewritten. A passage that is genuinely gone is
+   * said to be gone, and nothing moves.
    *
    * Revealing sets the editor selection, so the passage becomes the writer's
    * selection for the next turn, and the focus the reveal takes makes it the
@@ -468,14 +468,14 @@ export function App() {
    * rather than by anything decided here.
    */
   const handlePoint = useCallback(function (pointer: Pointer) {
-    const found = resolveAnchor(draftRef.current, pointer.anchor);
-    if (found === undefined) {
-      setAgentError('The passage that was pointed at is not in the document any more.');
+    const found = resolvePointer(draftRef.current, pointer);
+    if (!found.ok) {
+      setAgentError(found.reason);
       return;
     }
     setAgentError(undefined);
     setReveal(function (current) {
-      return {range: found, seq: (current?.seq ?? 0) + 1, mark: true};
+      return {range: found.range, seq: (current?.seq ?? 0) + 1, mark: true};
     });
   }, []);
 

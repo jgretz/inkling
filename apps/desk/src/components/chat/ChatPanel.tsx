@@ -7,7 +7,7 @@ import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
 import type {DocPath} from '@inkling/vault';
 import type {AgentContext, AgentTransport, Message, Role} from '../../lib/agent.ts';
 import type {Conversation} from '../../lib/conversations.ts';
-import {pointerFor, type Pointer} from '../../lib/pointer.ts';
+import {pointerFor, type Miss, type Pointer} from '../../lib/pointer.ts';
 import type {AgentReply, Edit} from '../../lib/reply.ts';
 import type {TurnMode} from '../../lib/turn.ts';
 import {ContextStrip, type ReferenceControls} from './ContextStrip.tsx';
@@ -172,12 +172,26 @@ const Proposal = memo(function Proposal({id, edit, onAccept, onReject}: Proposal
 });
 
 /**
- * A reply inkling would not act on, in the validator's own words.
+ * Why a pointer's quote could not be placed, in the notice's register.
+ *
+ * A clause rather than a sentence, because {@link Refusal} has already begun
+ * one: everything the validator hands it ("its block was never closed") reads
+ * as the end of "Inkling did not act on this reply: …", and a miss that arrived
+ * as a capitalised sentence would be the one thing there that did not.
+ */
+const POINT_MISS: Record<Miss, string> = {
+  missing: 'the passage it quoted is not in the document the turn carried',
+  ambiguous: 'the passage it quoted appears more than once there, so which one it meant is unclear',
+};
+
+/**
+ * A reply inkling would not act on, in the words of whatever refused it.
  *
  * A notice and nothing more: there is deliberately nothing here to accept,
  * because the whole reason the reply was refused is that what it asked for
- * could not be read. A pointer whose passage is gone from the document the turn
- * carried is reported here too, for the same reason and in the same place.
+ * could not be read. A pointer whose passage is not in the document the turn
+ * carried lands here too, for the same reason and in the same place, phrased by
+ * {@link POINT_MISS} rather than by the validator.
  */
 const Refusal = memo(function Refusal({reason}: {reason: string}) {
   return (
@@ -315,7 +329,7 @@ export function ChatPanel({
               ...current,
               [replyId]: found.ok
                 ? {kind: 'point', pointer: found.value}
-                : {kind: 'refused', reason: found.reason},
+                : {kind: 'refused', reason: POINT_MISS[found.miss]},
             };
           });
         })

@@ -1,4 +1,4 @@
-import {locate} from './pointer.ts';
+import {locate, type Miss} from './pointer.ts';
 
 /**
  * The reply contract: what a turn is allowed to come back as, and how it is read.
@@ -183,6 +183,18 @@ function readJson(body: string): Record<string, unknown> | undefined {
 }
 
 /**
+ * Why an edit's quote could not be placed, as the status bar says it.
+ *
+ * Whole sentences, because that is where they land: `App` puts them beside a
+ * save failure with nothing else around them. The chat says the same two misses
+ * in its own words, inside a notice that has already begun the sentence.
+ */
+const EDIT_MISS: Record<Miss, string> = {
+  missing: 'The passage the agent quoted is not in the document any more.',
+  ambiguous: 'The passage the agent quoted appears more than once, so where it meant is unclear.',
+};
+
+/**
  * Puts an edit into a source string, refusing rather than guessing.
  *
  * The matching rule is `locate`, shared with pointing: exact, and exactly one
@@ -196,7 +208,7 @@ function readJson(body: string): Record<string, unknown> | undefined {
  */
 export function applyEdit(source: string, edit: Edit): EditResult {
   const found = locate(source, edit.quote);
-  if (!found.ok) return found;
+  if (!found.ok) return {ok: false, reason: EDIT_MISS[found.miss]};
   return {
     ok: true,
     value:

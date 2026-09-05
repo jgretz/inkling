@@ -4,10 +4,9 @@ import {useCallback, useMemo, useRef, useState} from 'react';
 import {act, fireEvent, render} from '@testing-library/react';
 import {EditorView} from '@codemirror/view';
 import type {DocPath} from '@inkling/vault';
-import {resolveAnchor} from '@inkling/voice';
 import {emptyContext, type AgentContext, type AgentTransport} from '../src/lib/agent.ts';
 import type {Conversation} from '../src/lib/conversations.ts';
-import type {Pointer} from '../src/lib/pointer.ts';
+import {resolvePointer, type Pointer} from '../src/lib/pointer.ts';
 import {ChatPanel} from '../src/components/chat/ChatPanel.tsx';
 import {EditorPanel, type Reveal} from '../src/components/editor/EditorPanel.tsx';
 
@@ -113,15 +112,18 @@ function Harness({quotes, onChange = noop, onSave = noop}: HarnessProps) {
     [onChange],
   );
 
+  // `App.handlePoint`, to the line: the same resolver, the same sentence, the
+  // same incremented counter. A second implementation here would be a harness
+  // testing itself.
   const handlePoint = useCallback(function (pointer: Pointer) {
-    const found = resolveAnchor(draft.current, pointer.anchor);
-    if (found === undefined) {
-      setError('The passage that was pointed at is not in the document any more.');
+    const found = resolvePointer(draft.current, pointer);
+    if (!found.ok) {
+      setError(found.reason);
       return;
     }
     setError(undefined);
     setReveal(function (current) {
-      return {range: found, seq: (current?.seq ?? 0) + 1, mark: true};
+      return {range: found.range, seq: (current?.seq ?? 0) + 1, mark: true};
     });
   }, []);
 

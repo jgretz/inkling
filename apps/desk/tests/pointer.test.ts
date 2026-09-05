@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import {resolveAnchor} from '@inkling/voice';
-import {locate, pointerAt, pointerFor} from '../src/lib/pointer.ts';
+import {locate, pointerAt, pointerFor, resolvePointer} from '../src/lib/pointer.ts';
 
 /**
  * Pointing, as the pure half of it.
@@ -19,18 +19,12 @@ describe('locate', function () {
   });
 
   it('should refuse a quote that is not there', function () {
-    expect(locate(SOURCE, 'quite good')).toEqual({
-      ok: false,
-      reason: 'The passage the agent quoted is not in the document any more.',
-    });
+    expect(locate(SOURCE, 'quite good')).toEqual({ok: false, miss: 'missing'});
   });
 
   // Not a position the writer did not mean: two candidates is no answer.
   it('should refuse a quote that appears twice', function () {
-    const found = locate('One. Two. One.', 'One.');
-
-    expect(found.ok).toBe(false);
-    expect(found.ok === false && found.reason).toContain('more than once');
+    expect(locate('One. Two. One.', 'One.')).toEqual({ok: false, miss: 'ambiguous'});
   });
 });
 
@@ -67,49 +61,51 @@ describe('pointerFor', function () {
     expect(found.ok === true && found.value.anchor.hint).toBe(14);
   });
 
-  it('should pass on the reason a quote could not be located', function () {
-    expect(pointerFor(SOURCE, 'quite good')).toEqual({
-      ok: false,
-      reason: 'The passage the agent quoted is not in the document any more.',
-    });
+  it('should pass on why a quote could not be located', function () {
+    expect(pointerFor(SOURCE, 'quite good')).toEqual({ok: false, miss: 'missing'});
   });
 
   it('should refuse a quote the source holds twice', function () {
-    const found = pointerFor('One. Two. One.', 'One.');
-
-    expect(found.ok).toBe(false);
+    expect(pointerFor('One. Two. One.', 'One.')).toEqual({ok: false, miss: 'ambiguous'});
   });
 });
 
-describe('a pointer against an edited draft', function () {
-  // The whole reason a pointer is a quote and an anchor rather than a range.
-  it('should still resolve after the paragraph above it is rewritten', function () {
-    const found = pointerFor(SOURCE, 'rather good');
-    if (!found.ok) throw new Error(found.reason);
+describe('resolvePointer', function () {
+  /** A pointer at `quote`, as the chat would hand one to `App`. */
+  function pointer(source: string, quote: string) {
+    const found = pointerFor(source, quote);
+    if (!found.ok) throw new Error(`the fixture quote was ${found.miss}`);
+    return found.value;
+  }
 
-    const edited = `A whole new opening paragraph, considerably longer.\n\n${SOURCE}`;
-    const range = resolveAnchor(edited, found.value.anchor);
-    if (range === undefined) throw new Error('the anchor stopped resolving');
+  it('should find the passage where it now stands, not where it stood', function () {
+    const draft = `A whole new opening paragraph.\n\n${SOURCE}`;
 
-    expect(edited.slice(range.start, range.end)).toBe('rather good');
-    expect(range.start).not.toBe(14);
+    const found = resolvePointer(draft, pointer(SOURCE, 'rather good'));
+
+    expect(found.ok).toBe(true);
+    expect(found.ok === true && draft.slice(found.range.start, found.range.end)).toBe(
+      'rather good',
+    );
+    expect(found.ok === true && found.range.start).not.toBe(14);
   });
 
-  // Two identical sentences, and the anchor lands on the one it was made from.
+  // The sentence the status bar shows. Whole and capitalised, because `App` puts
+  // it beside a save failure with nothing else around it.
+  it('should say the passage has gone once the writer has deleted it', function () {
+    expect(resolvePointer('The ending is fine now.', pointer(SOURCE, 'rather good'))).toEqual({
+      ok: false,
+      reason: 'The passage that was pointed at is not in the document any more.',
+    });
+  });
+
+  // Two identical sentences, and the anchor lands on the one it was made from
+  // rather than on the first the draft happens to hold.
   it('should stay on its own passage when the draft repeats it', function () {
-    const source = 'Say it once. Then say it twice. Say it once.';
-    const found = pointerFor(source.slice(0, 31), 'Say it once.');
-    if (!found.ok) throw new Error(found.reason);
+    const draft = 'Say it once. Then say it twice. Say it once.';
 
-    const range = resolveAnchor(source, found.value.anchor);
+    const found = resolvePointer(draft, pointer(draft.slice(0, 31), 'Say it once.'));
 
-    expect(range).toEqual({start: 0, end: 12});
-  });
-
-  it('should resolve to nothing once the passage is deleted', function () {
-    const found = pointerFor(SOURCE, 'rather good');
-    if (!found.ok) throw new Error(found.reason);
-
-    expect(resolveAnchor('The ending is fine now.', found.value.anchor)).toBeUndefined();
+    expect(found).toEqual({ok: true, range: {start: 0, end: 12}});
   });
 });

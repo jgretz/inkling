@@ -83,9 +83,9 @@ export type Turn = {
  *
  * A union rather than a bare string, because the reply kinds have to be
  * structural for the accept-or-reject prompt to exist at all, and for a passage
- * the reply pointed at to be one the writer can click. Text chunks
- * arrive as they stream; the reply arrives once, last, and only for a turn that
- * ran to the end.
+ * the reply pointed at to be one the writer can click. Text chunks arrive as
+ * they stream; the reply arrives once, last, and only for a turn that ran to
+ * the end.
  */
 export type ReplyChunk = {kind: 'text'; text: string} | {kind: 'reply'; reply: AgentReply};
 
