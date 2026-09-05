@@ -781,6 +781,26 @@ mod tests {
         .expect("should attach")
     }
 
+    /// A group's reference naming another document, which is the only shape a
+    /// suppression may be filed against.
+    fn attach_to_group_doc(db: &VaultDb, group: &str, target: &str) -> Reference {
+        db.with(|conn| {
+            attach(
+                conn,
+                &NewReference {
+                    doc_path: None,
+                    group_path: Some(group),
+                    kind: "doc",
+                    target_path: Some(target),
+                    url: None,
+                    title: "Notes on endings",
+                },
+            )
+        })
+        .expect("a vault should be open")
+        .expect("should attach")
+    }
+
     fn references(db: &VaultDb) -> Vec<Reference> {
         db.with(select_all)
             .expect("a vault should be open")
@@ -921,6 +941,35 @@ mod tests {
         let row = only_reference(&db);
         assert_eq!(row.id, following.id);
         assert_eq!(row.target_path.as_deref(), Some("essays/a.md"));
+    }
+
+    /// The merge above deletes a row, so the foreign key has to sweep what was
+    /// filed against it. A suppression left pointing at a gone reference is
+    /// either a dangling row or a constraint failure that fails the rename.
+    #[test]
+    fn should_sweep_a_suppression_filed_against_a_reference_a_rename_merges_away() {
+        let (vault, db) = vault_with_a_group("drafts");
+        fs::create_dir_all(vault.path().join("essays")).expect("should make a dir");
+        let following = attach_to_group_doc(&db, "drafts", "drafts/a.md");
+        let merged = attach_to_group_doc(&db, "drafts", "essays/a.md");
+        db.with(|conn| insert_suppression(conn, "drafts/x.md", merged.id))
+            .expect("a vault should be open")
+            .expect("should turn it off");
+
+        rename_doc_with(
+            &vault.path().to_string_lossy(),
+            "drafts/a.md",
+            "essays/a.md",
+            &db,
+        )
+        .expect("should move");
+
+        assert_eq!(only_reference(&db).id, following.id);
+        let off = db
+            .with(select_all_suppressions)
+            .expect("a vault should be open")
+            .expect("should select");
+        assert!(off.is_empty(), "left a suppression behind: {off:?}");
     }
 
     #[test]
