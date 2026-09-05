@@ -147,10 +147,10 @@ impl VaultDb {
     /// Runs a closure against the open connection, or returns `None` when there
     /// is none.
     ///
-    /// This is the read path every stored-data command goes through: `voice.rs`
-    /// today, roadmap items 3.1 and 4.2 next. `None` is a real answer rather
-    /// than an error, because a writer who has not chosen a vault yet has no
-    /// connection and that is not a failure.
+    /// This is the read path every stored-data command goes through: `voice.rs`,
+    /// `references.rs` and `conversations.rs` alike. `None` is a real answer
+    /// rather than an error, because a writer who has not chosen a vault yet has
+    /// no connection and that is not a failure.
     pub fn with<T>(&self, f: impl FnOnce(&Connection) -> T) -> Option<T> {
         let slot = self
             .0
@@ -204,7 +204,7 @@ mod tests {
 
         let status = db.open(vault.path()).expect("should open");
 
-        assert_eq!(status, VaultDbStatus::Ready { schema_version: 3 });
+        assert_eq!(status, VaultDbStatus::Ready { schema_version: 4 });
         assert!(db_path(vault.path()).is_file());
         let ignore = fs::read_to_string(data_dir(vault.path()).join(".gitignore"))
             .expect("should write a gitignore");
@@ -220,8 +220,8 @@ mod tests {
         insert_probe(&db, "a");
         let second = db.open(vault.path()).expect("should reopen");
 
-        assert_eq!(first, VaultDbStatus::Ready { schema_version: 3 });
-        assert_eq!(second, VaultDbStatus::Ready { schema_version: 3 });
+        assert_eq!(first, VaultDbStatus::Ready { schema_version: 4 });
+        assert_eq!(second, VaultDbStatus::Ready { schema_version: 4 });
         assert_eq!(probe(&db), Some("a".to_string()));
     }
 

@@ -1,16 +1,20 @@
-import {useCallback, useEffect, useMemo, useState} from 'react';
-import {open} from '@tauri-apps/plugin-dialog';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {confirm, open} from '@tauri-apps/plugin-dialog';
 import {groupOf, type DocPath, type VaultPath} from '@inkling/vault';
 import {resolveVoice, type Finding} from '@inkling/voice';
-import {isDesktop, loadSettings, saveSettings} from './lib/bridge.ts';
+import {createHeldSessionClient} from '@inkling/toryo';
+import {isDesktop, loadSettings, saveSettings, tauriConversations} from './lib/bridge.ts';
 import {
   DEFAULT_SETTINGS,
   parseSettings,
   type LayoutSettings,
   type ToggleKey,
 } from './lib/settings.ts';
-import {stubTransport, type AgentContext} from './lib/agent.ts';
+import type {AgentContext} from './lib/agent.ts';
+import {daemonToken, initDaemonToken, refreshDaemonToken} from './lib/daemon-token.ts';
+import {createDispatchTransport, type TokenAccess} from './lib/dispatch-transport.ts';
 import {assembleReferences} from './lib/references.ts';
+import {useConversations} from './lib/use-conversations.ts';
 import {useFindings} from './lib/use-findings.ts';
 import {useReferences} from './lib/use-references.ts';
 import {useSuppressions} from './lib/use-suppressions.ts';
@@ -31,6 +35,23 @@ import type {ReferenceControls} from './components/chat/ContextStrip.tsx';
 /** No document open, so no rule set governs anything. Held still for the memos. */
 const NO_CASCADE = Object.freeze({sets: [], problems: []});
 
+/**
+ * One client for the app's whole life.
+ *
+ * The token is a thunk rather than a value, and the client resolves it once per
+ * request, so a token the daemon rewrote takes effect without anything being
+ * rebuilt. An empty string means no token to present, which is what the client
+ * reads as "send no header".
+ */
+const DAEMON = createHeldSessionClient({
+  token: function () {
+    return daemonToken() ?? '';
+  },
+});
+
+/** How the transport reads and re-reads the token. See `lib/daemon-token.ts`. */
+const TOKEN: TokenAccess = {current: daemonToken, refresh: refreshDaemonToken};
+
 /** Last path segment of the vault directory, which is what a writer named it. */
 function vaultName(vault: VaultPath | undefined): string {
   if (vault === undefined) return 'No vault';
@@ -43,7 +64,16 @@ export function App() {
   const [selection, setSelection] = useState('');
   const [restored, setRestored] = useState(false);
 
+  const [agentError, setAgentError] = useState<string | undefined>(undefined);
+
   const {chooseVault, openDoc} = workspace;
+
+  // Read once, before the first turn can need it. It never throws: a missing
+  // file, an unreadable one and no webview at all all cache no token, and the
+  // transport says so when the daemon refuses.
+  useEffect(function () {
+    if (isDesktop()) void initDaemonToken();
+  }, []);
 
   // Restore the previous session once, before anything else can write settings
   // back and clobber what was on disk.
@@ -245,6 +275,114 @@ export function App() {
   const {kept, suppressed} = useFindings(draft, voice, dismissals);
   const [reveal, setReveal] = useState<Reveal | undefined>(undefined);
 
+  const sessionState = useCallback(async function (sessionId: string) {
+    const known = await DAEMON.getSession(sessionId);
+    return known.ok ? known.value.state : undefined;
+  }, []);
+
+  const conversations = useConversations({
+    store: tauriConversations,
+    docPath: openPath,
+    ready: dataReady,
+    sessionState,
+  });
+
+  // Read at send time rather than captured when the transport is built: the
+  // writer can edit a `voice.md`, or trip a rule, between two turns of one
+  // conversation, and the transport outlives both.
+  const voiceRef = useRef(voice);
+  voiceRef.current = voice;
+  const firingRef = useRef(false);
+  firingRef.current = kept.length > 0;
+
+  const readVoice = useCallback(function () {
+    return voiceRef.current;
+  }, []);
+  const readFiring = useCallback(function () {
+    return firingRef.current;
+  }, []);
+
+  // Held in a ref for the reason `use-references.ts` holds `taken` in one: the
+  // transport is built per conversation, and depending on the row itself would
+  // rebuild it (and close its live session) every time a title or a session id
+  // moved.
+  const conversationRef = useRef(conversations.active);
+  conversationRef.current = conversations.active;
+  const conversationId = conversations.active?.id;
+
+  const transport = useMemo(
+    function () {
+      const active = conversationRef.current;
+      if (active === undefined || vault === undefined) return undefined;
+      return createDispatchTransport({
+        client: DAEMON,
+        conversation: active,
+        vault,
+        store: tauriConversations,
+        token: TOKEN,
+        voice: readVoice,
+        checkerFiring: readFiring,
+        onError: setAgentError,
+      });
+    },
+    [conversationId, vault, readVoice, readFiring],
+  );
+
+  // Ends the daemon session when this conversation stops being the active one,
+  // keeping its id as the conversation's resume id so coming back resumes rather
+  // than starts cold. A conversation that never spoke has no session and this
+  // does nothing.
+  useEffect(
+    function () {
+      if (transport === undefined) return;
+      return function () {
+        void transport.close();
+      };
+    },
+    [transport],
+  );
+
+  // Asked before rather than undone after: a conversation takes every turn of it
+  // through the table's cascade, and the prose either side of a session is the
+  // part of this that cannot be recovered.
+  const {remove: removeConversation} = conversations;
+  const handleDeleteConversation = useCallback(
+    function () {
+      const doomed = conversationRef.current;
+      if (doomed === undefined) return;
+      void confirm(`Delete "${doomed.title}" and everything said in it?`, {
+        title: 'Delete conversation',
+        kind: 'warning',
+      })
+        .then(function (agreed) {
+          if (agreed) removeConversation(doomed.id);
+        })
+        .catch(function (error) {
+          console.warn('inkling: could not ask about deleting a conversation', error);
+        });
+    },
+    [removeConversation],
+  );
+
+  const conversationControls = useMemo(
+    function () {
+      return {
+        all: conversations.all,
+        activeId: conversationId,
+        onSelect: conversations.select,
+        onCreate: conversations.create,
+        onDelete: handleDeleteConversation,
+      };
+    },
+    [
+      conversations.all,
+      conversationId,
+      conversations.select,
+      conversations.create,
+      handleDeleteConversation,
+    ],
+  );
+
   // The counter increments on every pick because the editor honours one reveal
   // per counter value. Without it, picking the same finding twice would be the
   // same request and the second click would move nothing.
@@ -365,20 +503,32 @@ export function App() {
               label="Resize the agent panel"
             />
             <div style={{width: layout.chatWidth}} className="shrink-0">
-              <ChatPanel
-                transport={stubTransport}
-                context={context}
-                references={referenceControls}
-              />
+              {/* Mounted only once there is a conversation to hold the turns and
+                  its stored history has been read: the panel takes its messages
+                  at mount, and the key is what makes switching a remount rather
+                  than one conversation's replies merging into another's. */}
+              {transport !== undefined && conversations.loaded ? (
+                <ChatPanel
+                  key={conversationId}
+                  transport={transport}
+                  context={context}
+                  references={referenceControls}
+                  initial={conversations.initial}
+                  conversations={conversationControls}
+                />
+              ) : (
+                <section className="h-full border-l border-ink-800 bg-ink-950" />
+              )}
             </div>
           </>
         )}
       </main>
 
-      {/* The database's own trouble first: a rule set that will not parse is
-          the smaller problem when nothing inkling stores is available. */}
+      {/* The more fundamental problem first, in both lines. A save that failed
+          outranks an agent turn that did, the way a database that will not open
+          outranks a rule set that will not parse. */}
       <StatusBar
-        error={workspace.error}
+        error={workspace.error ?? agentError}
         notice={dataNotice(workspace.data) ?? voiceNotice(cascade.problems)}
       />
     </div>

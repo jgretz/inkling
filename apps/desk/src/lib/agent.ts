@@ -4,9 +4,11 @@ import type {ContextReference} from './references.ts';
 /**
  * The agent boundary.
  *
- * Nothing here talks to a model yet. The types are the contract the chat panel
- * codes against, so swapping in a real transport later is one file rather than
- * a rewrite of the panel. See `docs/agent.md` for the options still open.
+ * The types here are the contract the chat panel codes against, and they name
+ * no backend: the panel handles streaming, cancellation and errors around a
+ * `send`, and what is on the other side of it is one file. `dispatch-transport.ts`
+ * is the one that ships. See `docs/agent.md` for why it is toryo's held-session
+ * plane and what that decided.
  */
 
 export type Role = 'writer' | 'agent';
@@ -41,6 +43,13 @@ export type AgentContext = {
 export type Turn = {
   message: string;
   context: AgentContext;
+  /**
+   * What has been said so far. The shipped transport ignores it: a held session
+   * is a live process that already has the conversation in front of it, and
+   * re-sending the history would pay for it twice. It stays on the type because
+   * a stateless backend would need it, and the panel is the only thing that
+   * knows it.
+   */
   history: Message[];
 };
 
@@ -80,33 +89,3 @@ export function contextTokens(context: AgentContext): number {
     return total + estimateTokens(part);
   }, 0);
 }
-
-/**
- * A stand-in transport that reports what it was given instead of answering.
- *
- * It exists so the chat panel is exercised end to end, including streaming and
- * cancellation, before a model is chosen. It never pretends to be an answer.
- */
-export const stubTransport: AgentTransport = {
-  name: 'stub',
-  async *send(turn, signal) {
-    const words = [
-      'No',
-      'model',
-      'is',
-      'wired',
-      'up',
-      'yet.',
-      `I received ${turn.message.length} characters,`,
-      `${contextTokens(turn.context)} tokens of context,`,
-      `and ${turn.history.length} earlier messages.`,
-    ];
-    for (const word of words) {
-      if (signal.aborted) return;
-      await new Promise(function (resolve) {
-        setTimeout(resolve, 40);
-      });
-      yield `${word} `;
-    }
-  },
-};

@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'bun:test';
 import type {DocPath} from '@inkling/vault';
-import {contextTokens, emptyContext, estimateTokens, stubTransport} from '../src/lib/agent.ts';
+import {contextTokens, emptyContext, estimateTokens} from '../src/lib/agent.ts';
 import type {ContextReference} from '../src/lib/references.ts';
 
 /** An assembled reference carrying `source`, as `assembleReferences` returns one. */
@@ -53,22 +53,5 @@ describe('contextTokens', function () {
     });
 
     expect(total).toBe(0);
-  });
-});
-
-describe('stubTransport', function () {
-  it('should stop yielding once the turn is aborted', async function () {
-    const controller = new AbortController();
-    const chunks: string[] = [];
-
-    for await (const chunk of stubTransport.send(
-      {message: 'hello', context: emptyContext(), history: []},
-      controller.signal,
-    )) {
-      chunks.push(chunk);
-      controller.abort();
-    }
-
-    expect(chunks).toHaveLength(1);
   });
 });
