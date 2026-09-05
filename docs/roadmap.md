@@ -33,7 +33,7 @@ what they name. Phase 4 is complete.
 Phase 4 is split three ways rather than by its numbered items. 4a carries 4.1,
 4.2 and 4.5, because prompt assembly is where voice guidance lands and building
 it twice would be wasteful. 4b is 4.3 and 4c is 4.4. Everything is serialized:
-all four touch the chat panel and `App.tsx`, so parallel runs would collide.
+all three touch the chat panel and `App.tsx`, so parallel runs would collide.
 
 The toryo dependency is met. All four dispatch runs landed, and they delivered
 more than the roadmap assumed: `@toryo/dispatch-client/http` carries a
