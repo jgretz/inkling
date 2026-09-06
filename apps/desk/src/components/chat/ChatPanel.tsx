@@ -574,9 +574,13 @@ export function ChatPanel({
       onFocusCapture={handleFocus}
       className="flex h-full min-w-0 flex-col border-l border-ink-800 bg-ink-950"
     >
-      <div className="flex shrink-0 items-baseline justify-between px-3 pb-1 pt-3">
-        <span className="text-[11px] font-medium uppercase tracking-wider text-ink-400">Agent</span>
-        <span className="text-[10px] text-ink-600">{transport.name}</span>
+      <div className="flex shrink-0 items-baseline justify-between gap-2 px-3 pb-1 pt-3">
+        <span className="shrink-0 text-[11px] font-medium uppercase tracking-wider text-ink-400">
+          Agent
+        </span>
+        {/* The transport names itself and the panel is as narrow as the writer
+            wants it, so the name gives way rather than pushing the row wider. */}
+        <span className="truncate text-[10px] text-ink-600">{transport.name}</span>
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5 px-3 pb-2">

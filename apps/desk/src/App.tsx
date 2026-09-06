@@ -62,6 +62,23 @@ import {FindingsStrip, type DismissedFinding} from './components/findings/Findin
 import {ChatPanel} from './components/chat/ChatPanel.tsx';
 import type {ReferenceControls} from './components/chat/ContextStrip.tsx';
 
+/**
+ * How narrow each column may be squeezed before the window runs out of room.
+ *
+ * The three side panels hold a width the writer dragged them to and the editor
+ * takes what is left, so a window narrower than the sum used to push the agent
+ * panel out past the right edge, where the root's `overflow-hidden` cut its
+ * token counts and its buttons in half. The panels give way instead, in
+ * proportion to the widths they were given, and stop here. The four floors
+ * total less than the window's own 960px minimum, so the row always fits.
+ *
+ * The editor's floor is deliberately low. It is the column with no toggle of
+ * its own, so it is the one a writer squeezes to nothing without meaning to,
+ * and this is only the width at which it stops disappearing: enough to see
+ * that it is there and to find its handle, not a width to write at.
+ */
+const FLOOR = {library: 160, preview: 200, chat: 240, editor: 160};
+
 /** No document open, so no rule set governs anything. Held still for the memos. */
 const NO_CASCADE = Object.freeze({sets: [], problems: []});
 
@@ -828,7 +845,7 @@ export function App() {
       <main className="flex min-h-0 flex-1">
         {layout.libraryOpen && (
           <>
-            <div style={{width: layout.libraryWidth}} className="shrink-0">
+            <div style={{width: layout.libraryWidth, minWidth: FLOOR.library}}>
               <LibraryPanel
                 docs={workspace.docs}
                 groups={workspace.groups}
@@ -874,7 +891,7 @@ export function App() {
           <>
             {layout.previewOpen && (
               <>
-                <div style={{width: layout.previewWidth}} className="shrink-0">
+                <div style={{width: layout.previewWidth, minWidth: FLOOR.preview}}>
                   <PreviewPanel source={draft} />
                 </div>
                 <Splitter
@@ -886,7 +903,7 @@ export function App() {
               </>
             )}
 
-            <div className="flex min-w-0 flex-1 flex-col">
+            <div style={{minWidth: FLOOR.editor}} className="flex flex-1 flex-col">
               <div className="min-h-0 flex-1">
                 <EditorPanel
                   path={workspace.open.path}
@@ -921,7 +938,7 @@ export function App() {
               max={640}
               label="Resize the agent panel"
             />
-            <div style={{width: layout.chatWidth}} className="shrink-0">
+            <div style={{width: layout.chatWidth, minWidth: FLOOR.chat}}>
               {/* Mounted only once there is a conversation to hold the turns and
                   its stored history has been read: the panel takes its messages
                   at mount, and the key is what makes switching a remount rather
