@@ -26,10 +26,10 @@ possible.
 | ---------- | ----------------------- | -------- |
 | `8564e3d9` | The agent panel as tabs | nothing  |
 
-Phases 1 through 6 are complete and merged. Phase 5, research inflow, is the
-only roadmap item left and is deliberately unqueued: by the time it starts the
-app will have been used to write something real, which will say more about what
-retrieval should do than this document can.
+Phases 1 through 4 and phase 6 are complete and merged. Phase 5, research
+inflow, is the only roadmap item left and is deliberately unqueued: by the time
+it starts the app will have been used to write something real, which will say
+more about what retrieval should do than this document can.
 
 Everything in flight came from using the app rather than from this plan. That is
 now the more productive source of work, and it is worth reading

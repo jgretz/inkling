@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'bun:test';
-import {extractLinks, linkPasteSummary} from '../src/lib/link-paste.ts';
+import {extractLinks, linkPasteSummary, linkPasteTally} from '../src/lib/link-paste.ts';
 
 /**
  * The paste that made this feature exist, verbatim from the session that found
@@ -153,6 +153,28 @@ describe('extractLinks', function () {
     const {links} = extractLinks('https://example.com/notes/on%20endings');
 
     expect(links[0]?.title).toBe('example.com/on endings');
+  });
+});
+
+describe('linkPasteTally', function () {
+  it('should name how many titles were made out of an address', function () {
+    expect(linkPasteTally(extractLinks(PASTE).links)).toBe('5 links found, 2 titles derived');
+  });
+
+  it('should say each count in the singular when it is one', function () {
+    expect(linkPasteTally(extractLinks('https://example.com/a').links)).toBe(
+      '1 link found, 1 title derived',
+    );
+  });
+
+  it('should say nothing about derived titles when the writer named them all', function () {
+    const {links} = extractLinks('[The piece](https://example.com/a)');
+
+    expect(linkPasteTally(links)).toBe('1 link found');
+  });
+
+  it('should count nothing for a paste with no link in it', function () {
+    expect(linkPasteTally(extractLinks('here is a set of links').links)).toBe('0 links found');
   });
 });
 

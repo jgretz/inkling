@@ -137,17 +137,36 @@ export function useReferences({vault, docPath, ready, taken, onNoteWritten}: Opt
   const notifyRef = useRef(onNoteWritten);
   notifyRef.current = onNoteWritten;
 
-  /** Replaces by id, so re-attaching something already there does not duplicate it. */
-  const remember = useCallback(function (row: StoredReference) {
+  /**
+   * Folds written rows into the list, replacing by id.
+   *
+   * By id rather than by appending, because both writes read the row back
+   * whether or not they created it: re-attaching something already there must
+   * not show up twice in the strip.
+   */
+  const rememberAll = useCallback(function (written: readonly StoredReference[]) {
+    if (written.length === 0) return;
     setRows(function (current) {
+      const ids = new Set(
+        written.map(function (row) {
+          return row.id;
+        }),
+      );
       return [
         ...current.filter(function (entry) {
-          return entry.id !== row.id;
+          return !ids.has(entry.id);
         }),
-        row,
+        ...written,
       ];
     });
   }, []);
+
+  const remember = useCallback(
+    function (row: StoredReference) {
+      rememberAll([row]);
+    },
+    [rememberAll],
+  );
 
   const attach = useCallback(
     function (request: AttachRequest) {
@@ -208,24 +227,11 @@ export function useReferences({vault, docPath, ready, taken, onNoteWritten}: Opt
       }
 
       return addLinks(owner, request.links).then(function (landed) {
-        setRows(function (current) {
-          const written = [...landed.attached, ...landed.skipped];
-          const ids = new Set(
-            written.map(function (row) {
-              return row.id;
-            }),
-          );
-          return [
-            ...current.filter(function (row) {
-              return !ids.has(row.id);
-            }),
-            ...written,
-          ];
-        });
+        rememberAll([...landed.attached, ...landed.skipped]);
         return {attached: landed.attached.length, skipped: landed.skipped.length};
       });
     },
-    [vault, docPath, ready],
+    [vault, docPath, ready, rememberAll],
   );
 
   const detach = useCallback(

@@ -19,7 +19,8 @@ export type PastedLink = {
   title: string;
   /**
    * True when nothing in the paste named this link, so the title was made out
-   * of the address. The writer should be able to tell at a glance.
+   * of the address. Counted by `linkPasteTally` and shown before the write, so
+   * a writer sees how many machine-made titles they are about to attach.
    */
   derived: boolean;
 };
@@ -135,6 +136,24 @@ export function extractLinks(text: string): ExtractedLinks {
 /** `1 link` or `2 links`, so a count never reads as a template that leaked. */
 function links(count: number): string {
   return count === 1 ? '1 link' : `${count} links`;
+}
+
+/**
+ * What the field says about a paste while it is still the writer's to edit.
+ *
+ * The derived count is why `derived` is on the type at all: a title made out of
+ * an address is not the page's own, and the writer should be able to tell how
+ * many of those they are about to attach before they attach them, while adding
+ * a markdown title is still a matter of typing one. Nothing is said when there
+ * are none, which is the paste that needs no explaining.
+ */
+export function linkPasteTally(found: readonly PastedLink[]): string {
+  const derived = found.filter(function (link) {
+    return link.derived;
+  }).length;
+  const counted = `${links(found.length)} found`;
+  if (derived === 0) return counted;
+  return `${counted}, ${derived === 1 ? '1 title' : `${derived} titles`} derived`;
 }
 
 /**

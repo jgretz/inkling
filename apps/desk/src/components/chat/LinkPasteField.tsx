@@ -1,7 +1,7 @@
 import {useCallback, useMemo, useState} from 'react';
 import type {ChangeEvent, FormEvent} from 'react';
 import {groupName, type GroupPath} from '@inkling/vault';
-import {extractLinks} from '../../lib/link-paste.ts';
+import {extractLinks, linkPasteTally} from '../../lib/link-paste.ts';
 import type {BulkAttachRequest} from '../../lib/use-references.ts';
 
 type LinkPasteFieldProps = {
@@ -94,9 +94,7 @@ export function LinkPasteField({group, onSubmit, onCancel}: LinkPasteFieldProps)
       </select>
 
       <div className="flex items-center justify-between gap-1">
-        <span className="text-[10px] text-ink-600">
-          {found.links.length === 1 ? '1 link found' : `${found.links.length} links found`}
-        </span>
+        <span className="text-[10px] text-ink-600">{linkPasteTally(found.links)}</span>
         <div className="flex gap-1">
           <button
             type="button"

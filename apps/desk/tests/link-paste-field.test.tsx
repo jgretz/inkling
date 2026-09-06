@@ -120,12 +120,24 @@ describe('LinkPasteField', function () {
     expect(view.getByText('Attach').hasAttribute('disabled')).toBe(true);
   });
 
-  it('should say how many links it found before anything is written', function () {
+  /**
+   * Before the write, not after: adding a title the writer wants is a matter of
+   * typing one while the paste is still in the field.
+   */
+  it('should say how many links it found and how many titles it had to make up', function () {
     const view = field();
 
     paste(view, PASTE);
 
-    expect(view.getByText('5 links found')).toBeDefined();
+    expect(view.getByText('5 links found, 2 titles derived')).toBeDefined();
+  });
+
+  it('should say nothing about derived titles when the writer named them all', function () {
+    const view = field();
+
+    paste(view, '[The piece](https://example.com/a)');
+
+    expect(view.getByText('1 link found')).toBeDefined();
   });
 
   it('should attach at the group level when the writer picks it', async function () {
