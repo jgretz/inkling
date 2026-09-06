@@ -1218,11 +1218,24 @@ mod tests {
 
     /// The bug the whole task exists to prevent: a path a writer reuses months
     /// later must come back as a new document, not as the old one's leftovers.
+    ///
+    /// Every subject column `PATH_KEYED` holds is loaded before the delete,
+    /// the suppression of the group's reference included: that one is the
+    /// quietest of the six, because a document inheriting a reference it never
+    /// sees is a reference the writer cannot turn back on.
+    ///
+    /// The group's own reference is the row that stays. It belongs to `drafts`,
+    /// which was not deleted, so the second piece written at this path inherits
+    /// it live, exactly as any other document in the group would.
     #[test]
     fn should_leave_nothing_for_a_new_document_written_at_a_deleted_ones_path() {
         let (vault, db) = vault_with_a_group("drafts");
         dismiss(&db, "drafts/a.md");
         attach_to_doc(&db, "drafts/a.md", "notes/b.md");
+        let inherited = attach_to_group(&db, "drafts", "https://example.com");
+        db.with(|conn| insert_suppression(conn, "drafts/a.md", inherited.id))
+            .expect("a vault should be open")
+            .expect("should turn it off");
         keep(&db, "drafts/a.md", "# a\n");
         start(&db, "drafts/a.md");
 
@@ -1235,9 +1248,15 @@ mod tests {
         .expect("should create");
 
         assert_eq!(listed(&db, "drafts/a.md").len(), 0);
-        assert!(references(&db).is_empty(), "left a reference behind");
         assert_eq!(revisions(&db, "drafts/a.md"), 0);
         assert_eq!(conversations(&db, "drafts/a.md"), 0);
+        let off = db
+            .with(select_all_suppressions)
+            .expect("a vault should be open")
+            .expect("should select");
+        assert!(off.is_empty(), "left a suppression behind: {off:?}");
+        // The group's reference is all that is left, and it names the group.
+        assert_eq!(only_reference(&db).group_path.as_deref(), Some("drafts"));
         assert!(vault.path().join("drafts/a.md").is_file());
     }
 

@@ -23,6 +23,16 @@ describe('groupDeletePrompt', function () {
     expect(prompt).not.toContain('0 documents');
   });
 
+  // A group with no documents can still hold a reference of its own, and that
+  // reference is swept with it, so the empty prompt owes the same warning as
+  // the counted one.
+  it('should say the stored rows are not kept even for an empty group', function () {
+    const prompt = groupDeletePrompt('drafts', 0);
+
+    expect(prompt).toContain('references');
+    expect(prompt).toContain('is not kept');
+  });
+
   it('should use the singular for one document', function () {
     const prompt = groupDeletePrompt('drafts', 1);
 
@@ -39,6 +49,9 @@ describe('groupDeletePrompt', function () {
   });
 
   it('should say the stored rows are not kept when the group holds documents', function () {
-    expect(groupDeletePrompt('drafts', 2)).toContain('is not kept');
+    const prompt = groupDeletePrompt('drafts', 2);
+
+    expect(prompt).toContain('references');
+    expect(prompt).toContain('is not kept');
   });
 });

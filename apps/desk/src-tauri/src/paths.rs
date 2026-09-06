@@ -41,8 +41,10 @@ use rusqlite::Transaction;
 
 /// What a stored path says about the row holding it.
 ///
-/// The distinction decides what happens to rows already sitting at the
-/// destination, and getting it wrong loses the writer's data quietly.
+/// The distinction decides two things, and getting either wrong loses the
+/// writer's data quietly: what happens to rows already sitting at the
+/// destination of a rename, described below, and which rows a delete sweeps,
+/// described in the module header.
 ///
 /// A [`Role::Subject`] column says whose row this is: a dismissal *of* this
 /// document, a reference *belonging to* this group. The destination does not
@@ -237,9 +239,11 @@ mod tests {
 
     /// Asserted as a whole slice, the way `catalog_lists_every_shipped_migration`
     /// is: a table added later must be a deliberate edit here, because a
-    /// path-keyed column left off this list silently stops following a rename.
-    /// The role is pinned along with the column, because a pointer column
-    /// filed as a subject deletes live rows at the destination.
+    /// path-keyed column left off this list silently stops following a rename
+    /// and silently survives a delete, which is how a new document at a reused
+    /// path inherits a stranger's rows. The role is pinned along with the
+    /// column, because a pointer column filed as a subject deletes live rows at
+    /// a rename's destination and sweeps them on a delete.
     #[test]
     fn path_keyed_lists_every_column_holding_a_document_path() {
         assert_eq!(
@@ -257,7 +261,8 @@ mod tests {
 
     /// The same whole-slice assertion for the other registry. A group column
     /// listed here by mistake would be rewritten by a document rename's
-    /// prefix pass; one left off stops following a group rename at all.
+    /// prefix pass; one left off stops following a group rename at all, and
+    /// outlives the group it belongs to when that group is deleted.
     #[test]
     fn group_keyed_lists_every_column_holding_a_group_path() {
         assert_eq!(GROUP_KEYED, &[("reference", "group_path", Subject)]);
