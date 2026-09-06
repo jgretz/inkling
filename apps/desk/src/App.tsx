@@ -1,6 +1,13 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {confirm, open, save} from '@tauri-apps/plugin-dialog';
-import {groupOf, parseDoc, type DocPath, type VaultPath} from '@inkling/vault';
+import {
+  groupOf,
+  isUnder,
+  parseDoc,
+  type DocPath,
+  type GroupPath,
+  type VaultPath,
+} from '@inkling/vault';
 import {resolveVoice, type Finding} from '@inkling/voice';
 import {createHeldSessionClient} from '@inkling/toryo';
 import {
@@ -20,6 +27,7 @@ import {
 import type {AgentContext} from './lib/agent.ts';
 import {copyRichText, systemClipboard} from './lib/clipboard.ts';
 import {daemonToken, initDaemonToken, refreshDaemonToken} from './lib/daemon-token.ts';
+import {docDeletePrompt, groupDeletePrompt} from './lib/deletion.ts';
 import {createDispatchTransport, type TokenAccess} from './lib/dispatch-transport.ts';
 import {
   defaultExportPath,
@@ -448,6 +456,57 @@ export function App() {
     [removeConversation],
   );
 
+  // Asked before rather than undone after, for the reason deleting a
+  // conversation is: the file has the Trash to come back from, and what inkling
+  // stored about it has nothing at all. Neither path can be turned off: there is
+  // no setting, no prop and no environment check between the click and this.
+  //
+  // The document list is read through a ref, for the reason the draft is: it is
+  // re-derived by every vault scan, and depending on it would give both handlers
+  // a new identity each time and re-render every memoised library row.
+  const {deleteDoc, deleteGroup} = workspace;
+  const docsRef = useRef(workspace.docs);
+  docsRef.current = workspace.docs;
+
+  const handleDeleteDoc = useCallback(
+    function (path: DocPath) {
+      const doomed = docsRef.current.find(function (doc) {
+        return doc.path === path;
+      });
+      void confirm(docDeletePrompt(doomed?.title ?? path), {
+        title: 'Delete document',
+        kind: 'warning',
+      })
+        .then(function (agreed) {
+          if (agreed) deleteDoc(path);
+        })
+        .catch(function (error) {
+          console.warn('inkling: could not ask about deleting a document', error);
+        });
+    },
+    [deleteDoc],
+  );
+
+  const handleDeleteGroup = useCallback(
+    function (group: GroupPath) {
+      // Everything under it, however deep, because that is what goes.
+      const count = docsRef.current.filter(function (doc) {
+        return isUnder(doc.path, group);
+      }).length;
+      void confirm(groupDeletePrompt(group, count), {
+        title: 'Delete group',
+        kind: 'warning',
+      })
+        .then(function (agreed) {
+          if (agreed) deleteGroup(group);
+        })
+        .catch(function (error) {
+          console.warn('inkling: could not ask about deleting a group', error);
+        });
+    },
+    [deleteGroup],
+  );
+
   const conversationControls = useMemo(
     function () {
       return {
@@ -735,6 +794,8 @@ export function App() {
                 onRenameGroup={workspace.renameGroup}
                 onMoveDoc={workspace.moveDoc}
                 onCreateDoc={workspace.createDoc}
+                onDeleteDoc={handleDeleteDoc}
+                onDeleteGroup={handleDeleteGroup}
               />
             </div>
             <Splitter

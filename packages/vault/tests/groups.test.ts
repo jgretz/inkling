@@ -5,6 +5,7 @@ import {
   groupName,
   groupOf,
   groupTree,
+  isUnder,
   movedTo,
   parentGroup,
   rewriteUnder,
@@ -91,6 +92,39 @@ describe('movedTo', function () {
 
   it('should move a document out to the vault root', function () {
     expect(movedTo('drafts/a.md', undefined)).toBe('a.md' as DocPath);
+  });
+});
+
+describe('isUnder', function () {
+  it('should count a document directly inside the group', function () {
+    expect(isUnder('drafts/a.md', 'drafts')).toBe(true);
+  });
+
+  it('should count a document nested any depth below the group', function () {
+    expect(isUnder('drafts/2026/a.md', 'drafts')).toBe(true);
+  });
+
+  it('should count the group itself', function () {
+    expect(isUnder('drafts', 'drafts')).toBe(true);
+  });
+
+  it('should count a nested group', function () {
+    expect(isUnder('drafts/2026', 'drafts')).toBe(true);
+  });
+
+  // The pair the module header warns about: five shared characters and nothing
+  // else, so a delete of `drafts` must not reach into `drafts2`.
+  it('should not count a sibling whose name merely starts the same', function () {
+    expect(isUnder('drafts2/a.md', 'drafts')).toBe(false);
+    expect(isUnder('drafts2', 'drafts')).toBe(false);
+  });
+
+  it('should not count a path in another group', function () {
+    expect(isUnder('notes/a.md', 'drafts')).toBe(false);
+  });
+
+  it('should not count a document at the vault root', function () {
+    expect(isUnder('a.md', 'drafts')).toBe(false);
   });
 });
 

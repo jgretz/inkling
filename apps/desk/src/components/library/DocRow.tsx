@@ -1,5 +1,6 @@
 import {memo, useCallback} from 'react';
 import type {ChangeEvent} from 'react';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
 import {groupOf, movedTo, type DocPath, type DocSummary, type GroupPath} from '@inkling/vault';
 
 type DocRowProps = {
@@ -9,6 +10,8 @@ type DocRowProps = {
   groups: readonly GroupPath[];
   onOpen: (path: DocPath) => void;
   onMove: (from: DocPath, to: DocPath) => void;
+  /** Raises the delete. The confirmation is put further up, in `App.tsx`. */
+  onDelete: (path: DocPath) => void;
 };
 
 /** Short relative time. Anything past a week reads better as a date. */
@@ -26,14 +29,25 @@ export function relativeTime(iso: string, now: number = Date.now()): string {
 }
 
 /**
- * One document, as a button that opens it plus a control that moves it.
+ * One document, as a button that opens it plus controls that move and delete it.
  *
  * The move is a `select` rather than a drag: a writer moving a piece between
  * groups is picking a destination by name, the whole list of destinations is
  * already known, and a native select is reachable by keyboard and testable
  * without a pointer.
+ *
+ * The delete is last, past the select, so the whole move control sits between
+ * it and the button that opens the document. Nothing destructive shares an edge
+ * with the gesture a writer makes all day.
  */
-export const DocRow = memo(function DocRow({doc, active, groups, onOpen, onMove}: DocRowProps) {
+export const DocRow = memo(function DocRow({
+  doc,
+  active,
+  groups,
+  onOpen,
+  onMove,
+  onDelete,
+}: DocRowProps) {
   const handleClick = useCallback(
     function () {
       onOpen(doc.path);
@@ -47,6 +61,13 @@ export const DocRow = memo(function DocRow({doc, active, groups, onOpen, onMove}
       onMove(doc.path, movedTo(doc.path, group === '' ? undefined : (group as GroupPath)));
     },
     [doc.path, onMove],
+  );
+
+  const handleDelete = useCallback(
+    function () {
+      onDelete(doc.path);
+    },
+    [doc.path, onDelete],
   );
 
   return (
@@ -88,6 +109,15 @@ export const DocRow = memo(function DocRow({doc, active, groups, onOpen, onMove}
           );
         })}
       </select>
+
+      <button
+        type="button"
+        aria-label={`Delete ${doc.title}`}
+        onClick={handleDelete}
+        className="shrink-0 rounded p-1 text-ink-600 opacity-0 transition-opacity duration-100 hover:text-ink-200 focus:opacity-100 focus:outline-none focus:ring-1 focus:ring-accent-muted group-hover/row:opacity-100"
+      >
+        <Trash2 size={12} aria-hidden />
+      </button>
     </div>
   );
 });

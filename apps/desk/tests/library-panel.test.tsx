@@ -41,6 +41,8 @@ function panel(overrides: Partial<Parameters<typeof LibraryPanel>[0]> = {}) {
       onRenameGroup={noop}
       onMoveDoc={noop}
       onCreateDoc={noop}
+      onDeleteDoc={noop}
+      onDeleteGroup={noop}
       {...overrides}
     />,
   );
@@ -322,6 +324,42 @@ describe('LibraryPanel', function () {
 
     expect(onCreateGroup).not.toHaveBeenCalled();
     expect(queryByLabelText('Name of the new group')).toBeNull();
+  });
+
+  it('should raise a delete for the document whose row it was clicked on', function () {
+    const onDeleteDoc = mock(function () {});
+    const {getByLabelText} = panel({onDeleteDoc});
+
+    fireEvent.click(getByLabelText('Delete On writing'));
+
+    expect(onDeleteDoc).toHaveBeenCalledWith('drafts/one.md' as DocPath);
+  });
+
+  it('should raise a delete for the group whose header it was clicked on', function () {
+    const onDeleteGroup = mock(function () {});
+    const {getByLabelText} = panel({onDeleteGroup});
+
+    fireEvent.click(getByLabelText('Delete the group drafts'));
+
+    expect(onDeleteGroup).toHaveBeenCalledWith('drafts' as GroupPath);
+  });
+
+  // The gesture a writer makes all day and the one they cannot undo must not
+  // share an edge, and a control inside the opening button could not be clicked
+  // without opening the document first.
+  it('should keep the delete control out of the button that opens the document', function () {
+    const view = panel();
+
+    const remove = view.getByLabelText('Delete On writing');
+    const opens = view.getByText('On writing').closest('button');
+
+    expect(opens).not.toBeNull();
+    expect(opens?.contains(remove)).toBe(false);
+    // Past the move control, which is what sits between the two.
+    const move = view.getByLabelText('Move On writing to a group');
+    expect(move.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeGreaterThan(
+      0,
+    );
   });
 
   it('should say nothing matches rather than that the vault is empty', function () {

@@ -212,8 +212,21 @@ the moment it becomes whole again. Its unique index is settled by `OR REPLACE`
 on the update instead, which merges only the two references a rename has pointed
 at one file. Those are every row a rename deletes. Outside a rename, everything
 deleted is deleted because the writer asked: a detached reference, which takes
-the suppressions filed against it through the cascade, and a deleted
-conversation, which takes its turns the same way.
+the suppressions filed against it through the cascade; a deleted conversation,
+which takes its turns the same way; and a deleted document or group, below.
+
+Deleting reads the same two registries in the other direction. A subject column
+goes with the document or group that has gone, which is what stops a document
+written later at the same path inheriting a stranger's dismissals, references,
+revisions and conversations. A pointer column is left exactly as it was, because
+a reference aimed at a file the vault does not hold is kept and shown broken on
+purpose, and a deleted target is that case rather than a row to sweep. The
+transaction order is the rename's, with one honest difference: a rename that
+fails at the commit can rename back and a delete cannot undelete, so a delete is
+idempotent instead. A target that is not on disk is not an error, the rows are
+swept anyway, and that is also what a writer who deleted the file in Finder
+gets. The file itself goes to the Trash, so the prose has a way back; the rows
+do not, and the confirmation says so before anything happens.
 
 Adding a migration is three things: a new `src-tauri/migrations/NNNN_name.sql`,
 one appended entry in `MIGRATIONS`, and the line in the catalog test that pins

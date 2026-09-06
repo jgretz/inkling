@@ -14,7 +14,7 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::data::VaultDb;
-use crate::paths::{rewrite_exact, rewrite_prefix};
+use crate::paths::{delete_exact, delete_prefix, rewrite_exact, rewrite_prefix};
 
 /// One markdown file, as the document list needs it. The body is parsed on the
 /// frontend by `@inkling/vault`, so this stays a byte-level view.
@@ -381,19 +381,124 @@ fn rename_doc_with(vault: &str, from: &str, to: &str, db: &VaultDb) -> Result<()
     }
 }
 
-/// Deletes a document. The caller is responsible for confirming with the writer.
+/// How a delete takes the filesystem half, so the tests can take it elsewhere.
+///
+/// A parameter rather than a call, because the shipped one moves the file into
+/// the Trash and a `cargo test` run must never deposit anything there.
+type Remove = fn(&Path) -> Result<(), String>;
+
+/// The Trash, which is the writer's way back from a delete they regret.
+///
+/// inkling offers no undo of its own: the file goes where the OS keeps deleted
+/// files, and what inkling stored about it is swept for good. That is said in
+/// the confirmation the frontend puts, because a document dragged back out of
+/// the Trash comes back as prose with none of its dismissals, references,
+/// revisions or conversations.
+///
+/// The one line here no test covers, the way `export.rs`'s save dialog is not
+/// covered either.
+fn to_trash(path: &Path) -> Result<(), String> {
+    trash::delete(path).map_err(|error| error.to_string())
+}
+
+/// Deletes a document, sweeping everything inkling stored about it.
+///
+/// The caller is responsible for confirming with the writer.
+///
+/// Same order as [`rename_doc`]: open a transaction, sweep the rows, take the
+/// file, and commit last, so a removal that fails drops the transaction on the
+/// way out and both halves are as they were. The one difference is the residual
+/// case, because a delete cannot undelete: this is idempotent instead. A file
+/// that is not on disk is not an error, the rows are swept anyway, and a second
+/// attempt clears whatever the first left behind. That is also what a writer who
+/// deleted the file in Finder gets.
 #[tauri::command]
-pub fn delete_doc(vault: String, path: String) -> Result<(), String> {
-    let resolved = resolve(&vault, &path)?;
-    fs::remove_file(&resolved).map_err(|error| error.to_string())
+pub fn delete_doc(vault: String, path: String, db: State<'_, VaultDb>) -> Result<(), String> {
+    delete_doc_with(&vault, &path, &db, to_trash)
+}
+
+fn delete_doc_with(vault: &str, path: &str, db: &VaultDb, remove: Remove) -> Result<(), String> {
+    let resolved = resolve(vault, path)?;
+    let doomed = posix(path);
+
+    let carried = db.with(|conn| -> Result<(), String> {
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|error| format!("deleting {path}: {error}"))?;
+        delete_exact(&tx, &doomed).map_err(|error| format!("deleting {path}: {error}"))?;
+
+        if resolved.exists() {
+            remove(&resolved)?;
+        }
+
+        tx.commit().map_err(|error| {
+            format!("{path} is gone, but what inkling stored about it was kept: {error}")
+        })
+    });
+
+    match carried {
+        Some(result) => result,
+        None => take(&resolved, remove),
+    }
+}
+
+/// Deletes a group, everything inside it, and everything inkling stored about
+/// any of it.
+///
+/// The whole subtree goes: the documents under the group, the groups under it,
+/// and the rows keyed to all of them. The confirmation the frontend puts names
+/// how many documents that is, because the count is the part a writer cannot
+/// see from the row they clicked.
+#[tauri::command]
+pub fn delete_group(vault: String, path: String, db: State<'_, VaultDb>) -> Result<(), String> {
+    delete_group_with(&vault, &path, &db, to_trash)
+}
+
+fn delete_group_with(vault: &str, path: &str, db: &VaultDb, remove: Remove) -> Result<(), String> {
+    let resolved = resolve_dir(vault, path)?;
+    if resolved.exists() && !resolved.is_dir() {
+        return Err(format!("not a group: {path}"));
+    }
+    let doomed = posix(path);
+
+    let carried = db.with(|conn| -> Result<(), String> {
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|error| format!("deleting {path}: {error}"))?;
+        delete_prefix(&tx, &doomed).map_err(|error| format!("deleting {path}: {error}"))?;
+
+        if resolved.exists() {
+            remove(&resolved)?;
+        }
+
+        tx.commit().map_err(|error| {
+            format!("{path} is gone, but what inkling stored about it was kept: {error}")
+        })
+    });
+
+    match carried {
+        Some(result) => result,
+        None => take(&resolved, remove),
+    }
+}
+
+/// The filesystem half on its own, for a vault with no database open. A target
+/// that is not there is not an error, for the reason [`delete_doc`] gives.
+fn take(resolved: &Path, remove: Remove) -> Result<(), String> {
+    if resolved.exists() {
+        remove(resolved)
+    } else {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        create_doc, create_group, list_docs, list_groups, rename_doc_with, rename_group_with,
-        resolve, resolve_dir,
+        create_doc, create_group, delete_doc_with, delete_group_with, list_docs, list_groups,
+        rename_doc_with, rename_group_with, resolve, resolve_dir,
     };
+    use crate::conversations::{insert as start_conversation, select_for as conversations_of};
     use crate::data::VaultDb;
     use crate::references::{
         insert as attach, insert_suppression, select_all, select_all_suppressions, NewReference,
@@ -1074,5 +1179,292 @@ mod tests {
         assert_eq!(listed(&db, "essays/a.md").len(), 1);
         assert_eq!(listed(&db, "drafts/a.md").len(), 0);
         assert!(vault.path().join("essays/a.md").is_file());
+    }
+
+    /// The filesystem half every delete test passes in, in place of the Trash.
+    ///
+    /// The shipped commands move the target into the OS Trash, and a test run
+    /// must never deposit anything there, so the removal is a parameter and
+    /// this is what the tests hand over.
+    fn remove_now(path: &Path) -> Result<(), String> {
+        let removed = if path.is_dir() {
+            fs::remove_dir_all(path)
+        } else {
+            fs::remove_file(path)
+        };
+        removed.map_err(|error| error.to_string())
+    }
+
+    fn delete_doc_in(vault: &Path, db: &VaultDb, path: &str) -> Result<(), String> {
+        delete_doc_with(&vault.to_string_lossy(), path, db, remove_now)
+    }
+
+    fn delete_group_in(vault: &Path, db: &VaultDb, path: &str) -> Result<(), String> {
+        delete_group_with(&vault.to_string_lossy(), path, db, remove_now)
+    }
+
+    fn start(db: &VaultDb, doc_path: &str) {
+        db.with(|conn| start_conversation(conn, doc_path, "About the ending"))
+            .expect("a vault should be open")
+            .expect("should start a conversation");
+    }
+
+    fn conversations(db: &VaultDb, doc_path: &str) -> usize {
+        db.with(|conn| conversations_of(conn, doc_path))
+            .expect("a vault should be open")
+            .expect("should select")
+            .len()
+    }
+
+    /// The bug the whole task exists to prevent: a path a writer reuses months
+    /// later must come back as a new document, not as the old one's leftovers.
+    #[test]
+    fn should_leave_nothing_for_a_new_document_written_at_a_deleted_ones_path() {
+        let (vault, db) = vault_with_a_group("drafts");
+        dismiss(&db, "drafts/a.md");
+        attach_to_doc(&db, "drafts/a.md", "notes/b.md");
+        keep(&db, "drafts/a.md", "# a\n");
+        start(&db, "drafts/a.md");
+
+        delete_doc_in(vault.path(), &db, "drafts/a.md").expect("should delete");
+        create_doc(
+            vault.path().to_string_lossy().into_owned(),
+            "drafts/a.md".to_string(),
+            "# a second piece, months later\n".to_string(),
+        )
+        .expect("should create");
+
+        assert_eq!(listed(&db, "drafts/a.md").len(), 0);
+        assert!(references(&db).is_empty(), "left a reference behind");
+        assert_eq!(revisions(&db, "drafts/a.md"), 0);
+        assert_eq!(conversations(&db, "drafts/a.md"), 0);
+        assert!(vault.path().join("drafts/a.md").is_file());
+    }
+
+    /// A suppression is filed against a reference, so deleting the reference has
+    /// to take it through the table's cascade rather than leave a row pointing
+    /// at nothing.
+    ///
+    /// The document holding it sits outside the deleted group, which is the one
+    /// arrangement the prefix sweep cannot reach on its own: the writer turned
+    /// the group's reference off while the document was inside, then moved the
+    /// document out and the rename carried the suppression with it.
+    #[test]
+    fn should_sweep_a_suppression_filed_against_a_deleted_groups_reference() {
+        let (vault, db) = vault_with_a_group("drafts");
+        let inherited = attach_to_group(&db, "drafts", "https://example.com");
+        db.with(|conn| insert_suppression(conn, "notes/x.md", inherited.id))
+            .expect("a vault should be open")
+            .expect("should turn it off");
+
+        delete_group_in(vault.path(), &db, "drafts").expect("should delete");
+
+        assert!(references(&db).is_empty(), "left a reference behind");
+        let off = db
+            .with(select_all_suppressions)
+            .expect("a vault should be open")
+            .expect("should select");
+        assert!(off.is_empty(), "left a suppression behind: {off:?}");
+    }
+
+    /// The operator's answer to what a non-empty group does: it takes
+    /// everything with it, however deep, and nothing that merely shares its
+    /// first six characters.
+    #[test]
+    fn should_take_every_document_and_nested_group_under_a_deleted_group() {
+        let (vault, db) = vault_with_a_group("drafts/2026");
+        fs::write(vault.path().join("drafts/top.md"), "# top\n").expect("should write");
+        dismiss(&db, "drafts/top.md");
+        dismiss(&db, "drafts/2026/a.md");
+        keep(&db, "drafts/2026/a.md", "# a\n");
+        attach_to_group(&db, "drafts", "https://example.com");
+        attach_to_group(&db, "drafts/2026", "https://example.com/nested");
+        fs::create_dir_all(vault.path().join("drafts2")).expect("should make a dir");
+        fs::write(vault.path().join("drafts2/a.md"), "# a\n").expect("should write");
+        dismiss(&db, "drafts2/a.md");
+        attach_to_group(&db, "drafts2", "https://example.com/sibling");
+
+        delete_group_in(vault.path(), &db, "drafts").expect("should delete");
+
+        assert!(!vault.path().join("drafts").exists());
+        assert_eq!(listed(&db, "drafts/top.md").len(), 0);
+        assert_eq!(listed(&db, "drafts/2026/a.md").len(), 0);
+        assert_eq!(revisions(&db, "drafts/2026/a.md"), 0);
+        // The sibling shares five characters with the deleted group and
+        // nothing else, so both its document's rows and its own are untouched.
+        assert_eq!(listed(&db, "drafts2/a.md").len(), 1);
+        assert!(vault.path().join("drafts2/a.md").is_file());
+        assert_eq!(only_reference(&db).group_path.as_deref(), Some("drafts2"));
+    }
+
+    /// The `Role::Pointer` rule, which is the plausible wrong reading of "sweep
+    /// every row keyed to this path". A reference aimed at a file the vault does
+    /// not hold is kept and shown broken on purpose, and a deleted target is
+    /// exactly that case.
+    #[test]
+    fn should_keep_a_reference_pointed_at_a_deleted_document() {
+        let (vault, db) = vault_with_a_group("drafts");
+        attach_to_doc(&db, "notes/x.md", "drafts/a.md");
+
+        delete_doc_in(vault.path(), &db, "drafts/a.md").expect("should delete");
+
+        let row = only_reference(&db);
+        assert_eq!(row.doc_path.as_deref(), Some("notes/x.md"));
+        assert_eq!(row.target_path.as_deref(), Some("drafts/a.md"));
+    }
+
+    /// The same rule under a group delete, where the pointer is caught by the
+    /// prefix rather than by an exact match.
+    #[test]
+    fn should_keep_a_reference_pointed_inside_a_deleted_group() {
+        let (vault, db) = vault_with_a_group("drafts");
+        attach_to_doc(&db, "notes/x.md", "drafts/a.md");
+
+        delete_group_in(vault.path(), &db, "drafts").expect("should delete");
+
+        assert_eq!(
+            only_reference(&db).target_path.as_deref(),
+            Some("drafts/a.md")
+        );
+    }
+
+    /// A file removed in Finder before inkling was asked is the case the whole
+    /// task opens with: the rows are still there, so the delete sweeps them and
+    /// says nothing went wrong.
+    #[test]
+    fn should_sweep_the_rows_of_a_document_whose_file_is_already_gone() {
+        let (vault, db) = vault_with_a_group("drafts");
+        dismiss(&db, "drafts/a.md");
+        fs::remove_file(vault.path().join("drafts/a.md")).expect("should remove");
+
+        delete_doc_in(vault.path(), &db, "drafts/a.md").expect("should delete");
+
+        assert_eq!(listed(&db, "drafts/a.md").len(), 0);
+    }
+
+    #[test]
+    fn should_sweep_the_rows_of_a_group_whose_directory_is_already_gone() {
+        let (vault, db) = vault_with_a_group("drafts");
+        dismiss(&db, "drafts/a.md");
+        fs::remove_dir_all(vault.path().join("drafts")).expect("should remove");
+
+        delete_group_in(vault.path(), &db, "drafts").expect("should delete");
+
+        assert_eq!(listed(&db, "drafts/a.md").len(), 0);
+    }
+
+    /// The claim the transaction order exists to make, in the delete direction:
+    /// the rows are swept first, so a file that will not go takes the sweep
+    /// down with it.
+    ///
+    /// A read-only vault root is the cheapest way to make the removal fail after
+    /// the transaction is open, so the document is at the root rather than in a
+    /// group. `.inkling/` keeps its own mode, so SQLite can still write.
+    #[cfg(unix)]
+    #[test]
+    fn should_leave_every_row_where_it_was_when_the_file_will_not_go() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (vault, db) = vault_with_a_group("drafts");
+        fs::write(vault.path().join("root.md"), "# root\n").expect("should write");
+        dismiss(&db, "root.md");
+        let before = listed(&db, "root.md");
+        fs::set_permissions(vault.path(), fs::Permissions::from_mode(0o555))
+            .expect("should make the vault read-only");
+
+        let result = delete_doc_in(vault.path(), &db, "root.md");
+
+        fs::set_permissions(vault.path(), fs::Permissions::from_mode(0o755))
+            .expect("should restore the vault");
+        assert!(
+            result.is_err(),
+            "a read-only vault should refuse the delete"
+        );
+        assert_eq!(listed(&db, "root.md"), before);
+        assert!(vault.path().join("root.md").is_file());
+    }
+
+    #[test]
+    fn should_still_delete_the_file_when_no_vault_database_is_open() {
+        let vault = tempdir().expect("should make a temp dir");
+        let db = VaultDb::default();
+        fs::create_dir_all(vault.path().join("drafts")).expect("should make a dir");
+        fs::write(vault.path().join("drafts/a.md"), "# a\n").expect("should write");
+
+        delete_doc_in(vault.path(), &db, "drafts/a.md").expect("should delete");
+        delete_group_in(vault.path(), &db, "drafts").expect("should delete");
+
+        assert!(!vault.path().join("drafts").exists());
+    }
+
+    /// A directory holding a file next to the vault, which a traversing path
+    /// would reach if `resolve` and `resolve_dir` let it.
+    ///
+    /// Named after the vault's own directory, which `tempdir` has already made
+    /// unique, so two of these tests running at once cannot pick each other's
+    /// neighbour up. The returned pair is the absolute path and the
+    /// vault-relative one that climbs out to it.
+    fn neighbour(vault: &tempfile::TempDir) -> (std::path::PathBuf, String) {
+        let name = format!(
+            "{}-secrets",
+            vault
+                .path()
+                .file_name()
+                .expect("has a name")
+                .to_string_lossy()
+        );
+        let outside = vault.path().parent().expect("has a parent").join(&name);
+        fs::create_dir_all(&outside).expect("should make a dir");
+        fs::write(outside.join("a.md"), "# not the writer's\n").expect("should write");
+        (outside, format!("../{name}"))
+    }
+
+    #[test]
+    fn delete_doc_refuses_to_escape_the_vault() {
+        let (vault, db) = vault_with_a_group("drafts");
+        let (outside, climb) = neighbour(&vault);
+
+        assert!(delete_doc_in(vault.path(), &db, &format!("{climb}/a.md")).is_err());
+        assert!(delete_doc_in(vault.path(), &db, "/etc/passwd.md").is_err());
+        assert!(outside.join("a.md").is_file());
+        fs::remove_dir_all(&outside).expect("should clean up");
+    }
+
+    #[test]
+    fn delete_group_refuses_to_escape_the_vault() {
+        let (vault, db) = vault_with_a_group("drafts");
+        let (outside, climb) = neighbour(&vault);
+
+        assert!(delete_group_in(vault.path(), &db, &climb).is_err());
+        assert!(delete_group_in(vault.path(), &db, "/etc").is_err());
+        assert!(outside.is_dir());
+        fs::remove_dir_all(&outside).expect("should clean up");
+    }
+
+    /// The two refusals `resolve_dir` adds of its own. Deleting the vault root
+    /// would take the writer's whole vault, and `.inkling` holds the database
+    /// the sweep is running against.
+    #[test]
+    fn delete_group_refuses_the_vault_root_and_the_data_directory() {
+        let (vault, db) = vault_with_a_group("drafts");
+
+        assert!(delete_group_in(vault.path(), &db, "").is_err());
+        assert!(delete_group_in(vault.path(), &db, ".inkling").is_err());
+        assert!(vault.path().join("drafts/a.md").is_file());
+        assert!(vault.path().join(".inkling").is_dir());
+    }
+
+    /// A document is not a group, so the group delete refuses it rather than
+    /// sweeping a whole prefix on the strength of a filename.
+    #[test]
+    fn delete_group_refuses_a_path_that_is_a_document() {
+        let (vault, db) = vault_with_a_group("drafts");
+        dismiss(&db, "drafts/a.md");
+
+        let result = delete_group_in(vault.path(), &db, "drafts/a.md");
+
+        assert!(result.is_err_and(|error| error.contains("drafts/a.md")));
+        assert!(vault.path().join("drafts/a.md").is_file());
+        assert_eq!(listed(&db, "drafts/a.md").len(), 1);
     }
 }

@@ -26,6 +26,7 @@ pub fn run() {
             vault::create_doc,
             vault::rename_doc,
             vault::delete_doc,
+            vault::delete_group,
             export::export_doc,
             settings::load_settings,
             settings::save_settings,

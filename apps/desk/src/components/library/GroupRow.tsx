@@ -3,6 +3,7 @@ import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down';
 import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right';
 import FilePlus from 'lucide-react/dist/esm/icons/file-plus';
 import Pencil from 'lucide-react/dist/esm/icons/pencil';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
 import type {DocKind, DocPath, GroupNode, GroupPath} from '@inkling/vault';
 import {DocRow} from './DocRow.tsx';
 import {InlineField} from './InlineField.tsx';
@@ -67,6 +68,10 @@ type GroupRowProps = {
   onToggle: (group: GroupPath) => void;
   onOpen: (path: DocPath) => void;
   onMove: (from: DocPath, to: DocPath) => void;
+  /** Raises a document's delete. The confirmation is put in `App.tsx`. */
+  onDeleteDoc: (path: DocPath) => void;
+  /** Raises this group's delete, which takes everything under it. */
+  onDeleteGroup: (group: GroupPath) => void;
   onEdit: (editing: Editing | undefined) => void;
   /** Renames this group to the name the writer typed. */
   onSubmitName: (value: string) => void;
@@ -84,6 +89,8 @@ export const GroupRow = memo(function GroupRow({
   onToggle,
   onOpen,
   onMove,
+  onDeleteDoc,
+  onDeleteGroup,
   onEdit,
   onSubmitName,
   onSubmitDoc,
@@ -119,6 +126,13 @@ export const GroupRow = memo(function GroupRow({
       onEdit(undefined);
     },
     [onEdit],
+  );
+
+  const handleDelete = useCallback(
+    function () {
+      onDeleteGroup(node.path);
+    },
+    [node.path, onDeleteGroup],
   );
 
   const label = labelOf(node.path);
@@ -161,6 +175,16 @@ export const GroupRow = memo(function GroupRow({
           >
             <FilePlus size={12} aria-hidden />
           </button>
+          {/* Last in the strip: the destructive one is furthest from the header
+              button that folds the group open and shut. */}
+          <button
+            type="button"
+            aria-label={`Delete the group ${label}`}
+            onClick={handleDelete}
+            className={ACTION}
+          >
+            <Trash2 size={12} aria-hidden />
+          </button>
         </div>
       )}
 
@@ -185,6 +209,7 @@ export const GroupRow = memo(function GroupRow({
                   groups={groups}
                   onOpen={onOpen}
                   onMove={onMove}
+                  onDelete={onDeleteDoc}
                 />
               </li>
             );
@@ -201,6 +226,8 @@ export const GroupRow = memo(function GroupRow({
                 onToggle={onToggle}
                 onOpen={onOpen}
                 onMove={onMove}
+                onDeleteDoc={onDeleteDoc}
+                onDeleteGroup={onDeleteGroup}
                 onEdit={onEdit}
                 onSubmitName={onSubmitName}
                 onSubmitDoc={onSubmitDoc}

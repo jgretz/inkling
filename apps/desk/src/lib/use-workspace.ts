@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useMemo, useReducer, useRef} from 'react';
 import {
+  isUnder,
   rewriteUnder,
   summarize,
   templateFor,
@@ -12,6 +13,8 @@ import {
 import {
   createDoc as createDocCommand,
   createGroup as createGroupCommand,
+  deleteDoc as deleteDocCommand,
+  deleteGroup as deleteGroupCommand,
   isoFromEpoch,
   listDocs,
   listGroups,
@@ -52,6 +55,8 @@ export type WorkspaceBridge = {
   createGroup: (vault: VaultPath, path: GroupPath) => Promise<void>;
   renameGroup: (vault: VaultPath, from: GroupPath, to: GroupPath) => Promise<void>;
   renameDoc: (vault: VaultPath, from: DocPath, to: DocPath) => Promise<void>;
+  deleteDoc: (vault: VaultPath, path: DocPath) => Promise<void>;
+  deleteGroup: (vault: VaultPath, path: GroupPath) => Promise<void>;
 };
 
 /** The shipped one. Held at module scope so its identity never moves. */
@@ -65,6 +70,8 @@ export const TAURI_WORKSPACE: WorkspaceBridge = {
   createGroup: createGroupCommand,
   renameGroup: renameGroupCommand,
   renameDoc,
+  deleteDoc: deleteDocCommand,
+  deleteGroup: deleteGroupCommand,
 };
 
 export type Workspace = WorkspaceState & {
@@ -97,6 +104,13 @@ export type Workspace = WorkspaceState & {
   moveDoc: (from: DocPath, to: DocPath) => void;
   /** Writes a new document from its kind's template, and opens it. */
   createDoc: (path: DocPath, title: string, kind: DocKind) => void;
+  /**
+   * Deletes a document and everything inkling stored about it, closing it
+   * first when it is the open one. The caller asks the writer; this does not.
+   */
+  deleteDoc: (path: DocPath) => void;
+  /** The same, one group wide: the folder, everything in it, and their rows. */
+  deleteGroup: (group: GroupPath) => void;
   dirty: boolean;
 };
 
@@ -410,6 +424,67 @@ export function useWorkspace(bridge: WorkspaceBridge = TAURI_WORKSPACE): Workspa
     [vault, bridge, enqueue],
   );
 
+  /**
+   * Deletes a document, closing it first when it is the open one.
+   *
+   * Queued for the reason the two writers are: an autosave already in flight
+   * would otherwise finish after the delete and write the file straight back,
+   * leaving a ghost document on disk with none of the rows that were swept with
+   * it. Queued, the save goes first and the delete takes what it wrote; a save
+   * that reaches the front of the queue afterwards finds no open document and
+   * writes nothing.
+   *
+   * `docClosed` is dispatched inside the queued work and before the call, which
+   * is also what stops the pending autosave timer, through the effect cleanup
+   * that runs when the open document goes.
+   *
+   * `openRef` is cleared alongside the dispatch rather than left to the render
+   * that follows it. Every queued write reads the ref when it runs, and a write
+   * that reaches the front of the queue before React has re-rendered would
+   * otherwise still see the deleted document and write the file straight back.
+   */
+  const deleteDoc = useCallback(
+    function (path: DocPath) {
+      if (vault === undefined) return;
+      void enqueue(function () {
+        if (openRef.current?.path === path) {
+          openRef.current = undefined;
+          dispatch({type: 'docClosed'});
+        }
+        return bridge
+          .deleteDoc(vault, path)
+          .then(refresh)
+          .catch(function (error) {
+            console.error(`inkling: failed to delete ${path}`, error);
+            dispatch({type: 'failed', message: message(error)});
+          });
+      });
+    },
+    [vault, refresh, bridge, enqueue],
+  );
+
+  /** The same, one group wide, closing the open document when it is inside. */
+  const deleteGroup = useCallback(
+    function (group: GroupPath) {
+      if (vault === undefined) return;
+      void enqueue(function () {
+        const open = openRef.current?.path;
+        if (open !== undefined && isUnder(open, group)) {
+          openRef.current = undefined;
+          dispatch({type: 'docClosed'});
+        }
+        return bridge
+          .deleteGroup(vault, group)
+          .then(refresh)
+          .catch(function (error) {
+            console.error(`inkling: failed to delete the group ${group}`, error);
+            dispatch({type: 'failed', message: message(error)});
+          });
+      });
+    },
+    [vault, refresh, bridge, enqueue],
+  );
+
   const draft = state.open?.draft;
   useEffect(
     function () {
@@ -444,6 +519,8 @@ export function useWorkspace(bridge: WorkspaceBridge = TAURI_WORKSPACE): Workspa
     renameGroup,
     moveDoc,
     createDoc,
+    deleteDoc,
+    deleteGroup,
     dirty,
   };
 }
