@@ -25,9 +25,8 @@ possible.
 | Run        | Item                         | Waits on |
 | ---------- | ---------------------------- | -------- |
 | `3ab6b706` | 6a export and rich clipboard | nothing  |
-| `27e06742` | 6b revisions                 | 6a       |
 
-Phases 1 through 4 are complete and merged.
+Phases 1 through 4 are complete and merged, and so is 6.3.
 
 Phase 6 runs before phase 5, which is a change from the order written here.
 Until export exists, nothing written in inkling has ever left it: the only way
@@ -176,8 +175,11 @@ with the frontmatter kept or stripped by choice, and the same document rendered
 to HTML and written to the clipboard beside the plain text, so a draft pastes
 into Apple Mail as formatted text. See "In flight".
 
-**6.3 Revisions.** A button that snapshots the current document into `.inkling/`
-as the next revision, and a list to read them back. Manual, never automatic.
+**6.3 Revisions.** One menu item keeps the open
+document as its next revision, a row in `.inkling/inkling.db` holding the whole
+source; a panel lists a document's revisions newest first, shows one, and writes
+it back over the live document behind a confirmation. Manual, never automatic:
+nothing snapshots on a save, on a close, on a timer or on an agent turn.
 
 ---
 

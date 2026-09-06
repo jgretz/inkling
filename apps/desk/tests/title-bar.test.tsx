@@ -42,6 +42,8 @@ function bar({turn = 'writer', pinned = false, onPin = noop, docOpen = true, sav
       onPin={onPin}
       onExport={noop}
       onCopy={noop}
+      onSnapshot={noop}
+      onOpenRevisions={noop}
       docOpen={docOpen}
     />,
   );

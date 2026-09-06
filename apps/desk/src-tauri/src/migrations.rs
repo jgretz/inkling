@@ -39,6 +39,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "conversation",
         sql: include_str!("../migrations/0004_conversation.sql"),
     },
+    Migration {
+        version: 5,
+        name: "revision",
+        sql: include_str!("../migrations/0005_revision.sql"),
+    },
 ];
 
 /// Applies every migration the database has not seen, returning the version it
@@ -91,7 +96,8 @@ mod tests {
                 (1, "meta"),
                 (2, "voice_suppression"),
                 (3, "reference"),
-                (4, "conversation")
+                (4, "conversation"),
+                (5, "revision")
             ]
         );
     }
@@ -111,7 +117,7 @@ mod tests {
         let first = migrate(&mut conn).expect("should migrate");
         let second = migrate(&mut conn).expect("should re-run without applying anything");
 
-        assert_eq!(first, 4);
-        assert_eq!(second, 4);
+        assert_eq!(first, 5);
+        assert_eq!(second, 5);
     }
 }

@@ -9,6 +9,7 @@ import {
   loadSettings,
   saveSettings,
   tauriConversations,
+  tauriRevisions,
 } from './lib/bridge.ts';
 import {
   DEFAULT_SETTINGS,
@@ -35,6 +36,7 @@ import {cyclePin, deriveMode, indicatorFor, type FocusRegion} from './lib/turn.t
 import {useConversations} from './lib/use-conversations.ts';
 import {useFindings} from './lib/use-findings.ts';
 import {useReferences} from './lib/use-references.ts';
+import {useRevisions} from './lib/use-revisions.ts';
 import {useSuppressions} from './lib/use-suppressions.ts';
 import {useWorkspace} from './lib/use-workspace.ts';
 import {cascadeFor, voiceNotice} from './lib/voice-cascade.ts';
@@ -42,6 +44,7 @@ import {dataNotice} from './lib/workspace-state.ts';
 import {TitleBar} from './components/shell/TitleBar.tsx';
 import {StatusBar} from './components/shell/StatusBar.tsx';
 import {Splitter} from './components/shell/Splitter.tsx';
+import {RevisionsPanel} from './components/shell/RevisionsPanel.tsx';
 import {EmptyState} from './components/shell/EmptyState.tsx';
 import {LibraryPanel} from './components/library/LibraryPanel.tsx';
 import {PreviewPanel} from './components/preview/PreviewPanel.tsx';
@@ -100,6 +103,8 @@ export function App() {
   const [flash, setFlash] = useState<{message: string; seq: number} | undefined>(undefined);
   /** Where the last export landed, so the next save dialog opens there. */
   const [lastExportDir, setLastExportDir] = useState<string | undefined>(undefined);
+  /** Whether the revisions panel is up. Session-scoped; nothing stores it. */
+  const [revisionsOpen, setRevisionsOpen] = useState(false);
 
   const {chooseVault, openDoc} = workspace;
 
@@ -364,6 +369,8 @@ export function App() {
     sessionState,
   });
 
+  const revisions = useRevisions({store: tauriRevisions, docPath: openPath, ready: dataReady});
+
   // Read at send time rather than captured when the transport is built: the
   // writer can edit a `voice.md`, or trip a rule, between two turns of one
   // conversation, and the transport outlives both.
@@ -538,6 +545,82 @@ export function App() {
   );
 
   const {editDraft, flush, land} = workspace;
+  const {snapshot: keepRevision} = revisions;
+
+  /**
+   * The document as it stands, kept as its next revision.
+   *
+   * The buffer rather than the file: the writer clicked because of what is on
+   * screen, and the autosave has its own quiet period to wait out. This is the
+   * only caller of `snapshot` in the app; nothing keeps a revision on a save, on
+   * a close, on a timer or on an agent turn.
+   */
+  const handleSnapshot = useCallback(
+    function () {
+      if (openPath === undefined) return;
+      keepRevision(draftRef.current)
+        .then(function (kept) {
+          // Undefined means there was nowhere to put it: no document open, or a
+          // vault database that would not open. `dataNotice` already says so.
+          if (kept === undefined) return;
+          setOutputError(undefined);
+          showFlash('Revision saved');
+        })
+        .catch(function (error) {
+          setOutputError(error instanceof Error ? error.message : String(error));
+        });
+    },
+    [openPath, keepRevision, showFlash],
+  );
+
+  const handleOpenRevisions = useCallback(function () {
+    setRevisionsOpen(true);
+  }, []);
+
+  const closeRevisions = useCallback(function () {
+    setRevisionsOpen(false);
+  }, []);
+
+  // A panel about one document is nothing once no document is open. Without
+  // this the flag survives the close, and opening the next document brings the
+  // panel back up on its own, having been asked for on a document that is gone.
+  useEffect(
+    function () {
+      if (openPath === undefined) setRevisionsOpen(false);
+    },
+    [openPath],
+  );
+
+  /**
+   * A kept revision, written back over the live document.
+   *
+   * Asked before rather than undone after, the way deleting a conversation is:
+   * the draft on screen may hold work the writer has not thought about losing,
+   * and this replaces the whole document with the older one.
+   *
+   * `land` rather than a second write path: it writes, reads the file back, and
+   * refuses when the path is no longer the open document, which is exactly what
+   * restoring wants.
+   */
+  const handleRestoreRevision = useCallback(
+    function (source: string) {
+      const path = openPath;
+      if (path === undefined) return;
+      void confirm(
+        `Replace ${path} with this revision? What is in the editor now is overwritten.`,
+        {title: 'Restore revision', kind: 'warning'},
+      )
+        .then(function (agreed) {
+          if (!agreed) return;
+          setRevisionsOpen(false);
+          return land(source, path);
+        })
+        .catch(function (error) {
+          console.warn('inkling: could not ask about restoring a revision', error);
+        });
+    },
+    [openPath, land],
+  );
 
   /** A proposal the writer accepted. Buffer only; nothing reaches disk. */
   const handleAccept = useCallback(
@@ -632,6 +715,8 @@ export function App() {
         onPin={handlePin}
         onExport={handleExport}
         onCopy={handleCopy}
+        onSnapshot={handleSnapshot}
+        onOpenRevisions={handleOpenRevisions}
         docOpen={workspace.open !== undefined}
       />
 
@@ -756,6 +841,19 @@ export function App() {
           </>
         )}
       </main>
+
+      {/* Mounted only while it is up, so a closed panel costs the window
+          nothing, and only with a document open, since the revisions on screen
+          are that document's. */}
+      {revisionsOpen && openPath !== undefined && (
+        <RevisionsPanel
+          revisions={revisions.all}
+          docPath={openPath}
+          onRead={revisions.read}
+          onRestore={handleRestoreRevision}
+          onClose={closeRevisions}
+        />
+      )}
 
       {/* The more fundamental problem first, in both lines. A save that failed
           outranks an agent turn that did, the way a database that will not open
