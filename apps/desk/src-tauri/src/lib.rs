@@ -36,6 +36,7 @@ pub fn run() {
             voice::remove_suppression,
             references::list_references,
             references::add_reference,
+            references::add_links,
             references::remove_reference,
             references::list_reference_suppressions,
             references::add_reference_suppression,

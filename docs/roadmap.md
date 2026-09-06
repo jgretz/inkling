@@ -22,11 +22,9 @@ possible.
 
 ## In flight
 
-| Run        | Item                          | Waits on   |
-| ---------- | ----------------------------- | ---------- |
-| `f0f1bab8` | Deleting documents and groups | nothing    |
-| `2185b7a0` | Adding many links at once     | delete     |
-| `8564e3d9` | The agent panel as tabs       | bulk links |
+| Run        | Item                    | Waits on |
+| ---------- | ----------------------- | -------- |
+| `8564e3d9` | The agent panel as tabs | nothing  |
 
 Phases 1 through 6 are complete and merged. Phase 5, research inflow, is the
 only roadmap item left and is deliberately unqueued: by the time it starts the

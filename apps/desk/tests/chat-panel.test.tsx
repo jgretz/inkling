@@ -20,6 +20,11 @@ autoCleanup();
 
 function noop() {}
 
+/** A write that resolves having done nothing, for the controls this suite ignores. */
+function noWrite(): Promise<void> {
+  return Promise.resolve();
+}
+
 function noFlush(): Promise<void> {
   return Promise.resolve();
 }
@@ -111,6 +116,7 @@ function Harness({
         group: undefined,
         canAttach: false,
         onAttach: noop,
+        onAttachMany: noWrite,
         onDetach: noop,
         onSuppress: noop,
         onRestore: noop,

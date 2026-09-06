@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {groupOf, templateFor, type DocPath, type VaultPath} from '@inkling/vault';
 import {
+  addLinks,
   addReference,
   addReferenceSuppression,
   createDoc,
@@ -11,6 +12,7 @@ import {
   type StoredReference,
   type StoredReferenceSuppression,
 } from './bridge.ts';
+import type {PastedLink} from './link-paste.ts';
 import {notePathFor, type ContextReference, type ReferenceKind} from './references.ts';
 
 /** What the picker hands back: a kind, a target, and which level owns it. */
@@ -24,12 +26,41 @@ export type AttachRequest = {
   url?: string;
 };
 
+/** What the paste field hands back: every link it found, and which level owns them. */
+export type BulkAttachRequest = {
+  level: 'document' | 'group';
+  links: readonly PastedLink[];
+  /** Non-blank lines the extractor found no link in, carried through to the confirmation. */
+  ignoredLines: number;
+};
+
+/** How a paste landed, which is what the status bar says out loud. */
+export type BulkAttachResult = {attached: number; skipped: number};
+
+/**
+ * Which of the two owner columns a level means, or nothing when the level
+ * cannot be honoured: a document at the vault root has no group above it.
+ */
+function ownerFor(docPath: DocPath, level: 'document' | 'group') {
+  if (level === 'document') return {kind: 'doc', path: docPath} as const;
+  const group = groupOf(docPath);
+  return group === undefined ? undefined : ({kind: 'group', path: group} as const);
+}
+
 export type References = {
   /** Every reference in the vault; the cascade is assembled from these. */
   rows: readonly StoredReference[];
   /** Every inherited reference some document turned off. */
   suppressions: readonly StoredReferenceSuppression[];
   attach: (request: AttachRequest) => void;
+  /**
+   * Attaches a whole paste of links in one write, resolving to how many landed
+   * and how many were already there.
+   *
+   * Unlike `attach`, this one rejects rather than returning: the writer's paste
+   * is still in the field and the caller has to decide whether to clear it.
+   */
+  attachMany: (request: BulkAttachRequest) => Promise<BulkAttachResult>;
   /** Deletes a reference the open document owns. */
   detach: (entry: ContextReference) => void;
   /** Turns an inherited reference off for the open document, keeping the group's row. */
@@ -121,12 +152,8 @@ export function useReferences({vault, docPath, ready, taken, onNoteWritten}: Opt
   const attach = useCallback(
     function (request: AttachRequest) {
       if (vault === undefined || docPath === undefined || !ready) return;
-      const group = groupOf(docPath);
-      if (request.level === 'group' && group === undefined) return;
-      const owner =
-        request.level === 'group' && group !== undefined
-          ? ({kind: 'group', path: group} as const)
-          : ({kind: 'doc', path: docPath} as const);
+      const owner = ownerFor(docPath, request.level);
+      if (owner === undefined) return;
 
       const attaching =
         request.kind === 'note'
@@ -157,6 +184,48 @@ export function useReferences({vault, docPath, ready, taken, onNoteWritten}: Opt
       });
     },
     [vault, docPath, ready, remember],
+  );
+
+  /**
+   * A whole paste, in one round trip.
+   *
+   * Both halves of what comes back are folded into the rows: a link that was
+   * already there is not news, but a link the *group* already held is about to
+   * appear in the strip for the first time, and dropping it would leave the
+   * chips disagreeing with the confirmation until the next vault scan.
+   *
+   * Rejects rather than returning quietly, unlike `attach`. The paste is still
+   * in the writer's field and the field decides whether to clear it.
+   */
+  const attachMany = useCallback(
+    function (request: BulkAttachRequest): Promise<BulkAttachResult> {
+      if (vault === undefined || docPath === undefined || !ready) {
+        return Promise.reject(new Error('there is nowhere to attach these links yet'));
+      }
+      const owner = ownerFor(docPath, request.level);
+      if (owner === undefined) {
+        return Promise.reject(new Error('this document is not in a group'));
+      }
+
+      return addLinks(owner, request.links).then(function (landed) {
+        setRows(function (current) {
+          const written = [...landed.attached, ...landed.skipped];
+          const ids = new Set(
+            written.map(function (row) {
+              return row.id;
+            }),
+          );
+          return [
+            ...current.filter(function (row) {
+              return !ids.has(row.id);
+            }),
+            ...written,
+          ];
+        });
+        return {attached: landed.attached.length, skipped: landed.skipped.length};
+      });
+    },
+    [vault, docPath, ready],
   );
 
   const detach = useCallback(
@@ -224,5 +293,5 @@ export function useReferences({vault, docPath, ready, taken, onNoteWritten}: Opt
     [ready],
   );
 
-  return {rows, suppressions, attach, detach, suppress, restore};
+  return {rows, suppressions, attach, attachMany, detach, suppress, restore};
 }

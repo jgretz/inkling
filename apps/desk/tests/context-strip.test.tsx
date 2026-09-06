@@ -1,6 +1,6 @@
 import {autoCleanup} from './setup.ts';
 import {describe, expect, it, mock} from 'bun:test';
-import {fireEvent, render} from '@testing-library/react';
+import {act, fireEvent, render} from '@testing-library/react';
 import type {DocPath, DocSummary, GroupPath} from '@inkling/vault';
 import {estimateTokens, type AgentContext} from '../src/lib/agent.ts';
 import {pointerAt} from '../src/lib/pointer.ts';
@@ -10,6 +10,11 @@ import {ContextStrip, type ReferenceControls} from '../src/components/chat/Conte
 autoCleanup();
 
 function noop() {}
+
+/** A write that resolves having done nothing, for the cases that ignore it. */
+function noWrite(): Promise<void> {
+  return Promise.resolve();
+}
 
 const STYLE = 'x'.repeat(120);
 const TONE = 'y'.repeat(40);
@@ -73,6 +78,7 @@ function strip(overrides: Partial<AgentContext> = {}, controls: Partial<Referenc
         group: 'drafts' as GroupPath,
         canAttach: true,
         onAttach: noop,
+        onAttachMany: noWrite,
         onDetach: noop,
         onSuppress: noop,
         onRestore: noop,
@@ -212,6 +218,51 @@ describe('ContextStrip', function () {
     const view = strip({}, {canAttach: false});
 
     expect(view.queryByLabelText('Attach a reference')).toBeNull();
+    expect(view.queryByLabelText('Paste a set of links')).toBeNull();
+  });
+
+  /** A whole paste is its own gesture, so it has its own button beside the plus. */
+  it('should open the paste field from its own button', function () {
+    const view = strip();
+
+    fireEvent.click(view.getByLabelText('Paste a set of links'));
+
+    expect(view.getByLabelText('Links to attach')).toBeDefined();
+    expect(view.queryByLabelText('Kind of reference')).toBeNull();
+  });
+
+  it('should open the single-link picker without the paste field', function () {
+    const view = strip();
+
+    fireEvent.click(view.getByLabelText('Attach a reference'));
+
+    expect(view.getByLabelText('Kind of reference')).toBeDefined();
+    expect(view.queryByLabelText('Links to attach')).toBeNull();
+  });
+
+  it('should hand a whole paste to the bulk write rather than the single one', async function () {
+    const onAttach = mock(noop);
+    const onAttachMany = mock(noWrite);
+    const view = strip({}, {onAttach, onAttachMany});
+
+    fireEvent.click(view.getByLabelText('Paste a set of links'));
+    fireEvent.change(view.getByLabelText('Links to attach'), {
+      target: {value: '[The piece](https://example.com/a)\nhttps://example.com/b\nnot a link'},
+    });
+    fireEvent.click(view.getByText('Attach'));
+    await act(async function () {
+      await Promise.resolve();
+    });
+
+    expect(onAttach).toHaveBeenCalledTimes(0);
+    expect(onAttachMany).toHaveBeenCalledWith({
+      level: 'document',
+      links: [
+        {url: 'https://example.com/a', title: 'The piece', derived: false},
+        {url: 'https://example.com/b', title: 'example.com/b', derived: true},
+      ],
+      ignoredLines: 1,
+    });
   });
 
   it('should attach a web link at the level the picker names', function () {

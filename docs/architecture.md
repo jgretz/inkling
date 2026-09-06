@@ -160,6 +160,19 @@ vault scan already loaded, root-most group first and the document's own last.
 A reference naming a file the vault no longer holds is kept and shown as broken,
 for the same reason a dismissal survives a folder rename in Finder.
 
+A whole paste of links is one write. `lib/link-paste.ts` pulls the addresses out
+of arbitrary pasted text app-side, keeps the title of a markdown link and derives
+an obviously mechanical one from the address itself for a bare URL, because
+nothing fetches a page here and a plausible invented title is worse than a
+visibly derived one. `add_links` then writes the batch to one owner in one
+transaction, validating every entry first so a bad line cannot half-apply a
+paste. Which of them were already attached is not a comparison anyone wrote: the
+unique index over `(owner, kind, COALESCE(target_path, url))` swallows the
+repeats, and the row count `INSERT ... ON CONFLICT DO NOTHING` returns is what
+separates the attached from the skipped. The status bar names both counts,
+because the writer cannot see which of a dozen links were already there and
+silent partial success is what makes them paste the set again.
+
 Conversations are the third set of rows. One per conversation, keyed by the
 document's path, holding the daemon session it is talking to and the id a re-open
 resumes from; one per turn beneath it, with what was asked, what came back, how
