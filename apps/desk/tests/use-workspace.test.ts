@@ -1,7 +1,7 @@
 import {autoCleanup} from './setup.ts';
 import {describe, expect, it} from 'bun:test';
 import {act, renderHook} from '@testing-library/react';
-import type {DocPath, VaultPath} from '@inkling/vault';
+import type {DocPath, GroupPath, VaultPath} from '@inkling/vault';
 import {useWorkspace, type WorkspaceBridge} from '../src/lib/use-workspace.ts';
 
 autoCleanup();
@@ -18,6 +18,9 @@ autoCleanup();
 
 const VAULT = '/Users/writer/vault' as VaultPath;
 const DOC = 'a.md' as DocPath;
+const GROUP = 'drafts' as GroupPath;
+/** A second document, inside the group, for what a group delete takes with it. */
+const NESTED = 'drafts/b.md' as DocPath;
 
 /** A promise the test decides when to settle, for asserting on ordering. */
 function gate(): {promise: Promise<void>; open: () => void} {
@@ -32,12 +35,16 @@ type Disk = {
   bridge: WorkspaceBridge;
   writes: string[];
   reads: number;
+  /** Every path a delete was asked for, in the order the calls landed. */
+  deleted: string[];
+  /** What the vault holds now, so a test can ask whether a file came back. */
+  files: Map<string, string>;
   /** Held open across one write, so a flush can be caught mid-flight. */
   hold: {promise: Promise<void>; open: () => void} | undefined;
 };
 
 /**
- * A vault holding one document.
+ * A vault holding one document at the root and one inside a group.
  *
  * The read adds a trailing newline the write did not carry, standing in for
  * every way a real filesystem can hand back something other than what it was
@@ -45,10 +52,15 @@ type Disk = {
  * than a coincidence.
  */
 function disk(initial: string): Disk {
-  const files = new Map<string, string>([[DOC, initial]]);
+  const files = new Map<string, string>([
+    [DOC, initial],
+    [NESTED, '# b\n'],
+  ]);
   const state: Disk = {
     writes: [],
     reads: 0,
+    deleted: [],
+    files,
     hold: undefined,
     bridge: {
       listDocs() {
@@ -59,7 +71,7 @@ function disk(initial: string): Disk {
         );
       },
       listGroups() {
-        return Promise.resolve([]);
+        return Promise.resolve([GROUP]);
       },
       openVaultDb() {
         return Promise.resolve({kind: 'ready', schemaVersion: 1});
@@ -75,10 +87,16 @@ function disk(initial: string): Disk {
       },
       writeDoc(_vault, path, source) {
         state.writes.push(source);
-        files.set(path, source);
         const held = state.hold;
-        if (held === undefined) return Promise.resolve('2');
+        if (held === undefined) {
+          files.set(path, source);
+          return Promise.resolve('2');
+        }
+        // The file lands when the write resolves, not when it was asked for, so
+        // a delete queued behind one held open can be told apart from a delete
+        // that overtook it.
         return held.promise.then(function () {
+          files.set(path, source);
           return '2';
         });
       },
@@ -94,13 +112,29 @@ function disk(initial: string): Disk {
       renameDoc() {
         return Promise.resolve();
       },
+      deleteDoc(_vault, path) {
+        state.deleted.push(path);
+        files.delete(path);
+        return Promise.resolve();
+      },
+      deleteGroup(_vault, group) {
+        state.deleted.push(group);
+        [...files.keys()]
+          .filter(function (path) {
+            return path.startsWith(`${group}/`);
+          })
+          .forEach(function (path) {
+            files.delete(path);
+          });
+        return Promise.resolve();
+      },
     },
   };
   return state;
 }
 
-/** A hook with the vault chosen and the one document open. */
-async function opened(state: Disk) {
+/** A hook with the vault chosen and one document open. */
+async function opened(state: Disk, path: DocPath = DOC) {
   const view = renderHook(function () {
     return useWorkspace(state.bridge);
   });
@@ -109,7 +143,7 @@ async function opened(state: Disk) {
     view.result.current.chooseVault(VAULT);
   });
   await act(async function () {
-    view.result.current.openDoc(DOC);
+    view.result.current.openDoc(path);
   });
 
   return view;
@@ -282,5 +316,88 @@ describe('two writers over one file', function () {
 
     expect(state.writes).toEqual(['The ending, typed.', 'The ending, typed and tightened.']);
     expect(result.current.open?.draft).toBe('The ending, typed and tightened.\n');
+  });
+});
+
+describe('deleting', function () {
+  // The next autosave would otherwise write to a file that is not there, and
+  // the editor would be showing a document the vault no longer holds.
+  it('should close the open document when it is the one deleted', async function () {
+    const state = disk('The ending.\n');
+    const {result} = await opened(state);
+
+    await act(async function () {
+      result.current.deleteDoc(DOC);
+    });
+
+    expect(result.current.open).toBeUndefined();
+    expect(state.deleted).toEqual([DOC]);
+  });
+
+  it('should leave the open document alone when another one is deleted', async function () {
+    const state = disk('The ending.\n');
+    const {result} = await opened(state);
+
+    await act(async function () {
+      result.current.deleteDoc(NESTED);
+    });
+
+    expect(result.current.open?.path).toBe(DOC);
+  });
+
+  it('should close the open document when the group holding it is deleted', async function () {
+    const state = disk('The ending.\n');
+    const {result} = await opened(state, NESTED);
+
+    await act(async function () {
+      result.current.deleteGroup(GROUP);
+    });
+
+    expect(result.current.open).toBeUndefined();
+    expect(state.deleted).toEqual([GROUP]);
+  });
+
+  it('should leave a document outside the deleted group open', async function () {
+    const state = disk('The ending.\n');
+    const {result} = await opened(state);
+
+    await act(async function () {
+      result.current.deleteGroup(GROUP);
+    });
+
+    expect(result.current.open?.path).toBe(DOC);
+  });
+
+  // The reason a delete joins the write queue at all: a save already in flight
+  // would otherwise finish after the delete and put the file straight back,
+  // leaving a ghost document with none of the rows that were swept with it.
+  it('should run after a write that was already in flight, and the file should not come back', async function () {
+    const state = disk('The ending.\n');
+    const {result} = await opened(state);
+    state.hold = gate();
+
+    await act(async function () {
+      result.current.editDraft('The ending, typed.');
+    });
+
+    let flushing: Promise<void> = Promise.resolve();
+    await act(async function () {
+      flushing = result.current.flush();
+      result.current.deleteDoc(DOC);
+    });
+
+    // The delete has not begun: the flush's write still has the file.
+    expect(state.writes).toEqual(['The ending, typed.']);
+    expect(state.deleted).toEqual([]);
+
+    await act(async function () {
+      state.hold?.open();
+      await flushing;
+      // Queued behind the delete, so it resolves only once the delete is done.
+      await result.current.flush();
+    });
+
+    expect(state.deleted).toEqual([DOC]);
+    expect(state.files.has(DOC)).toBe(false);
   });
 });

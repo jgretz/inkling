@@ -19,6 +19,7 @@ export {
   groupName,
   groupOf,
   groupTree,
+  isUnder,
   movedTo,
   parentGroup,
   rewriteUnder,

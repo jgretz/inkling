@@ -54,6 +54,18 @@ export function movedTo(path: string, group: GroupPath | undefined): DocPath {
 }
 
 /**
+ * Whether a path is the group `group` or sits inside it, at any depth.
+ *
+ * Whole segments, which is the rule this whole module turns on: `drafts2/a.md`
+ * is not under `drafts`. The group itself counts as under itself, so a caller
+ * asking "does deleting this group take that path with it" gets the right
+ * answer for a nested group path as well as for a document.
+ */
+export function isUnder(path: string, group: string): boolean {
+  return path === group || path.startsWith(`${group}/`);
+}
+
+/**
  * Rewrites a path that sits under the group `from` so it sits under `to`.
  *
  * Anything not under `from` comes back untouched, and "under" means whole
@@ -62,8 +74,8 @@ export function movedTo(path: string, group: GroupPath | undefined): DocPath {
  * nested group path alike.
  */
 export function rewriteUnder(path: string, from: string, to: string): string {
+  if (!isUnder(path, from)) return path;
   if (path === from) return to;
-  if (!path.startsWith(`${from}/`)) return path;
   return `${to}${path.slice(from.length)}`;
 }
 

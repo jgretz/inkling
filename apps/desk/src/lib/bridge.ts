@@ -76,8 +76,20 @@ export function renameDoc(vault: VaultPath, from: DocPath, to: DocPath): Promise
   return invoke<void>('rename_doc', {vault, from, to});
 }
 
+/**
+ * Deletes a document, sweeping everything inkling stored about it.
+ *
+ * The file goes to the Trash; the rows are gone for good. See the doc comment
+ * on `delete_doc` in `src-tauri/src/vault.rs` for the order the two halves
+ * happen in, and why a file that is already gone is not an error.
+ */
 export function deleteDoc(vault: VaultPath, path: DocPath): Promise<void> {
   return invoke<void>('delete_doc', {vault, path});
+}
+
+/** The same, one group wide: the folder, everything in it, and their rows. */
+export function deleteGroup(vault: VaultPath, path: GroupPath): Promise<void> {
+  return invoke<void>('delete_group', {vault, path});
 }
 
 /**

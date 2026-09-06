@@ -30,6 +30,12 @@ type LibraryPanelProps = {
   onRenameGroup: (from: GroupPath, to: GroupPath) => void;
   onMoveDoc: (from: DocPath, to: DocPath) => void;
   onCreateDoc: (path: DocPath, title: string, kind: DocKind) => void;
+  /**
+   * Raises a delete. The panel asks nothing: the confirmation is put in
+   * `App.tsx`, where the two `confirm` call sites already live.
+   */
+  onDeleteDoc: (path: DocPath) => void;
+  onDeleteGroup: (group: GroupPath) => void;
 };
 
 /** A stable empty list, so a filtered render does not break `GroupRow`'s memo. */
@@ -77,6 +83,8 @@ export function LibraryPanel({
   onRenameGroup,
   onMoveDoc,
   onCreateDoc,
+  onDeleteDoc,
+  onDeleteGroup,
 }: LibraryPanelProps) {
   const [query, setQuery] = useState('');
   // The list re-filters on a background render so typing never stutters.
@@ -255,6 +263,7 @@ export function LibraryPanel({
                 onToggle={toggleRoot}
                 onOpen={onOpen}
                 onMove={onMoveDoc}
+                onDeleteDoc={onDeleteDoc}
                 onSubmit={submitNewDoc}
                 onCancel={cancelEditing}
               />
@@ -272,6 +281,8 @@ export function LibraryPanel({
                   onToggle={toggleGroup}
                   onOpen={onOpen}
                   onMove={onMoveDoc}
+                  onDeleteDoc={onDeleteDoc}
+                  onDeleteGroup={onDeleteGroup}
                   onEdit={setEditing}
                   onSubmitName={submitName}
                   onSubmitDoc={submitNewDoc}

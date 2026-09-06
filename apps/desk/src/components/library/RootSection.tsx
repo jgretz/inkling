@@ -16,6 +16,8 @@ type RootSectionProps = {
   onToggle: () => void;
   onOpen: (path: DocPath) => void;
   onMove: (from: DocPath, to: DocPath) => void;
+  /** Raises a document's delete. The confirmation is put in `App.tsx`. */
+  onDeleteDoc: (path: DocPath) => void;
   onSubmit: (value: string, kind: DocKind) => void;
   onCancel: () => void;
 };
@@ -37,6 +39,7 @@ export const RootSection = memo(function RootSection({
   onToggle,
   onOpen,
   onMove,
+  onDeleteDoc,
   onSubmit,
   onCancel,
 }: RootSectionProps) {
@@ -75,6 +78,7 @@ export const RootSection = memo(function RootSection({
                   groups={groups}
                   onOpen={onOpen}
                   onMove={onMove}
+                  onDelete={onDeleteDoc}
                 />
               </li>
             );

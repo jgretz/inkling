@@ -1,4 +1,4 @@
-//! Following a stored path through a rename.
+//! Following a stored path through a rename, and sweeping it away on a delete.
 //!
 //! Groups are directories, so a vault has no group table and nothing to keep in
 //! step when one is renamed. What it does have is stored data keyed by a path,
@@ -19,9 +19,19 @@
 //! points at? The two want opposite treatment at the destination, which is why
 //! the role is stored rather than assumed. See [`Role`].
 //!
-//! Every table keyed by a path appends here, so a rename keeps working without
-//! any caller learning the new table's name. `revision` is the most recent
-//! to do so.
+//! A delete asks the registries the same question a rename does, and the role
+//! answers it the other way round. A [`Role::Subject`] row belongs to the
+//! document or group that has just gone, so it goes with it: that is what stops
+//! a later document written at the same path inheriting a stranger's
+//! dismissals, references, revisions and conversations. A [`Role::Pointer`]
+//! column is left exactly as it was, because it names some *other* row's
+//! subject: a reference aimed at a file the vault does not hold is kept and
+//! shown broken on purpose, and a deleted target is precisely that case rather
+//! than a row to sweep. See [`delete_exact`] and [`delete_prefix`].
+//!
+//! Every table keyed by a path appends here, so a rename and a delete keep
+//! working without any caller learning the new table's name. `revision` is the
+//! most recent to do so.
 //!
 //! The matching is `substr`, never `LIKE`. `LIKE` reads `%` and `_` in its
 //! pattern, so a group a writer named `50%_done` would match paths that have
@@ -31,8 +41,10 @@ use rusqlite::Transaction;
 
 /// What a stored path says about the row holding it.
 ///
-/// The distinction decides what happens to rows already sitting at the
-/// destination, and getting it wrong loses the writer's data quietly.
+/// The distinction decides two things, and getting either wrong loses the
+/// writer's data quietly: what happens to rows already sitting at the
+/// destination of a rename, described below, and which rows a delete sweeps,
+/// described in the module header.
 ///
 /// A [`Role::Subject`] column says whose row this is: a dismissal *of* this
 /// document, a reference *belonging to* this group. The destination does not
@@ -151,6 +163,75 @@ pub fn rewrite_exact(tx: &Transaction<'_>, from: &str, to: &str) -> rusqlite::Re
     Ok(())
 }
 
+/// Deletes every row a subject column files against `path`.
+fn drop_exact(
+    tx: &Transaction<'_>,
+    table: &str,
+    column: &str,
+    role: Role,
+    path: &str,
+) -> rusqlite::Result<()> {
+    if role == Pointer {
+        return Ok(());
+    }
+    let delete = format!("DELETE FROM {table} WHERE {column} = ?1");
+    tx.execute(&delete, [&path])?;
+    Ok(())
+}
+
+/// The prefix half: every subject row filed under `prefix` goes.
+fn drop_under(
+    tx: &Transaction<'_>,
+    table: &str,
+    column: &str,
+    role: Role,
+    prefix: &str,
+) -> rusqlite::Result<()> {
+    if role == Pointer {
+        return Ok(());
+    }
+    let delete = format!("DELETE FROM {table} WHERE substr({column}, 1, length(?1)) = ?1");
+    tx.execute(&delete, [&prefix])?;
+    Ok(())
+}
+
+/// Sweeps every stored row belonging to one deleted document.
+///
+/// [`PATH_KEYED`] only, and its subject columns only, for the two reasons the
+/// module header gives: a document that has gone changes no group, and a
+/// pointer aimed at it is a live attachment that is now broken rather than an
+/// orphan.
+///
+/// A `reference` row deleted here takes its `reference_suppression` rows with
+/// it, and a `conversation` row takes its `turn` rows, through the cascades
+/// those tables declare.
+pub fn delete_exact(tx: &Transaction<'_>, path: &str) -> rusqlite::Result<()> {
+    for (table, column, role) in PATH_KEYED {
+        drop_exact(tx, table, column, *role, path)?;
+    }
+    Ok(())
+}
+
+/// Sweeps every stored row belonging to a deleted group and to what was inside.
+///
+/// Document columns take the prefix form only: a document under the group is
+/// `drafts/a.md`, never `drafts`. Group columns take both, because the deleted
+/// group is itself a value a group column can hold, and a nested group under it
+/// is one the prefix catches.
+pub fn delete_prefix(tx: &Transaction<'_>, group: &str) -> rusqlite::Result<()> {
+    let under = format!("{group}/");
+
+    for (table, column, role) in PATH_KEYED {
+        drop_under(tx, table, column, *role, &under)?;
+    }
+
+    for (table, column, role) in GROUP_KEYED {
+        drop_exact(tx, table, column, *role, group)?;
+        drop_under(tx, table, column, *role, &under)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::Role::{Pointer, Subject};
@@ -158,9 +239,11 @@ mod tests {
 
     /// Asserted as a whole slice, the way `catalog_lists_every_shipped_migration`
     /// is: a table added later must be a deliberate edit here, because a
-    /// path-keyed column left off this list silently stops following a rename.
-    /// The role is pinned along with the column, because a pointer column
-    /// filed as a subject deletes live rows at the destination.
+    /// path-keyed column left off this list silently stops following a rename
+    /// and silently survives a delete, which is how a new document at a reused
+    /// path inherits a stranger's rows. The role is pinned along with the
+    /// column, because a pointer column filed as a subject deletes live rows at
+    /// a rename's destination and sweeps them on a delete.
     #[test]
     fn path_keyed_lists_every_column_holding_a_document_path() {
         assert_eq!(
@@ -178,7 +261,8 @@ mod tests {
 
     /// The same whole-slice assertion for the other registry. A group column
     /// listed here by mistake would be rewritten by a document rename's
-    /// prefix pass; one left off stops following a group rename at all.
+    /// prefix pass; one left off stops following a group rename at all, and
+    /// outlives the group it belongs to when that group is deleted.
     #[test]
     fn group_keyed_lists_every_column_holding_a_group_path() {
         assert_eq!(GROUP_KEYED, &[("reference", "group_path", Subject)]);
