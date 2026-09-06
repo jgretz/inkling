@@ -210,8 +210,8 @@ export function useReferences({vault, docPath, ready, taken, onNoteWritten}: Opt
    *
    * Both halves of what comes back are folded into the rows: a link that was
    * already there is not news, but a link the *group* already held is about to
-   * appear in the strip for the first time, and dropping it would leave the
-   * chips disagreeing with the confirmation until the next vault scan.
+   * appear on the Context tab for the first time, and dropping it would leave
+   * the rows disagreeing with the confirmation until the next vault scan.
    *
    * Rejects rather than returning quietly, unlike `attach`. The paste is still
    * in the writer's field and the field decides whether to clear it.

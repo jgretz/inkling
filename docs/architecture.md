@@ -46,7 +46,7 @@ One document, three views of it, left to right.
 | ------- | ------------------------------------------------------ | -------------------- |
 | Preview | The document rendered, tracking the editor buffer live | `components/preview` |
 | Editor  | Raw markdown in CodeMirror 6                           | `components/editor`  |
-| Agent   | An open conversation about the document                | `components/chat`    |
+| Agent   | A conversation about the document, and what it carries | `components/chat`    |
 
 The preview's pipeline is the app's only one. `components/preview/DocMarkdown.tsx`
 is the single file that names `react-markdown` and configures `remark-gfm`, and

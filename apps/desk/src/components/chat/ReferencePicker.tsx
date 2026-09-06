@@ -50,7 +50,7 @@ function ready(draft: Draft): boolean {
 }
 
 /**
- * The title a chip will carry, falling back to something the writer recognises
+ * The title a row will carry, falling back to something the writer recognises
  * rather than making them type a name for a document that already has one.
  */
 function titleOf(draft: Draft, docs: readonly DocSummary[]): string {

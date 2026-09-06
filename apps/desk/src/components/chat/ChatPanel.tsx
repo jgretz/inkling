@@ -34,7 +34,7 @@ export type ConversationControls = {
 type ChatPanelProps = {
   transport: AgentTransport;
   context: AgentContext;
-  /** Attaching and detaching, which happens in the context strip and nowhere else. */
+  /** Attaching and detaching, which happens on the Context tab and nowhere else. */
   references: ReferenceControls;
   /**
    * The active conversation's stored turns, seeding the message list.
@@ -95,7 +95,14 @@ const NEW_CONVERSATION = 'new';
 /** Which of the panel's two full-height views is showing. */
 type ChatTab = 'conversation' | 'context';
 
-/** The panel is focusable, so it says where focus is rather than swallowing it. */
+/**
+ * The ring the tabpanel wears when it is focused.
+ *
+ * It is in the tab order because it scrolls, and a region a keyboard can only
+ * scroll once it holds focus has to be reachable by one. Being focusable, it
+ * then owes the writer a mark of where focus went rather than taking it
+ * silently.
+ */
 const PANEL_FOCUS =
   'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent-muted';
 

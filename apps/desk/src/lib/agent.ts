@@ -35,7 +35,7 @@ export type Message = {
 
 /**
  * What the agent is allowed to see. Assembled by the chat panel and handed over
- * with each turn, so the writer can always point at the context strip and know
+ * with each turn, so the writer can always point at the Context tab and know
  * what left the machine.
  */
 export type AgentContext = {
@@ -106,12 +106,15 @@ export function estimateTokens(text: string): number {
 }
 
 /**
- * What the next turn would cost, in the same estimate the strip shows per chip.
+ * What the next turn would cost, in the same estimate each entry shows.
+ *
+ * Both the Context tab's header and the summary line above the composer are
+ * this number, so the two cannot disagree about what a turn carries.
  *
  * A reference's `source` is empty when it carries no body: a link, a file the
  * vault has lost, or one this document turned off. So they total to zero here
  * rather than needing a rule of their own, and the header cannot disagree with
- * the chips beneath it.
+ * the rows beneath it.
  */
 export function contextTokens(context: AgentContext): number {
   const parts = [

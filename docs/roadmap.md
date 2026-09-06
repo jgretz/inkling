@@ -22,19 +22,17 @@ possible.
 
 ## In flight
 
-| Run        | Item                    | Waits on |
-| ---------- | ----------------------- | -------- |
-| `8564e3d9` | The agent panel as tabs | nothing  |
+Nothing.
 
 Phases 1 through 4 and phase 6 are complete and merged. Phase 5, research
 inflow, is the only roadmap item left and is deliberately unqueued: by the time
 it starts the app will have been used to write something real, which will say
 more about what retrieval should do than this document can.
 
-Everything in flight came from using the app rather than from this plan. That is
-now the more productive source of work, and it is worth reading
-`docs/testing.md` before writing another suite: the bugs an evening of use found
-were all in classes the suite is structurally blind to.
+Every item that has been in flight lately came from using the app rather than
+from this plan. That is now the more productive source of work, and it is worth
+reading `docs/testing.md` before writing another suite: the bugs an evening of
+use found were all in classes the suite is structurally blind to.
 
 ## Shared files
 
@@ -99,9 +97,9 @@ web links, and notes. Metadata in SQLite, note bodies as markdown in the vault.
 Done when a reference added at group level appears in every document's assembled
 context.
 
-**3.2 The context strip, for real.** Today it shows the open document and the
-selection. It becomes the assembled cascade, with each entry's token estimate and
-where it was inherited from. Done when the strip accounts for every byte a turn
+**3.2 The context accounting, for real.** Today it shows the open document and
+the selection. It becomes the assembled cascade, with each entry's token estimate
+and where it was inherited from. Done when it accounts for every byte a turn
 would carry.
 
 ## Phase 4: The agent
