@@ -75,6 +75,21 @@ describe('workspaceReducer', function () {
     expect(INITIAL_WORKSPACE.groups).toEqual([]);
   });
 
+  it('should ignore re-choosing the vault that is already open', function () {
+    // The restore effect used to dispatch this twice, and the second one landed
+    // after the first scan had filled the list, so the library came up empty.
+    const scanned = workspaceReducer(opened('body'), {
+      type: 'docsLoaded',
+      docs: [summary(second, '2026-01-01T00:00:00.000Z')],
+      groups: [],
+      sources: new Map(),
+    });
+
+    const next = workspaceReducer(scanned, {type: 'vaultChosen', vault});
+
+    expect(next).toBe(scanned);
+  });
+
   it('should open a document clean', function () {
     const state = opened('body');
 

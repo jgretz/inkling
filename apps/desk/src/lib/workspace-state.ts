@@ -128,7 +128,12 @@ function updateOpen(
 export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState {
   return match<WorkspaceAction, WorkspaceState>(action)
     .with({type: 'vaultChosen'}, function ({vault}) {
-      // A new vault invalidates everything the old one populated.
+      // Choosing the vault that is already open is not a change, and wiping for
+      // it is how the library came up empty: restoring the last session
+      // dispatched this twice, and the second one landed after the first scan
+      // had already filled the list.
+      if (state.vault === vault) return state;
+      // A different vault invalidates everything the old one populated.
       return {...INITIAL_WORKSPACE, vault, loading: true};
     })
     .with({type: 'docsLoaded'}, function ({docs, groups, sources}) {
