@@ -1,4 +1,4 @@
-import {sseFrames, SseConnectError, type SseFrame} from './sse.ts';
+import {boundFetch, sseFrames, SseConnectError, type SseFrame} from './sse.ts';
 import {DAEMON_ENDPOINT, DAEMON_TOKEN_HEADER} from './wire.ts';
 
 /**
@@ -145,7 +145,9 @@ export type HeldSessionClient = {
 
 export function createHeldSessionClient(options: HeldSessionOptions = {}): HeldSessionClient {
   const endpoint = options.endpoint ?? DAEMON_ENDPOINT;
-  const doFetch = options.fetch ?? fetch;
+  // Bound, not bare: see `boundFetch`. An unbound reference throws in the
+  // webview and nowhere else.
+  const doFetch = boundFetch(options.fetch);
 
   async function tokenHeader(): Promise<Record<string, string>> {
     const {token} = options;

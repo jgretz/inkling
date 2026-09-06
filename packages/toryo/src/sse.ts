@@ -51,10 +51,27 @@ export type SseFramesOptions = {
  * A caller wanting a value instead of a throw has to wrap it, which is what
  * `dispatch-transport.ts` does so it can read a 410's body.
  */
+/**
+ * A `fetch` that survives being called as a plain function.
+ *
+ * WebKit enforces the receiver. `fetch` pulled off the window and called
+ * without one throws `Can only call Window.fetch on instances of Window`, and
+ * so does calling it as a property of anything that is not a window, which
+ * `options.fetch(...)` is. Chrome, bun and happy-dom all allow both, so this
+ * fails **only** in the Tauri webview and passes every test and every
+ * Node-side check on the way there.
+ *
+ * Binding an injected fake is harmless: it still forwards to the fake, so a
+ * test's assertions on it are unaffected.
+ */
+export function boundFetch(candidate?: typeof fetch): typeof fetch {
+  return (candidate ?? globalThis.fetch).bind(globalThis);
+}
+
 export async function* sseFrames(options: SseFramesOptions): AsyncGenerator<SseFrame> {
   const url = new URL(options.path, options.endpoint);
 
-  const response = await options.fetch(url, {
+  const response = await boundFetch(options.fetch)(url, {
     signal: options.signal ?? null,
     // `accept` last, so a caller cannot clobber the content type this parser
     // depends on while still getting its own headers through.

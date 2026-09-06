@@ -54,6 +54,21 @@ Two rules that are not obvious and cost an afternoon each:
   binds `document.body` when the testing library is evaluated, which happens
   before any registration, so it is bound to a document that no longer exists.
 
+## The webview is WebKit, and the suite is not
+
+bun and happy-dom are permissive where the Tauri webview is strict, so a whole
+class of bug passes every test here and fails on the first real use.
+
+The one that has already bitten: `fetch` pulled off the global and called
+without a receiver, or called as a property of an ordinary object, throws
+`Can only call Window.fetch on instances of Window` in WebKit and nowhere else.
+`boundFetch` in `packages/toryo/src/sse.ts` is the fix and
+`tests/bound-fetch.test.ts` reproduces the rule as a stub that refuses a wrong
+receiver, because no runtime the suite can run in will refuse it for us.
+
+When a browser API is handed around as a value rather than called in place, ask
+whether it needs its receiver, and write the rule down as a stub if it does.
+
 ## Conventions
 
 Tests live in a `tests/` directory beside `src/`, mirroring its structure. Name
