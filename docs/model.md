@@ -33,9 +33,12 @@ editable anywhere.
 **`.inkling/` inside the vault**, holding a SQLite database at
 `.inkling/inkling.db` plus whatever flat files earn a place beside it.
 Conversation transcripts, reference metadata, voice findings and their
-suppressions, and the caches behind search and the document list. All of it is
-regenerable or discardable, which is what makes it safe to exclude from a
-writer's own version control.
+suppressions, kept revisions, and the caches behind search and the document
+list. All of it is regenerable or discardable except the revisions, which are
+the one thing there that is prose rather than a description of prose: the
+document they came from has since been rewritten, so deleting the directory
+deletes them and nothing can rebuild them. Everything else is safe to exclude
+from a writer's own version control on that basis.
 
 The database is file-based deliberately. No server, no daemon, openable with any
 SQLite tool.
@@ -122,5 +125,9 @@ Two exits, both small. A clean markdown file on disk, and rich text on the
 clipboard so a draft pastes into Apple Mail as formatted text rather than as
 markdown source.
 
-Revisions are manual. A button that says "this is the next revision" snapshots
-into `.inkling/`. The live document is what matters; history is a convenience.
+Revisions are manual. One menu item says "this is the next revision" and keeps
+the whole document, frontmatter and body, as a row in `.inkling/inkling.db`;
+another lists them newest first, shows one, and writes it back over the live
+document once the writer agrees. Nothing is ever snapshotted automatically, and
+a document nobody has snapshotted holds no rows at all. The live document is
+what matters; history is a convenience.

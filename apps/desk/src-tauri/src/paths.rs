@@ -20,7 +20,7 @@
 //! the role is stored rather than assumed. See [`Role`].
 //!
 //! Every table keyed by a path appends here, so a rename keeps working without
-//! any caller learning the new table's name. `conversation` is the most recent
+//! any caller learning the new table's name. `revision` is the most recent
 //! to do so.
 //!
 //! The matching is `substr`, never `LIKE`. `LIKE` reads `%` and `_` in its
@@ -65,6 +65,7 @@ pub const PATH_KEYED: &[(&str, &str, Role)] = &[
     ("reference", "target_path", Pointer),
     ("reference_suppression", "doc_path", Subject),
     ("conversation", "doc_path", Subject),
+    ("revision", "doc_path", Subject),
 ];
 
 /// Every (table, column) pair holding a vault-relative group path.
@@ -170,6 +171,7 @@ mod tests {
                 ("reference", "target_path", Pointer),
                 ("reference_suppression", "doc_path", Subject),
                 ("conversation", "doc_path", Subject),
+                ("revision", "doc_path", Subject),
             ]
         );
     }

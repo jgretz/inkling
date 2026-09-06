@@ -2,6 +2,7 @@ import {invoke} from '@tauri-apps/api/core';
 import type {DocPath, GroupPath, VaultPath} from '@inkling/vault';
 import type {ReferenceKind, StoredReference, StoredReferenceSuppression} from './references.ts';
 import type {Conversation, ConversationStore, StoredTurn, TurnState} from './conversations.ts';
+import type {Revision, RevisionStore, RevisionSummary} from './revisions.ts';
 
 /**
  * The typed edge of the Rust command surface. Every `invoke` in the app goes
@@ -293,6 +294,46 @@ export const tauriConversations: ConversationStore = {
   listTurns,
   startTurn,
   finishTurn,
+};
+
+/**
+ * The stored revision shapes, re-exported so callers reach one module for the
+ * wire.
+ *
+ * Declared in `revisions.ts` for the same reason the conversation rows are
+ * declared in `conversations.ts`: the hook that reads them must not name this
+ * file, which imports `@tauri-apps/api`.
+ * `serialises_to_the_shape_the_frontend_reads` in `src-tauri/src/revisions.rs`
+ * pins the other end of both.
+ */
+export type {Revision, RevisionSummary};
+
+/** Every revision of one document, newest first. No `source` crosses. */
+export function listRevisions(docPath: DocPath): Promise<RevisionSummary[]> {
+  return invoke<RevisionSummary[]>('list_revisions', {docPath});
+}
+
+/** Keeps the document as it stands, resolving to the row the database created. */
+export function createRevision(docPath: DocPath, source: string): Promise<RevisionSummary> {
+  return invoke<RevisionSummary>('create_revision', {docPath, source});
+}
+
+/** One revision with its text, fetched only when the writer opens it. */
+export function readRevision(id: number): Promise<Revision> {
+  return invoke<Revision>('read_revision', {id});
+}
+
+/**
+ * The three calls above as one value, which is what the revisions hook takes.
+ *
+ * Assembled here and passed down from `App.tsx` rather than imported where it is
+ * used, so the hook never names this file and stays drivable with no webview.
+ * See `RevisionStore` in `revisions.ts`.
+ */
+export const tauriRevisions: RevisionStore = {
+  list: listRevisions,
+  create: createRevision,
+  read: readRevision,
 };
 
 export function loadSettings(): Promise<unknown> {

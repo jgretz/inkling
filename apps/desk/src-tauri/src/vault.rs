@@ -399,6 +399,7 @@ mod tests {
         insert as attach, insert_suppression, select_all, select_all_suppressions, NewReference,
         Reference,
     };
+    use crate::revisions::{insert as keep_revision, select_for as revisions_of};
     use crate::voice::{insert, select_for_doc, Suppression};
     use std::fs;
     use std::path::Path;
@@ -1009,6 +1010,51 @@ mod tests {
         .expect("should move");
 
         assert_eq!(only_reference(&db).group_path.as_deref(), Some("drafts"));
+    }
+
+    fn keep(db: &VaultDb, doc_path: &str, source: &str) {
+        db.with(|conn| keep_revision(conn, doc_path, source))
+            .expect("a vault should be open")
+            .expect("should keep a revision");
+    }
+
+    fn revisions(db: &VaultDb, doc_path: &str) -> usize {
+        db.with(|conn| revisions_of(conn, doc_path))
+            .expect("a vault should be open")
+            .expect("should select")
+            .len()
+    }
+
+    /// A revision holds prose that is nowhere else in the vault, so a rename
+    /// that dropped one would lose the writer's only way back to that draft.
+    #[test]
+    fn should_read_a_revision_at_the_new_path_after_a_document_moves() {
+        let (vault, db) = vault_with_a_group("drafts");
+        fs::create_dir_all(vault.path().join("essays")).expect("should make a dir");
+        keep(&db, "drafts/a.md", "# a\n");
+
+        rename_doc_with(
+            &vault.path().to_string_lossy(),
+            "drafts/a.md",
+            "essays/a.md",
+            &db,
+        )
+        .expect("should move");
+
+        assert_eq!(revisions(&db, "essays/a.md"), 1);
+        assert_eq!(revisions(&db, "drafts/a.md"), 0);
+    }
+
+    #[test]
+    fn should_read_a_revision_at_the_new_path_after_the_group_is_renamed() {
+        let (vault, db) = vault_with_a_group("drafts");
+        keep(&db, "drafts/a.md", "# a\n");
+
+        rename_group_in(vault.path(), &db, "drafts", "notes").expect("should rename");
+
+        assert_eq!(revisions(&db, "notes/a.md"), 1);
+        assert_eq!(revisions(&db, "drafts/a.md"), 0);
+        assert!(vault.path().join("notes/a.md").is_file());
     }
 
     #[test]

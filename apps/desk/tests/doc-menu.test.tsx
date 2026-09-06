@@ -14,13 +14,29 @@ autoCleanup();
 type MenuProps = {
   onExport?: (choice: FrontmatterChoice) => void;
   onCopy?: () => void;
+  onSnapshot?: () => void;
+  onOpenRevisions?: () => void;
   disabled?: boolean;
 };
 
 function noop() {}
 
-function menu({onExport = noop, onCopy = noop, disabled = false}: MenuProps = {}) {
-  return render(<DocMenu onExport={onExport} onCopy={onCopy} disabled={disabled} />);
+function menu({
+  onExport = noop,
+  onCopy = noop,
+  onSnapshot = noop,
+  onOpenRevisions = noop,
+  disabled = false,
+}: MenuProps = {}) {
+  return render(
+    <DocMenu
+      onExport={onExport}
+      onCopy={onCopy}
+      onSnapshot={onSnapshot}
+      onOpenRevisions={onOpenRevisions}
+      disabled={disabled}
+    />,
+  );
 }
 
 function openMenu(view: ReturnType<typeof menu>) {
@@ -35,15 +51,23 @@ describe('DocMenu', function () {
     expect(view.queryByText('Export…')).toBeNull();
   });
 
-  it('should offer the three ways out when it is opened', function () {
+  it('should offer every document action when it is opened', function () {
     const view = menu();
 
     openMenu(view);
 
     expect(view.getByRole('menu')).toBeDefined();
-    expect(view.getByText('Export…')).toBeDefined();
-    expect(view.getByText('Export without frontmatter…')).toBeDefined();
-    expect(view.getByText('Copy as rich text')).toBeDefined();
+    expect(
+      view.getAllByRole('menuitem').map(function (item) {
+        return item.textContent;
+      }),
+    ).toEqual([
+      'Export…',
+      'Export without frontmatter…',
+      'Copy as rich text',
+      'Save a revision',
+      'Revisions…',
+    ]);
   });
 
   it('should keep the frontmatter when the plain export is picked', function () {
@@ -86,6 +110,36 @@ describe('DocMenu', function () {
     fireEvent.click(view.getByText('Copy as rich text'));
 
     expect(copied).toBe(1);
+  });
+
+  it('should ask for a revision when that item is picked', function () {
+    let kept = 0;
+    const view = menu({
+      onSnapshot() {
+        kept += 1;
+      },
+    });
+
+    openMenu(view);
+    fireEvent.click(view.getByText('Save a revision'));
+
+    expect(kept).toBe(1);
+    expect(view.queryByRole('menu')).toBeNull();
+  });
+
+  it('should open the revisions panel when that item is picked', function () {
+    let opened = 0;
+    const view = menu({
+      onOpenRevisions() {
+        opened += 1;
+      },
+    });
+
+    openMenu(view);
+    fireEvent.click(view.getByText('Revisions…'));
+
+    expect(opened).toBe(1);
+    expect(view.queryByRole('menu')).toBeNull();
   });
 
   it('should close after an item fires', function () {

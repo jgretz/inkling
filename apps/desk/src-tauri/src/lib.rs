@@ -4,6 +4,7 @@ mod export;
 mod migrations;
 mod paths;
 mod references;
+mod revisions;
 mod settings;
 mod vault;
 mod voice;
@@ -45,6 +46,9 @@ pub fn run() {
             conversations::list_turns,
             conversations::start_turn,
             conversations::finish_turn,
+            revisions::list_revisions,
+            revisions::create_revision,
+            revisions::read_revision,
         ])
         .run(tauri::generate_context!())
         .expect("error while running inkling");

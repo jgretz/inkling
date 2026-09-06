@@ -30,7 +30,11 @@ type TitleBarProps = {
   onExport: (choice: FrontmatterChoice) => void;
   /** Puts the open document on the clipboard as HTML and plain text at once. */
   onCopy: () => void;
-  /** Whether there is a document to export or copy at all. */
+  /** Keeps the open document as it stands, as its next revision. */
+  onSnapshot: () => void;
+  /** Opens the panel that reads the kept revisions back. */
+  onOpenRevisions: () => void;
+  /** Whether there is a document to export, copy or keep a revision of at all. */
   docOpen: boolean;
 };
 
@@ -87,6 +91,8 @@ export function TitleBar({
   onPin,
   onExport,
   onCopy,
+  onSnapshot,
+  onOpenRevisions,
   docOpen,
 }: TitleBarProps) {
   return (
@@ -129,7 +135,13 @@ export function TitleBar({
         {pinned && <Pin size={10} aria-hidden />}
       </button>
 
-      <DocMenu onExport={onExport} onCopy={onCopy} disabled={!docOpen} />
+      <DocMenu
+        onExport={onExport}
+        onCopy={onCopy}
+        onSnapshot={onSnapshot}
+        onOpenRevisions={onOpenRevisions}
+        disabled={!docOpen}
+      />
 
       <div className="flex items-center gap-0.5">
         <Toggle
