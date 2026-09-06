@@ -38,6 +38,14 @@ type TitleBarProps = {
   docOpen: boolean;
 };
 
+/** What each save state means, for the hover. The word alone is not obvious. */
+const SAVE_HINT: Record<SaveState['kind'], string> = {
+  clean: 'Every change is on disk',
+  dirty: 'Changed since the last write. Saves on its own shortly, or press Command-S',
+  saving: 'Writing to disk',
+  failed: 'The last write failed',
+};
+
 const SAVE_LABEL: Record<SaveState['kind'], string> = {
   clean: 'Saved',
   dirty: 'Unsaved',
@@ -110,7 +118,11 @@ export function TitleBar({
           className={`text-[11px] tabular-nums ${
             save.kind === 'failed' ? 'text-red-400' : 'text-ink-400'
           }`}
-          title={save.kind === 'failed' ? save.message : undefined}
+          // A failure says what went wrong; the other three say what the word
+          // means, which is not obvious from one word on its own.
+          title={
+            save.kind === 'failed' ? `${SAVE_HINT.failed}: ${save.message}` : SAVE_HINT[save.kind]
+          }
         >
           {SAVE_LABEL[save.kind]}
         </span>

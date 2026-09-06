@@ -85,6 +85,8 @@ export function App() {
   /** What the writer has highlighted, as a pointer. Session-scoped; nothing stores it. */
   const [selection, setSelection] = useState<Pointer | undefined>(undefined);
   const [restored, setRestored] = useState(false);
+  /** The document the last session had open, until there is a vault to open it in. */
+  const [pendingOpen, setPendingOpen] = useState<DocPath | undefined>(undefined);
   /** Where focus last was, which is what the turn mode is derived from. */
   const [lastFocus, setLastFocus] = useState<FocusRegion | undefined>(undefined);
   /** True from the moment an agent's edit starts landing until the buffer holds disk. */
@@ -129,7 +131,11 @@ export function App() {
           setLayout(settings.layout);
           setLastExportDir(settings.lastExportDir);
           if (settings.vault !== undefined) chooseVault(settings.vault);
-          if (settings.lastDoc !== undefined) openDoc(settings.lastDoc as DocPath);
+          // Not opened here. `openDoc` closes over the vault, and the dispatch
+          // above has not been reduced yet, so calling it now reads `undefined`
+          // and returns without doing anything. The effect below opens it once
+          // the vault has actually landed.
+          setPendingOpen(settings.lastDoc as DocPath | undefined);
         })
         .catch(function (error) {
           console.warn('inkling: could not read settings, starting fresh', error);
@@ -141,11 +147,27 @@ export function App() {
         live = false;
       };
     },
-    [chooseVault, openDoc],
+    // Once. `openDoc` changes identity whenever the vault does, so listing it
+    // here re-ran the whole restore the moment the vault landed, and the second
+    // pass dispatched `vaultChosen` again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
   );
 
   const vault = workspace.vault;
   const openPath = workspace.open?.path;
+
+  // The other half of the restore: reopen what was last open, once there is a
+  // vault to open it from. Cleared either way, so a document that has since
+  // been deleted is attempted once and not on every scan.
+  useEffect(
+    function () {
+      if (vault === undefined || pendingOpen === undefined) return;
+      openDoc(pendingOpen);
+      setPendingOpen(undefined);
+    },
+    [vault, pendingOpen, openDoc],
+  );
 
   useEffect(
     function () {

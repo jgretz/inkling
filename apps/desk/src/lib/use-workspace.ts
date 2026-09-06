@@ -349,8 +349,16 @@ export function useWorkspace(bridge: WorkspaceBridge = TAURI_WORKSPACE): Workspa
         dispatch({type: 'saveStarted', path});
         return bridge
           .writeDoc(vault, path, draft)
-          .then(function () {
-            dispatch({type: 'saveSucceeded', path, source: draft});
+          .then(function (mtime) {
+            // The write returns the file's new mtime, which is what the list
+            // orders by, so the re-derived summary carries it rather than the
+            // stale one from the last scan.
+            dispatch({
+              type: 'saveSucceeded',
+              path,
+              source: draft,
+              updatedAt: isoFromEpoch(mtime),
+            });
           })
           .catch(function (error) {
             console.error(`inkling: failed to save ${path}`, error);

@@ -3,6 +3,7 @@ import {describe, expect, it} from 'bun:test';
 import {fireEvent, render} from '@testing-library/react';
 import {DEFAULT_LAYOUT} from '../src/lib/settings.ts';
 import {indicatorLabel, type TurnIndicator} from '../src/lib/turn.ts';
+import type {SaveState} from '../src/lib/workspace-state.ts';
 import {TitleBar} from '../src/components/shell/TitleBar.tsx';
 
 autoCleanup();
@@ -23,16 +24,17 @@ type BarProps = {
   pinned?: boolean;
   onPin?: () => void;
   docOpen?: boolean;
+  save?: SaveState;
 };
 
 function noop() {}
 
-function bar({turn = 'writer', pinned = false, onPin = noop, docOpen = true}: BarProps = {}) {
+function bar({turn = 'writer', pinned = false, onPin = noop, docOpen = true, save}: BarProps = {}) {
   return render(
     <TitleBar
       title="The piece"
       subtitle="vault"
-      save={undefined}
+      save={save}
       layout={DEFAULT_LAYOUT}
       onToggle={noop}
       turn={turn}
@@ -118,5 +120,39 @@ describe('the document menu in the bar', function () {
     fireEvent.click(view.getByLabelText('Document actions'));
 
     expect(view.queryByRole('menu')).toBeNull();
+  });
+});
+
+/** What the bar renders for each state, so the test can find the element. */
+const SAVE_TEXT = {clean: 'Saved', dirty: 'Unsaved', saving: 'Saving\u2026'} as const;
+
+describe('the save state', function () {
+  it('should explain what each state means on hover', function () {
+    // "Unsaved" on its own reads as a warning. The hover is where it says the
+    // write is coming and nothing is lost.
+    const {getByText} = bar({save: {kind: 'dirty'}});
+
+    expect(getByText('Unsaved').title).toContain('Command-S');
+  });
+
+  it('should carry the reason as well as the meaning when a write failed', function () {
+    const {getByText} = bar({save: {kind: 'failed', message: 'read-only file system'}});
+
+    expect(getByText('Save failed').title).toContain('read-only file system');
+  });
+
+  it('should leave no state without a hover', function () {
+    const titles = (['clean', 'dirty', 'saving'] as const).map(function (kind) {
+      const {getByText, unmount} = bar({save: {kind}});
+      const text = getByText(SAVE_TEXT[kind]).title;
+      unmount();
+      return text;
+    });
+
+    expect(
+      titles.every(function (text) {
+        return text.length > 0;
+      }),
+    ).toBe(true);
   });
 });

@@ -75,6 +75,21 @@ describe('workspaceReducer', function () {
     expect(INITIAL_WORKSPACE.groups).toEqual([]);
   });
 
+  it('should ignore re-choosing the vault that is already open', function () {
+    // The restore effect used to dispatch this twice, and the second one landed
+    // after the first scan had filled the list, so the library came up empty.
+    const scanned = workspaceReducer(opened('body'), {
+      type: 'docsLoaded',
+      docs: [summary(second, '2026-01-01T00:00:00.000Z')],
+      groups: [],
+      sources: new Map(),
+    });
+
+    const next = workspaceReducer(scanned, {type: 'vaultChosen', vault});
+
+    expect(next).toBe(scanned);
+  });
+
   it('should open a document clean', function () {
     const state = opened('body');
 
@@ -123,6 +138,7 @@ describe('workspaceReducer', function () {
       type: 'saveSucceeded',
       path: first,
       source: 'v2',
+      updatedAt: '2026-09-05T00:00:00.000Z',
     });
 
     expect(saved.open?.saved).toBe('v2');
@@ -136,7 +152,12 @@ describe('workspaceReducer', function () {
       source: 'other',
     });
 
-    const next = workspaceReducer(switched, {type: 'saveSucceeded', path: first, source: 'v2'});
+    const next = workspaceReducer(switched, {
+      type: 'saveSucceeded',
+      path: first,
+      source: 'v2',
+      updatedAt: '2026-09-05T00:00:00.000Z',
+    });
 
     expect(next.open?.path).toBe(second);
     expect(next.open?.draft).toBe('other');
@@ -179,6 +200,59 @@ describe('workspaceReducer', function () {
 
     expect(next).toBe(switched);
     expect(next.open?.draft).toBe('other');
+  });
+
+  it('should re-derive the title from the frontmatter a save just wrote', function () {
+    // Editing the frontmatter title used to change the file and nothing else:
+    // everything the library shows came from the last full scan.
+    const scanned = workspaceReducer(opened('# Old heading\n'), {
+      type: 'docsLoaded',
+      docs: [summary(first, '2026-01-01T00:00:00.000Z')],
+      groups: [],
+      sources: new Map([[first, '# Old heading\n']]),
+    });
+    const retitled = '---\ntitle: The new name\n---\n\n# Old heading\n';
+
+    const saved = workspaceReducer(scanned, {
+      type: 'saveSucceeded',
+      path: first,
+      source: retitled,
+      updatedAt: '2026-09-05T00:00:00.000Z',
+    });
+
+    expect(saved.docs.find((doc) => doc.path === first)?.title).toBe('The new name');
+  });
+
+  it('should re-derive the word count and the mtime a save just wrote', function () {
+    const scanned = workspaceReducer(opened('one two'), {
+      type: 'docsLoaded',
+      docs: [summary(first, '2026-01-01T00:00:00.000Z')],
+      groups: [],
+      sources: new Map([[first, 'one two']]),
+    });
+
+    const saved = workspaceReducer(scanned, {
+      type: 'saveSucceeded',
+      path: first,
+      source: 'one two three four',
+      updatedAt: '2026-09-05T00:00:00.000Z',
+    });
+
+    const doc = saved.docs.find((entry) => entry.path === first);
+    expect(doc?.words).toBe(4);
+    expect(doc?.updatedAt).toBe('2026-09-05T00:00:00.000Z');
+  });
+
+  it('should not invent a row for a document the vault has not listed yet', function () {
+    // A document created and saved before the next scan is added by that scan.
+    const saved = workspaceReducer(opened('body'), {
+      type: 'saveSucceeded',
+      path: first,
+      source: 'body changed',
+      updatedAt: '2026-09-05T00:00:00.000Z',
+    });
+
+    expect(saved.docs).toEqual([]);
   });
 
   it('should surface a save failure with its message', function () {
