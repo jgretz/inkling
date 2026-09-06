@@ -5,6 +5,8 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-toggle-maximize",
     "opener:allow-open-url",
     "dialog:allow-open",
     "dialog:allow-save",
@@ -12,11 +14,19 @@
     "dialog:allow-confirm",
     {
       "identifier": "fs:scope",
-      "allow": [{"path": "$HOME/.toryo/daemon-token"}]
+      "allow": [
+        {
+          "path": "$HOME/.toryo/daemon-token"
+        }
+      ]
     },
     {
       "identifier": "fs:allow-read-text-file",
-      "allow": [{"path": "$HOME/.toryo/daemon-token"}]
+      "allow": [
+        {
+          "path": "$HOME/.toryo/daemon-token"
+        }
+      ]
     }
   ]
 }
