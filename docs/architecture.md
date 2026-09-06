@@ -46,7 +46,7 @@ One document, three views of it, left to right.
 | ------- | ------------------------------------------------------ | -------------------- |
 | Preview | The document rendered, tracking the editor buffer live | `components/preview` |
 | Editor  | Raw markdown in CodeMirror 6                           | `components/editor`  |
-| Agent   | An open conversation about the document                | `components/chat`    |
+| Agent   | A conversation about the document, and what it carries | `components/chat`    |
 
 The preview's pipeline is the app's only one. `components/preview/DocMarkdown.tsx`
 is the single file that names `react-markdown` and configures `remark-gfm`, and
@@ -269,18 +269,20 @@ quote lives there once, for edits and pointers alike. All three are pure, and al
 three are exercised without a window. See
 [`turn-taking.md`](./turn-taking.md).
 
-The context strip above the composer lists the text the next turn will carry,
-with its token estimate: the open document, the selection, and the assembled
-reference cascade, each inherited entry naming the group it came from. That is
-the app's honesty surface, and no document should ever reach a model that is not
-named there. It is also the only place a reference is attached or detached in
-this build, which is why the picker lives beside the chips rather than in the
+The panel's Context tab lists the text the next turn will carry, with its token
+estimate: the open document, the selection, and the assembled reference cascade,
+each inherited entry naming the group it came from. A summary line above the
+composer, on both tabs, gives the count and the total and opens that tab, so
+looking away from the accounting never means being told less. That is the app's
+honesty surface, and no document should ever reach a model that is not named
+there. It is also the only place a reference is attached or detached in this
+build, which is why the picker lives beside the entries rather than in the
 library.
 
-One thing does reach a turn without a chip of its own: the voice cascade, as a
+One thing does reach a turn without a row of its own: the voice cascade, as a
 line of rule names in every turn and as the writer's own `voice.md` prose on the
 first turn of a session. It is not retrieval, it is the writer's own file, and
-the library shows it and the editor opens it. The strip should still account for
+the library shows it and the editor opens it. The tab should still account for
 it, and that it does not is a gap rather than a decision.
 
 A conversation is stored per document and the panel is keyed on its id, so

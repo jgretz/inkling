@@ -8,11 +8,13 @@ method, streaming, cancellable. Swapping the backend is one file.
 Context is explicit. A turn carries the open document, the editor selection as a
 quote anchor, and the assembled reference cascade: what each group above the
 document attached, then what the document attached itself. Every entry appears
-in the context strip with a token estimate and the level it was inherited from
-before it is sent. An
-entry carrying nothing (a web link, a file the vault has lost, one this document
-turned off) shows at zero rather than disappearing, so the strip accounts for
-every attachment and not merely for every byte.
+on the panel's Context tab with a token estimate and the level it was inherited
+from before it is sent, and a summary line above the composer carries the count
+and the total on both tabs, so a writer composing a turn is told what it will
+cost without having to leave the conversation to find out. An entry carrying
+nothing (a web link, a file the vault has lost, one this document turned off)
+shows at zero rather than disappearing, so the tab accounts for every
+attachment and not merely for every byte.
 
 The first turn of a session carries all of it, plus the voice cascade: the rules
 in force as one short paragraph, and every level's long guidance whole. Later

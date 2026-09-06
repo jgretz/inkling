@@ -1,4 +1,4 @@
-import {Fragment, memo, useCallback, useEffect, useRef, useState} from 'react';
+import {Fragment, memo, useCallback, useEffect, useId, useRef, useState} from 'react';
 import type {ChangeEvent, FocusEvent, KeyboardEvent} from 'react';
 import {match} from 'ts-pattern';
 import ArrowUp from 'lucide-react/dist/esm/icons/arrow-up';
@@ -11,7 +11,9 @@ import {pointerFor, type Miss, type Pointer} from '../../lib/pointer.ts';
 import type {AgentReply, Edit} from '../../lib/reply.ts';
 import type {TurnMode} from '../../lib/turn.ts';
 import {Splitter} from '../shell/Splitter.tsx';
+import {panelId, tabId, Tabs, type TabEntry} from '../shell/Tabs.tsx';
 import {ContextStrip, type ReferenceControls} from './ContextStrip.tsx';
+import {ContextSummary} from './ContextSummary.tsx';
 
 /** The conversations of the open document, and how the writer moves between them. */
 export type ConversationControls = {
@@ -32,7 +34,7 @@ export type ConversationControls = {
 type ChatPanelProps = {
   transport: AgentTransport;
   context: AgentContext;
-  /** Attaching and detaching, which happens in the context strip and nowhere else. */
+  /** Attaching and detaching, which happens on the Context tab and nowhere else. */
   references: ReferenceControls;
   /**
    * The active conversation's stored turns, seeding the message list.
@@ -89,6 +91,32 @@ type Outcome =
 
 /** The value of the switcher's last entry, which is not a conversation id. */
 const NEW_CONVERSATION = 'new';
+
+/** Which of the panel's two full-height views is showing. */
+type ChatTab = 'conversation' | 'context';
+
+/**
+ * The ring the tabpanel wears when it is focused.
+ *
+ * It is in the tab order because it scrolls, and a region a keyboard can only
+ * scroll once it holds focus has to be reachable by one. Being focusable, it
+ * then owes the writer a mark of where focus went rather than taking it
+ * silently.
+ */
+const PANEL_FOCUS =
+  'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent-muted';
+
+/**
+ * How each tab's panel is scrolled.
+ *
+ * The transcript scrolls itself. The context tab does not: it hands its whole
+ * height to `ContextStrip`, which keeps its header and its attach forms still
+ * and scrolls only the list of entries.
+ */
+const PANEL_CLASS: Record<ChatTab, string> = {
+  conversation: `flex-1 space-y-2 overflow-y-auto px-3 py-2 ${PANEL_FOCUS}`,
+  context: `flex-1 min-h-0 overflow-hidden ${PANEL_FOCUS}`,
+};
 
 let counter = 0;
 
@@ -284,15 +312,25 @@ export function ChatPanel({
   const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  // Always the conversation, on every mount. Which tab was open is not
+  // something the writer asked to be remembered, and a panel that opened on
+  // the accounting would be answering a question nobody had asked yet.
+  const [tab, setTab] = useState<ChatTab>('conversation');
+  /** A reply that arrived while the writer was reading the context instead. */
+  const [unread, setUnread] = useState(false);
+  const ids = useId();
   const abort = useRef<AbortController | null>(null);
   const tail = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
 
   useEffect(
     function () {
+      // On `tab` as well: the transcript is unmounted while the context tab is
+      // showing, so coming back is a fresh mount that lands wherever the
+      // browser puts it unless it is scrolled to the tail again.
       tail.current?.scrollIntoView({behavior: 'smooth', block: 'end'});
     },
-    [messages],
+    [messages, tab],
   );
 
   // A live ref so the send handler reads the context as it is at send time,
@@ -301,6 +339,35 @@ export function ChatPanel({
   contextRef.current = context;
   const historyRef = useRef(messages);
   historyRef.current = messages;
+  // Read by a turn that is already in flight, which is the only reader that
+  // cannot see the tab through a render.
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
+
+  const select = useCallback(function (next: ChatTab) {
+    setTab(next);
+    // Read, because it is now on screen. Nothing else clears it: a dot that
+    // outlived the reply it announced would stop meaning anything.
+    if (next === 'conversation') setUnread(false);
+  }, []);
+
+  const showContext = useCallback(
+    function () {
+      select('context');
+    },
+    [select],
+  );
+
+  /**
+   * Something arrived in the transcript.
+   *
+   * It is announced and never acted on: a writer reading what the turn will
+   * carry does not have the panel pulled out from under them because the agent
+   * finished talking.
+   */
+  const noteArrival = useCallback(function () {
+    if (tabRef.current !== 'conversation') setUnread(true);
+  }, []);
 
   const stop = useCallback(function () {
     abort.current?.abort();
@@ -422,6 +489,7 @@ export function ChatPanel({
           authorized,
         };
         for await (const chunk of transport.send(turn, controller.signal)) {
+          noteArrival();
           if (chunk.kind === 'reply') {
             receive(replyId, chunk.reply, snapshot);
             continue;
@@ -435,6 +503,9 @@ export function ChatPanel({
         }
       } catch (error) {
         console.error('inkling: the agent turn failed', error);
+        // A failure is something that arrived too, and it is the one a writer
+        // looking elsewhere most needs telling about.
+        noteArrival();
         const detail = error instanceof Error ? error.message : String(error);
         setMessages(function (current) {
           return current.map(function (message) {
@@ -451,7 +522,7 @@ export function ChatPanel({
         });
       }
     },
-    [busy, input, transport, mode, onFlush, receive],
+    [busy, input, transport, mode, onFlush, noteArrival, receive],
   );
 
   const handleKey = useCallback(
@@ -489,6 +560,14 @@ export function ChatPanel({
     },
     [onSelect, onCreate],
   );
+
+  // "Transcript" rather than "Conversation": the switcher directly above is
+  // already named that, and two controls with one name in a panel this small is
+  // a panel a screen reader cannot describe.
+  const tabs: readonly TabEntry<ChatTab>[] = [
+    {id: 'conversation', label: 'Transcript', ...(unread ? {note: 'new reply'} : {})},
+    {id: 'context', label: 'Context'},
+  ];
 
   return (
     <section
@@ -529,44 +608,60 @@ export function ChatPanel({
         </button>
       </div>
 
-      <div className="flex-1 space-y-2 overflow-y-auto px-3 py-2">
-        {messages.length === 0 ? (
-          <p className="px-1 py-8 text-center text-[12px] leading-relaxed text-ink-600">
-            Ask for a rewrite, an outline, or a second opinion. What the agent can see is listed
-            below.
-          </p>
-        ) : (
-          messages.map(function (message) {
-            const outcome = outcomes[message.id];
-            return (
-              <Fragment key={message.id}>
-                <Bubble message={message} />
-                {/* The writer's own selection, and a stored reply's pointer,
-                    both arrive on the message. A live reply's arrives as an
-                    outcome, because it is built when the reply is parsed. */}
-                {message.pointer !== undefined && (
-                  <Reference pointer={message.pointer} role={message.role} onPoint={onPoint} />
-                )}
-                {outcome?.kind === 'point' && (
-                  <Reference pointer={outcome.pointer} role={message.role} onPoint={onPoint} />
-                )}
-                {outcome?.kind === 'proposed' && (
-                  <Proposal
-                    id={message.id}
-                    edit={outcome.edit}
-                    onAccept={accept}
-                    onReject={settle}
-                  />
-                )}
-                {outcome?.kind === 'refused' && <Refusal reason={outcome.reason} />}
-              </Fragment>
-            );
-          })
-        )}
-        <div ref={tail} />
-      </div>
+      <Tabs tabs={tabs} selected={tab} onSelect={select} label="Agent panel" idPrefix={ids} />
 
-      <ContextStrip context={context} references={references} />
+      {/* One panel, mounted, rather than two with the hidden one kept around:
+          the transcript scrolls itself to the tail on every message, and
+          scrolling a subtree nobody can see is a bug this app has had before.
+          Nothing is lost by unmounting it, because the messages are state. */}
+      <div
+        id={panelId(ids, tab)}
+        role="tabpanel"
+        aria-labelledby={tabId(ids, tab)}
+        tabIndex={0}
+        className={PANEL_CLASS[tab]}
+      >
+        {tab === 'conversation' ? (
+          <>
+            {messages.length === 0 ? (
+              <p className="px-1 py-8 text-center text-[12px] leading-relaxed text-ink-600">
+                Ask for a rewrite, an outline, or a second opinion. What the agent can see is on the
+                Context tab.
+              </p>
+            ) : (
+              messages.map(function (message) {
+                const outcome = outcomes[message.id];
+                return (
+                  <Fragment key={message.id}>
+                    <Bubble message={message} />
+                    {/* The writer's own selection, and a stored reply's pointer,
+                        both arrive on the message. A live reply's arrives as an
+                        outcome, because it is built when the reply is parsed. */}
+                    {message.pointer !== undefined && (
+                      <Reference pointer={message.pointer} role={message.role} onPoint={onPoint} />
+                    )}
+                    {outcome?.kind === 'point' && (
+                      <Reference pointer={outcome.pointer} role={message.role} onPoint={onPoint} />
+                    )}
+                    {outcome?.kind === 'proposed' && (
+                      <Proposal
+                        id={message.id}
+                        edit={outcome.edit}
+                        onAccept={accept}
+                        onReject={settle}
+                      />
+                    )}
+                    {outcome?.kind === 'refused' && <Refusal reason={outcome.reason} />}
+                  </Fragment>
+                );
+              })
+            )}
+            <div ref={tail} />
+          </>
+        ) : (
+          <ContextStrip context={context} references={references} />
+        )}
+      </div>
 
       {/* On the top edge, because the box is already at the bottom of the panel
           and the only room it has to grow is upwards. A corner grip below it
@@ -581,6 +676,7 @@ export function ChatPanel({
       />
 
       <div className="shrink-0 p-2">
+        <ContextSummary context={context} onShow={showContext} />
         <div className="flex items-end gap-2 rounded-lg bg-ink-850 p-2 focus-within:ring-1 focus-within:ring-accent-muted">
           <textarea
             ref={composer}

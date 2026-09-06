@@ -132,6 +132,20 @@ describe('ContextStrip', function () {
     expect(headerTotal(view)).toBe(50 + 10 + 30 + 10);
   });
 
+  /**
+   * The entries are full-width rows now rather than one line of pills, so the
+   * group, the state and the remove control all sit beside the title. The count
+   * still comes last in the row's text, which is what lets a reader find it in
+   * the same place on every one of them.
+   */
+  it('should keep the token count last whatever else the row carries', function () {
+    const view = strip({
+      references: [entry(), inherited({source: '', suppressedBy: 7, tokens: 0})],
+    });
+
+    expect(chipTotals(view)).toEqual([50, 10, 30, 0]);
+  });
+
   it('should name the group an inherited reference came from', function () {
     const view = strip({references: [inherited()]});
 

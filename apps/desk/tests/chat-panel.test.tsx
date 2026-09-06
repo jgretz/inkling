@@ -12,6 +12,7 @@ import {
 } from '../src/lib/agent.ts';
 import type {Conversation} from '../src/lib/conversations.ts';
 import {pointerAt, type Pointer} from '../src/lib/pointer.ts';
+import type {ContextReference} from '../src/lib/references.ts';
 import type {Edit} from '../src/lib/reply.ts';
 import type {TurnMode} from '../src/lib/turn.ts';
 import {ChatPanel} from '../src/components/chat/ChatPanel.tsx';
@@ -693,6 +694,209 @@ describe('the writers own selection', function () {
     await ask(view);
 
     expect(view.queryByLabelText(/^Show the passage you selected/)).toBeNull();
+  });
+});
+
+describe('the panel tabs', function () {
+  /** An attached reference, as `assembleReferences` hands one over. */
+  const STYLE: ContextReference = {
+    id: 1,
+    kind: 'doc',
+    title: 'The style guide',
+    source: 'x'.repeat(120),
+    target: 'notes/style.md',
+    origin: {level: 'document'},
+    missing: false,
+    suppressedBy: undefined,
+    tokens: 30,
+  };
+
+  /** 50 tokens of document and 30 of reference, so the total is a round 80. */
+  function carrying(): AgentContext {
+    return {
+      doc: {path: 'drafts/a.md' as DocPath, title: 'A draft', source: 'p'.repeat(200)},
+      selection: undefined,
+      references: [STYLE],
+    };
+  }
+
+  function tabAt(view: ReturnType<typeof render>, index: number): HTMLElement {
+    const found = view.getAllByRole('tab')[index];
+    if (found === undefined) throw new Error(`no tab at ${index}`);
+    return found;
+  }
+
+  function conversationTab(view: ReturnType<typeof render>): HTMLElement {
+    return tabAt(view, 0);
+  }
+
+  function contextTab(view: ReturnType<typeof render>): HTMLElement {
+    return tabAt(view, 1);
+  }
+
+  function summary(view: ReturnType<typeof render>): HTMLElement {
+    return view.getByLabelText(/^What the agent can see/);
+  }
+
+  // The switcher directly above is already called "Conversation", and two
+  // controls with one name in a panel this small is a panel a screen reader
+  // cannot describe.
+  it('should not name a tab what the switcher above it is called', function () {
+    const view = panel({context: carrying()});
+
+    const names = view.getAllByRole('tab').map(function (entry) {
+      return entry.getAttribute('aria-label') ?? entry.textContent;
+    });
+
+    expect(names).toEqual(['Transcript', 'Context']);
+    expect(view.getByLabelText('Conversation').tagName).toBe('SELECT');
+  });
+
+  it('should open on the conversation', function () {
+    const view = panel({context: carrying()});
+
+    expect(conversationTab(view).getAttribute('aria-selected')).toBe('true');
+    expect(view.getByText('Cut the last line.')).toBeDefined();
+  });
+
+  // The promise is that the writer is told, not that they could have looked:
+  // the accounting is on screen while they compose, on whichever tab they are.
+  it('should report the same count and total on both tabs', function () {
+    const view = panel({context: carrying()});
+    expect(summary(view).textContent).toBe('1 reference, ~80 tokens');
+
+    fireEvent.click(contextTab(view));
+
+    expect(summary(view).textContent).toBe('1 reference, ~80 tokens');
+    expect(summary(view).getAttribute('aria-label')).toBe(
+      'What the agent can see: 1 reference, about 80 tokens. Show the context tab.',
+    );
+  });
+
+  it('should count a context carrying no references at all', function () {
+    const view = panel({context: emptyContext()});
+
+    expect(summary(view).textContent).toBe('0 references, ~0 tokens');
+  });
+
+  it('should open the context tab from the summary line', function () {
+    const view = panel({context: carrying()});
+
+    fireEvent.click(summary(view));
+
+    expect(contextTab(view).getAttribute('aria-selected')).toBe('true');
+    expect(view.getByText('The style guide')).toBeDefined();
+  });
+
+  it('should show what the turn carries on the context tab', function () {
+    const view = panel({context: carrying()});
+    expect(view.queryByText('The style guide')).toBeNull();
+
+    fireEvent.click(contextTab(view));
+
+    expect(view.getByText('The style guide')).toBeDefined();
+    expect(view.getByText('A draft')).toBeDefined();
+    // One panel is mounted at a time: a transcript kept in a hidden subtree is
+    // a transcript still scrolling itself where nobody can see it.
+    expect(view.queryByText('Cut the last line.')).toBeNull();
+  });
+
+  // The invitation used to say the context was listed below, which was true
+  // when it was. A writer told to look below now finds the composer there.
+  it('should point a first-time writer at the tab the accounting moved to', function () {
+    const view = panel({started: 3, context: carrying()});
+
+    expect(
+      view.getByText('What the agent can see is on the Context tab.', {exact: false}),
+    ).toBeDefined();
+  });
+
+  it('should keep the composer and its handle on both tabs', function () {
+    const view = panel({context: carrying()});
+    expect(view.getByLabelText('Message the agent')).toBeDefined();
+    expect(view.getByLabelText('Resize the message box')).toBeDefined();
+
+    fireEvent.click(contextTab(view));
+
+    expect(view.getByLabelText('Message the agent')).toBeDefined();
+    expect(view.getByLabelText('Resize the message box')).toBeDefined();
+  });
+
+  it('should bring the transcript back when the conversation is selected again', function () {
+    const view = panel({context: carrying()});
+    fireEvent.click(contextTab(view));
+
+    fireEvent.click(conversationTab(view));
+
+    expect(view.getByText('Cut the last line.')).toBeDefined();
+  });
+
+  // Announced, never acted on. A writer reading what the turn will carry does
+  // not have the panel pulled out from under them because the agent replied.
+  it('should say a reply arrived behind the context tab without switching to it', async function () {
+    const held = gate();
+    const {transport} = scripted({pause: held.promise});
+    const view = panel({started: 3, transport, mode: 'writer', context: carrying()});
+    await ask(view);
+
+    fireEvent.click(contextTab(view));
+    await act(async function () {
+      held.open();
+      await drainReactScheduler();
+    });
+
+    expect(conversationTab(view).getAttribute('aria-label')).toBe('Transcript, new reply');
+    expect(conversationTab(view).getAttribute('aria-selected')).toBe('false');
+    expect(contextTab(view).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('should stop saying so once the conversation has been looked at', async function () {
+    const held = gate();
+    const {transport} = scripted({pause: held.promise});
+    const view = panel({started: 3, transport, mode: 'writer', context: carrying()});
+    await ask(view);
+    fireEvent.click(contextTab(view));
+    await act(async function () {
+      held.open();
+      await drainReactScheduler();
+    });
+
+    fireEvent.click(conversationTab(view));
+
+    expect(conversationTab(view).getAttribute('aria-label')).toBeNull();
+  });
+
+  it('should say nothing about a reply that arrived in plain sight', async function () {
+    const {transport} = scripted();
+    const view = panel({started: 3, transport, mode: 'writer', context: carrying()});
+
+    await ask(view);
+
+    expect(conversationTab(view).getAttribute('aria-label')).toBeNull();
+  });
+
+  // A failure is something that arrived too, and it is the one a writer looking
+  // elsewhere most needs telling about.
+  it('should say a failed turn arrived behind the context tab', async function () {
+    const held = gate();
+    const failing: AgentTransport = {
+      name: 'test',
+      async *send() {
+        await held.promise;
+        throw new Error('the daemon refused');
+      },
+    };
+    const view = panel({started: 3, transport: failing, mode: 'writer', context: carrying()});
+    await ask(view);
+
+    fireEvent.click(contextTab(view));
+    await act(async function () {
+      held.open();
+      await drainReactScheduler();
+    });
+
+    expect(conversationTab(view).getAttribute('aria-label')).toBe('Transcript, new reply');
+    expect(conversationTab(view).getAttribute('aria-selected')).toBe('false');
   });
 });
 
