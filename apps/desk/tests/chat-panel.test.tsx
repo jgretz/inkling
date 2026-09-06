@@ -801,6 +801,16 @@ describe('the panel tabs', function () {
     expect(view.queryByText('Cut the last line.')).toBeNull();
   });
 
+  // The invitation used to say the context was listed below, which was true
+  // when it was. A writer told to look below now finds the composer there.
+  it('should point a first-time writer at the tab the accounting moved to', function () {
+    const view = panel({started: 3, context: carrying()});
+
+    expect(
+      view.getByText('What the agent can see is on the Context tab.', {exact: false}),
+    ).toBeDefined();
+  });
+
   it('should keep the composer and its handle on both tabs', function () {
     const view = panel({context: carrying()});
     expect(view.getByLabelText('Message the agent')).toBeDefined();

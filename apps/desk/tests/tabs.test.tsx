@@ -148,6 +148,27 @@ describe('Tabs', function () {
     expect(at(view, 1).getAttribute('aria-label')).toBeNull();
   });
 
+  // The sighted half of the same note. It is the only thing on the tab a reader
+  // looking at the panel can see, so nothing else being asserted would leave a
+  // note that announces itself and shows nothing.
+  it('should draw the note as a dot on the tab it belongs to and no other', function () {
+    const view = tabs({
+      tabs: [
+        {id: 'first', label: 'Conversation', note: 'new reply'},
+        {id: 'second', label: 'Context'},
+      ],
+    });
+
+    expect(at(view, 0).querySelector('[aria-hidden="true"]')).not.toBeNull();
+    expect(at(view, 1).querySelector('[aria-hidden="true"]')).toBeNull();
+  });
+
+  it('should draw no dot on a tab with nothing to report', function () {
+    const view = tabs();
+
+    expect(view.getByRole('tablist').querySelector('[aria-hidden="true"]')).toBeNull();
+  });
+
   it('should name the set for a reader arriving in it', function () {
     const view = tabs();
 
