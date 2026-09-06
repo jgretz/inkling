@@ -7,6 +7,7 @@ describe('parseSettings', function () {
     expect(parseSettings(null)).toEqual({
       vault: undefined,
       lastDoc: undefined,
+      lastExportDir: undefined,
       layout: DEFAULT_LAYOUT,
     });
   });
@@ -42,6 +43,20 @@ describe('parseSettings', function () {
 
   it('should keep voice marks off when they were turned off', function () {
     expect(parseSettings({layout: {marksOn: false}}).layout.marksOn).toBe(false);
+  });
+
+  it('should keep the directory the last export landed in', function () {
+    expect(parseSettings({lastExportDir: '/Users/josh/Desktop'}).lastExportDir).toBe(
+      '/Users/josh/Desktop',
+    );
+  });
+
+  // A settings file written before exporting existed, and one holding nonsense,
+  // both mean the save dialog opens wherever the OS would put it.
+  it('should have no export directory when the field is absent or not a string', function () {
+    expect(parseSettings({lastDoc: 'drafts/a.md'}).lastExportDir).toBeUndefined();
+    expect(parseSettings({lastExportDir: 42}).lastExportDir).toBeUndefined();
+    expect(parseSettings({lastExportDir: ''}).lastExportDir).toBeUndefined();
   });
 
   it('should treat an empty vault string as no vault', function () {

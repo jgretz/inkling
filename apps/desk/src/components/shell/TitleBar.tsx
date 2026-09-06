@@ -8,9 +8,11 @@ import PenLine from 'lucide-react/dist/esm/icons/pen-line';
 import Pin from 'lucide-react/dist/esm/icons/pin';
 import SpellCheck from 'lucide-react/dist/esm/icons/spell-check';
 import Sparkles from 'lucide-react/dist/esm/icons/sparkles';
+import type {FrontmatterChoice} from '../../lib/export.ts';
 import type {LayoutSettings, ToggleKey} from '../../lib/settings.ts';
 import {indicatorLabel, type TurnIndicator} from '../../lib/turn.ts';
 import type {SaveState} from '../../lib/workspace-state.ts';
+import {DocMenu} from './DocMenu.tsx';
 
 type TitleBarProps = {
   title: string;
@@ -24,6 +26,12 @@ type TitleBarProps = {
   pinned: boolean;
   /** Cycles the pin: unpinned, the writer's turn, the agent's, unpinned. */
   onPin: () => void;
+  /** Writes the open document to a file the writer picks. */
+  onExport: (choice: FrontmatterChoice) => void;
+  /** Puts the open document on the clipboard as HTML and plain text at once. */
+  onCopy: () => void;
+  /** Whether there is a document to export or copy at all. */
+  docOpen: boolean;
 };
 
 const SAVE_LABEL: Record<SaveState['kind'], string> = {
@@ -77,6 +85,9 @@ export function TitleBar({
   turn,
   pinned,
   onPin,
+  onExport,
+  onCopy,
+  docOpen,
 }: TitleBarProps) {
   return (
     <header
@@ -117,6 +128,8 @@ export function TitleBar({
         <span>{TURN_LABEL[turn]}</span>
         {pinned && <Pin size={10} aria-hidden />}
       </button>
+
+      <DocMenu onExport={onExport} onCopy={onCopy} disabled={!docOpen} />
 
       <div className="flex items-center gap-0.5">
         <Toggle

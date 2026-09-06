@@ -1,5 +1,6 @@
 mod conversations;
 mod data;
+mod export;
 mod migrations;
 mod paths;
 mod references;
@@ -24,6 +25,7 @@ pub fn run() {
             vault::create_doc,
             vault::rename_doc,
             vault::delete_doc,
+            export::export_doc,
             settings::load_settings,
             settings::save_settings,
             data::open_vault_db,

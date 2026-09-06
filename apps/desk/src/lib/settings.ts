@@ -9,6 +9,13 @@ export type Settings = {
   vault: VaultPath | undefined;
   /** Vault-relative path of the document open when the app last closed. */
   lastDoc: string | undefined;
+  /**
+   * Absolute directory the last export landed in, which is where the next save
+   * dialog opens. One field rather than one per vault: `settings.json` is a
+   * single global file, and an export destination is a place on the machine
+   * rather than a property of a vault.
+   */
+  lastExportDir: string | undefined;
   layout: LayoutSettings;
 };
 
@@ -46,6 +53,7 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
 export const DEFAULT_SETTINGS: Settings = {
   vault: undefined,
   lastDoc: undefined,
+  lastExportDir: undefined,
   layout: DEFAULT_LAYOUT,
 };
 
@@ -91,6 +99,7 @@ export function parseSettings(raw: unknown): Settings {
   return {
     vault: asString(record['vault']) as VaultPath | undefined,
     lastDoc: asString(record['lastDoc']),
+    lastExportDir: asString(record['lastExportDir']),
     layout: {
       libraryOpen: asBoolean(layout['libraryOpen'], DEFAULT_LAYOUT.libraryOpen),
       previewOpen: asBoolean(layout['previewOpen'], DEFAULT_LAYOUT.previewOpen),

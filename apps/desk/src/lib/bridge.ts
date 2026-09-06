@@ -79,6 +79,17 @@ export function deleteDoc(vault: VaultPath, path: DocPath): Promise<void> {
   return invoke<void>('delete_doc', {vault, path});
 }
 
+/**
+ * Writes a copy of a document wherever the writer pointed the save dialog.
+ *
+ * The only absolute path in this file, and the only write outside the vault:
+ * `path` is what the OS dialog returned, so no vault root is involved and
+ * `src-tauri/src/export.rs` refuses anything that did not come from one.
+ */
+export function exportDoc(path: string, source: string): Promise<void> {
+  return invoke<void>('export_doc', {path, source});
+}
+
 /** What `src-tauri/src/data.rs` reports about the vault's database. */
 export type VaultDbStatus =
   {kind: 'ready'; schemaVersion: number} | {kind: 'unavailable'; message: string};

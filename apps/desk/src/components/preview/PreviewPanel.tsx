@@ -1,7 +1,6 @@
 import {useMemo} from 'react';
-import Markdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import {parseDoc} from '@inkling/vault';
+import {DocMarkdown} from './DocMarkdown.tsx';
 
 type PreviewPanelProps = {
   /** The raw editor buffer, frontmatter block included. */
@@ -43,7 +42,7 @@ export function PreviewPanel({source}: PreviewPanelProps) {
 
       <div className="selectable flex-1 overflow-y-auto px-8 py-8">
         <article className="prose prose-invert prose-stone mx-auto max-w-[62ch] font-[family-name:var(--font-prose)] prose-headings:font-[family-name:var(--font-prose)] prose-a:text-accent prose-code:font-[family-name:var(--font-mono)]">
-          <Markdown remarkPlugins={[remarkGfm]}>{body}</Markdown>
+          <DocMarkdown body={body} />
         </article>
       </div>
     </section>
