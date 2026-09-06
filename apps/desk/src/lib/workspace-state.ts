@@ -1,4 +1,5 @@
 import {match} from 'ts-pattern';
+import {summarize} from '@inkling/vault';
 import type {DocPath, DocSummary, GroupPath, VaultPath} from '@inkling/vault';
 
 /**
@@ -67,7 +68,7 @@ export type WorkspaceAction =
   | {type: 'docClosed'}
   | {type: 'draftEdited'; path: DocPath; draft: string}
   | {type: 'saveStarted'; path: DocPath}
-  | {type: 'saveSucceeded'; path: DocPath; source: string}
+  | {type: 'saveSucceeded'; path: DocPath; source: string; updatedAt: string}
   | {type: 'saveFailed'; path: DocPath; message: string}
   | {type: 'loadingStarted'}
   | {type: 'failed'; message: string}
@@ -125,6 +126,31 @@ function updateOpen(
   return {...state, open: change(state.open)};
 }
 
+/**
+ * Re-derives one document's summary from what was just written to it.
+ *
+ * A no-op for a path the vault has not listed: a document created and saved
+ * before the next scan is added by that scan, and inventing a row here would
+ * race it.
+ */
+function resummarize(
+  state: WorkspaceState,
+  path: DocPath,
+  source: string,
+  updatedAt: string,
+): WorkspaceState {
+  if (!state.sources.has(path)) return state;
+  const next = summarize(path, source, updatedAt);
+  const docs = sortDocs(
+    state.docs.map(function (doc) {
+      return doc.path === path ? next : doc;
+    }),
+  );
+  const sources = new Map(state.sources);
+  sources.set(path, source);
+  return {...state, docs, sources};
+}
+
 export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState {
   return match<WorkspaceAction, WorkspaceState>(action)
     .with({type: 'vaultChosen'}, function ({vault}) {
@@ -178,8 +204,13 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
         return {...open, save: {kind: 'saving'}};
       });
     })
-    .with({type: 'saveSucceeded'}, function ({path, source}) {
-      return updateOpen(state, path, function (open) {
+    .with({type: 'saveSucceeded'}, function ({path, source, updatedAt}) {
+      // Everything the list shows about a document is derived from its text, so
+      // a write has to re-derive it. Without this the title, the word count and
+      // the tags all come from the last full scan, and editing the frontmatter
+      // title changed the file and nothing else until something rescanned.
+      const settled = resummarize(state, path, source, updatedAt);
+      return updateOpen(settled, path, function (open) {
         // The draft may have moved on while the write was in flight, so the
         // saved marker advances to what was written and dirtiness re-derives.
         const save: SaveState = open.draft === source ? {kind: 'clean'} : {kind: 'dirty'};
