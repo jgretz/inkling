@@ -566,7 +566,11 @@ export function ChatPanel({
             rows={2}
             placeholder="Message the agent"
             aria-label="Message the agent"
-            className="selectable max-h-40 flex-1 resize-none bg-transparent text-[13px] leading-relaxed text-ink-100 placeholder:text-ink-600 focus:outline-none"
+            // Vertical only, and no ceiling: the width is the panel's own
+            // splitter, and a writer briefing an agent on a piece writes
+            // paragraphs, which `max-h-40` turned into a four-line porthole
+            // with the top of their own message scrolled out of sight.
+            className="selectable min-h-16 flex-1 resize-y bg-transparent text-[13px] leading-relaxed text-ink-100 placeholder:text-ink-600 focus:outline-none"
           />
           <button
             type="button"
