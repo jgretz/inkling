@@ -24,8 +24,9 @@ collapsible library sits left of the preview.
    markdown, outside this repository, which inkling reads and writes in place.
    Never assume git is involved at that end. Everything inkling stores that is
    not the writer's prose lives under `.inkling/` in the vault and must be
-   regenerable or discardable, with one exception: a kept revision is prose, so
-   discarding `.inkling/` discards it.
+   regenerable or discardable. A kept revision is the exception the writer is
+   offered back: prose the vault holds nowhere else, so discarding `.inkling/`
+   discards it for good.
 2. **The writer always knows what the agent can see.** Every byte in a turn's
    context is named in the context strip before it is sent. No hidden retrieval.
 3. **Pure logic in `packages/*`, effects in `apps/*`.** The reducer, the parser

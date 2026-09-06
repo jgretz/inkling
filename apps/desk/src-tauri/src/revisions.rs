@@ -6,10 +6,12 @@
 //! turn and covers what the agent was looking at, while a revision covers what
 //! the writer thought was worth coming back to.
 //!
-//! It is also the one thing in this database that cannot be reconstructed. A
-//! dismissal, a reference or a conversation describes prose that is still in the
-//! vault; a revision *is* prose, and the file it came from has since been
-//! rewritten. `docs/model.md` names it as the exception to everything under
+//! It is also the row in this database the writer is offered back. A dismissal
+//! or a reference describes prose that is still in the vault; a revision *is*
+//! prose, and the file it came from has since been rewritten. `turn.snapshot`
+//! next door holds a whole document too, but nothing reads it and nothing hands
+//! it to anyone, so a revision is the first thing here a writer is invited to
+//! rely on. `docs/model.md` names it as the exception to everything under
 //! `.inkling/` being regenerable, so deleting that directory now costs the
 //! writer something.
 //!

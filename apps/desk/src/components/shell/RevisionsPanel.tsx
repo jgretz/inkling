@@ -7,7 +7,12 @@ type RevisionsPanelProps = {
   revisions: readonly RevisionSummary[];
   /** The open document, named so the panel says what these are revisions of. */
   docPath: string;
-  /** Fetches one revision's text. The list carries none of it. */
+  /**
+   * Fetches one revision's text. The list carries none of it.
+   *
+   * Resolves to undefined rather than rejecting when the read failed, so the
+   * panel has one shape to render for "not read yet" and "could not be read".
+   */
   onRead: (id: number) => Promise<Revision | undefined>;
   /** Writes the shown revision over the live document. The caller confirms first. */
   onRestore: (source: string) => void;
@@ -32,7 +37,9 @@ function absoluteTime(iso: string): string {
  * and closed again, and the three panels are what the writer works in. There is
  * no modal precedent in the app, so the interaction rules are `DocMenu`'s:
  * listeners exist only while it is open, Escape closes, and a click outside
- * closes.
+ * closes. Focus moves in on open and back to whatever had it on close, because
+ * `aria-modal` tells a screen reader the rest of the window is out of play and
+ * leaving the caret behind it would make that a lie.
  *
  * Restoring is the caller's to confirm. This panel knows which revision is on
  * screen; only `App.tsx` knows that the draft about to be overwritten may hold
@@ -47,7 +54,19 @@ export function RevisionsPanel({
 }: RevisionsPanelProps) {
   const [selectedId, setSelectedId] = useState<number | undefined>(undefined);
   const [shown, setShown] = useState<Revision | undefined>(undefined);
+  const [shownFor, setShownFor] = useState(docPath);
   const root = useRef<HTMLDivElement>(null);
+
+  // A revision picked in one document must not stay on screen, or stay
+  // restorable, once the panel is showing another document's revisions: putting
+  // it back would write one document's prose into a different file. Cleared
+  // during the render that changes `docPath` rather than in an effect after it,
+  // so the old prose is never painted under the new document's name.
+  if (docPath !== shownFor) {
+    setShownFor(docPath);
+    setSelectedId(undefined);
+    setShown(undefined);
+  }
 
   useEffect(
     function () {
@@ -68,6 +87,21 @@ export function RevisionsPanel({
     },
     [onClose],
   );
+
+  useEffect(function () {
+    // Whoever opened this gets the caret back when it goes, rather than being
+    // dropped at the top of the window with nothing focused.
+    const opener = document.activeElement;
+    root.current?.focus();
+    return function () {
+      // Only when the caret would otherwise be left nowhere. A click that landed
+      // elsewhere in the window is what closed this, and it already holds the
+      // focus; taking it back would fight the writer over where they just went.
+      const after = document.activeElement;
+      if (after !== null && after !== document.body) return;
+      if (opener instanceof HTMLElement) opener.focus();
+    };
+  }, []);
 
   useEffect(
     function () {
@@ -102,7 +136,8 @@ export function RevisionsPanel({
         role="dialog"
         aria-modal="true"
         aria-label={`Revisions of ${docPath}`}
-        className="flex h-full max-h-[34rem] w-full max-w-3xl overflow-hidden rounded-lg border border-ink-800 bg-ink-900 shadow-lg"
+        tabIndex={-1}
+        className="flex h-full max-h-[34rem] w-full max-w-3xl overflow-hidden rounded-lg border border-ink-800 bg-ink-900 shadow-lg focus:outline-none"
       >
         <div className="flex w-56 shrink-0 flex-col border-r border-ink-800">
           <h2 className="px-3 py-3 text-[11px] font-medium uppercase tracking-wider text-ink-400">

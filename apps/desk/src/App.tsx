@@ -581,6 +581,16 @@ export function App() {
     setRevisionsOpen(false);
   }, []);
 
+  // A panel about one document is nothing once no document is open. Without
+  // this the flag survives the close, and opening the next document brings the
+  // panel back up on its own, having been asked for on a document that is gone.
+  useEffect(
+    function () {
+      if (openPath === undefined) setRevisionsOpen(false);
+    },
+    [openPath],
+  );
+
   /**
    * A kept revision, written back over the live document.
    *

@@ -46,23 +46,45 @@ function noop() {}
 
 function panel({revisions = [NEWER, OLDER], onRestore = noop, onClose = noop}: PanelProps = {}) {
   const asked: number[] = [];
-  const view = render(
-    <RevisionsPanel
-      revisions={revisions.map(summary)}
-      docPath={DOC}
-      onRead={function (id: number) {
-        asked.push(id);
-        return Promise.resolve(
-          revisions.find(function (entry) {
-            return entry.id === id;
-          }),
-        );
-      }}
-      onRestore={onRestore}
-      onClose={onClose}
-    />,
-  );
-  return {view, asked};
+
+  /**
+   * Every revision this panel has ever been handed, whichever document it
+   * belongs to, so `onRead` keeps one identity across a rerender and still
+   * resolves. An `onRead` rebuilt per render would re-run the read effect on its
+   * own, which would clear the shown source for a reason the panel is not
+   * responsible for and make the document-change cases pass without the panel
+   * doing anything.
+   */
+  const known = new Map<number, Revision>();
+
+  function onRead(id: number) {
+    asked.push(id);
+    return Promise.resolve(known.get(id));
+  }
+
+  function element(docPath: string, rows: readonly Revision[]) {
+    rows.forEach(function (row) {
+      known.set(row.id, row);
+    });
+    return (
+      <RevisionsPanel
+        revisions={rows.map(summary)}
+        docPath={docPath}
+        onRead={onRead}
+        onRestore={onRestore}
+        onClose={onClose}
+      />
+    );
+  }
+
+  const view = render(element(DOC, revisions));
+
+  /** The writer opens another document while the panel is still up. */
+  function showAnotherDoc(docPath: string, rows: readonly Revision[]) {
+    view.rerender(element(docPath, rows));
+  }
+
+  return {view, asked, showAnotherDoc};
 }
 
 /** The revision buttons, in the order they are on screen. */
@@ -144,6 +166,78 @@ describe('RevisionsPanel', function () {
     fireEvent.click(view.getByText('Restore'));
 
     expect(restored).toEqual([]);
+  });
+
+  // The panel outlives a document change. Leaving the old document's prose on
+  // screen under the new one's name would put a Restore one click away from
+  // writing one document's text into a different file.
+  it('should drop the revision on screen when another document is opened', async function () {
+    const {view, showAnotherDoc} = panel();
+    fireEvent.click(items(view)[0] as HTMLButtonElement);
+    await waitFor(function () {
+      expect(shownSource(view)).toBe(NEWER.source);
+    });
+
+    showAnotherDoc('drafts/b.md', []);
+
+    expect(shownSource(view)).toBeUndefined();
+    expect(view.getByRole('dialog').getAttribute('aria-label')).toBe('Revisions of drafts/b.md');
+  });
+
+  it('should refuse to restore a revision left over from another document', async function () {
+    const restored: string[] = [];
+    const {view, showAnotherDoc} = panel({
+      onRestore(source) {
+        restored.push(source);
+      },
+    });
+    fireEvent.click(items(view)[0] as HTMLButtonElement);
+    await waitFor(function () {
+      expect(shownSource(view)).toBe(NEWER.source);
+    });
+
+    showAnotherDoc('drafts/b.md', []);
+    fireEvent.click(view.getByText('Restore'));
+
+    expect(restored).toEqual([]);
+  });
+
+  /** A button standing in for whatever had the caret before the panel opened. */
+  function elsewhere() {
+    const button = document.createElement('button');
+    document.body.append(button);
+    return button;
+  }
+
+  // `aria-modal` says the rest of the window is out of play, so the caret has to
+  // be in here, and has to go back where it was when the panel closes.
+  it('should take the focus while it is up and hand it back when it goes', function () {
+    const opener = elsewhere();
+    opener.focus();
+
+    const {view} = panel();
+    expect(document.activeElement).toBe(view.getByRole('dialog'));
+
+    view.unmount();
+
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
+  });
+
+  // Closing by clicking somewhere else means the writer has already said where
+  // they want to be. Pulling the caret back to the menu would undo that.
+  it('should leave the focus alone when something else already took it', function () {
+    const opener = elsewhere();
+    opener.focus();
+    const {view} = panel();
+    const clicked = elsewhere();
+
+    clicked.focus();
+    view.unmount();
+
+    expect(document.activeElement).toBe(clicked);
+    opener.remove();
+    clicked.remove();
   });
 
   it('should say so rather than show an empty box when there are no revisions', function () {

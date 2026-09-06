@@ -34,11 +34,12 @@ editable anywhere.
 `.inkling/inkling.db` plus whatever flat files earn a place beside it.
 Conversation transcripts, reference metadata, voice findings and their
 suppressions, kept revisions, and the caches behind search and the document
-list. All of it is regenerable or discardable except the revisions, which are
-the one thing there that is prose rather than a description of prose: the
-document they came from has since been rewritten, so deleting the directory
-deletes them and nothing can rebuild them. Everything else is safe to exclude
-from a writer's own version control on that basis.
+list. Most of it is regenerable or discardable, which is what makes it safe to
+exclude from a writer's own version control. Kept revisions are the exception,
+and the reason that is now a qualified claim: a revision is a version of a
+document that has since been rewritten, so nothing can rebuild it, and unlike
+the transcripts beside it the app offers it back as something to rely on.
+Deleting `.inkling/` deletes them.
 
 The database is file-based deliberately. No server, no daemon, openable with any
 SQLite tool.

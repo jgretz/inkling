@@ -175,7 +175,7 @@ with the frontmatter kept or stripped by choice, and the same document rendered
 to HTML and written to the clipboard beside the plain text, so a draft pastes
 into Apple Mail as formatted text. See "In flight".
 
-**6.3 Revisions.** Landed as run `27e06742`. One menu item keeps the open
+**6.3 Revisions.** One menu item keeps the open
 document as its next revision, a row in `.inkling/inkling.db` holding the whole
 source; a panel lists a document's revisions newest first, shows one, and writes
 it back over the live document behind a confirmation. Manual, never automatic:
