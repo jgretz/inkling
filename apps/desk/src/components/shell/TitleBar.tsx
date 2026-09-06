@@ -1,7 +1,6 @@
 import {memo} from 'react';
 import type {ReactNode} from 'react';
 import BookOpen from 'lucide-react/dist/esm/icons/book-open';
-import Columns from 'lucide-react/dist/esm/icons/columns-2';
 import Library from 'lucide-react/dist/esm/icons/library';
 import MessageSquare from 'lucide-react/dist/esm/icons/message-square';
 import PenLine from 'lucide-react/dist/esm/icons/pen-line';
@@ -192,8 +191,6 @@ export function TitleBar({
         >
           <SpellCheck size={15} />
         </Toggle>
-        <span className="mx-1 h-4 w-px bg-ink-800" />
-        <Columns size={15} className="text-ink-600" aria-hidden />
       </div>
     </header>
   );

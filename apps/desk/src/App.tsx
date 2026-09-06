@@ -703,7 +703,11 @@ export function App() {
   const mode = deriveMode(lastFocus, layout.turnPin);
 
   return (
-    <div className="flex h-full flex-col">
+    // `overflow-hidden` is a guard, not a layout choice. `scrollIntoView` scrolls
+    // an ancestor even when that ancestor is `overflow: hidden` on the body, so
+    // anything inside that outgrows its panel could drag the whole window
+    // sideways and leave the title and the library cut off at the edges.
+    <div className="flex h-full flex-col overflow-hidden">
       <TitleBar
         title={title}
         subtitle={vaultName(vault)}

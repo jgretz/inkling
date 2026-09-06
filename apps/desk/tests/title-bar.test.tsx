@@ -156,3 +156,28 @@ describe('the save state', function () {
     ).toBe(true);
   });
 });
+
+describe('the control group', function () {
+  it('should give every control a hover, and hold nothing that is not one', function () {
+    // A decorative icon sat here looking exactly like a button, with nothing to
+    // hover and nothing to click.
+    const {container} = bar();
+    const controls = [...container.querySelectorAll('button')];
+
+    expect(controls.length).toBeGreaterThan(0);
+    expect(
+      controls.every(function (control) {
+        return control.title.length > 0;
+      }),
+    ).toBe(true);
+  });
+
+  it('should render no icon that is not inside a control', function () {
+    const {container} = bar();
+    const loose = [...container.querySelectorAll('svg')].filter(function (icon) {
+      return icon.closest('button') === null;
+    });
+
+    expect(loose).toEqual([]);
+  });
+});

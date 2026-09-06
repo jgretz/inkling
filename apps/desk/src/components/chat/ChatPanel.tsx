@@ -99,7 +99,7 @@ function Bubble({message}: {message: Message}) {
   return (
     <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`selectable max-w-[85%] whitespace-pre-wrap rounded-xl px-3 py-2 text-[13px] leading-relaxed ${
+        className={`selectable max-w-[85%] whitespace-pre-wrap [overflow-wrap:anywhere] rounded-xl px-3 py-2 text-[13px] leading-relaxed ${
           mine ? 'bg-ink-700 text-ink-50' : 'bg-ink-850 text-ink-200'
         }`}
       >
@@ -144,12 +144,16 @@ const Proposal = memo(function Proposal({id, edit, onAccept, onReject}: Proposal
   return (
     <div className="max-w-[85%] space-y-1.5 rounded-xl border border-ink-800 bg-ink-900 p-2.5 text-[12px] leading-relaxed">
       <p className="text-[10px] font-medium uppercase tracking-wider text-ink-500">Replace</p>
-      <p className="selectable whitespace-pre-wrap text-ink-400 line-through">{edit.quote}</p>
+      <p className="selectable whitespace-pre-wrap [overflow-wrap:anywhere] text-ink-400 line-through">
+        {edit.quote}
+      </p>
       <p className="text-[10px] font-medium uppercase tracking-wider text-ink-500">With</p>
       {edit.replacement.length === 0 ? (
         <p className="italic text-ink-500">Nothing. The passage would be cut.</p>
       ) : (
-        <p className="selectable whitespace-pre-wrap text-ink-100">{edit.replacement}</p>
+        <p className="selectable whitespace-pre-wrap [overflow-wrap:anywhere] text-ink-100">
+          {edit.replacement}
+        </p>
       )}
       <div className="flex gap-1.5 pt-0.5">
         <button
@@ -244,7 +248,9 @@ const Reference = memo(function Reference({pointer, role, onPoint}: ReferencePro
         <span className="block text-[10px] font-medium uppercase tracking-wider text-ink-500">
           {mine ? 'Selected' : 'Pointed at'}
         </span>
-        <span className="line-clamp-3 whitespace-pre-wrap">{pointer.quote}</span>
+        <span className="line-clamp-3 whitespace-pre-wrap [overflow-wrap:anywhere]">
+          {pointer.quote}
+        </span>
       </button>
     </div>
   );
