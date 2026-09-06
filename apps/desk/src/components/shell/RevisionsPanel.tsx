@@ -31,15 +31,27 @@ function absoluteTime(iso: string): string {
 }
 
 /**
+ * Everything inside the dialog a Tab can land on, in document order.
+ *
+ * `disabled` is excluded because Restore is disabled until a revision is on
+ * screen, and a trap that wrapped onto it would strand the caret on a control
+ * that does nothing.
+ */
+function focusable(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>('button:not([disabled])'));
+}
+
+/**
  * Reading a kept revision back, and putting one over the live document.
  *
  * An overlay rather than a fourth panel: this is opened to answer one question
  * and closed again, and the three panels are what the writer works in. There is
  * no modal precedent in the app, so the interaction rules are `DocMenu`'s:
  * listeners exist only while it is open, Escape closes, and a click outside
- * closes. Focus moves in on open and back to whatever had it on close, because
- * `aria-modal` tells a screen reader the rest of the window is out of play and
- * leaving the caret behind it would make that a lie.
+ * closes. Focus moves in on open, wraps within the dialog on Tab, and goes back
+ * to whatever had it on close: `aria-modal` tells a screen reader the rest of
+ * the window is out of play, and a caret that could walk out into it would make
+ * that a lie.
  *
  * Restoring is the caller's to confirm. This panel knows which revision is on
  * screen; only `App.tsx` knows that the draft about to be overwritten may hold
@@ -76,7 +88,29 @@ export function RevisionsPanel({
         onClose();
       }
       function handleKey(event: KeyboardEvent) {
-        if (event.key === 'Escape') onClose();
+        if (event.key === 'Escape') {
+          onClose();
+          return;
+        }
+        if (event.key !== 'Tab') return;
+        // Wrapped rather than left to the browser: the three panels behind this
+        // are still in the tab order, and `aria-modal` has already told a screen
+        // reader they are not there to be reached.
+        const stops = root.current === null ? [] : focusable(root.current);
+        const first = stops[0];
+        const last = stops[stops.length - 1];
+        if (first === undefined || last === undefined) return;
+
+        const at = stops.findIndex(function (stop) {
+          return stop === document.activeElement;
+        });
+        const leaving = event.shiftKey ? at === 0 : at === stops.length - 1;
+        // Off the list entirely means the caret is on the dialog itself, which
+        // is where it starts, so Tab enters rather than wraps.
+        if (at !== -1 && !leaving) return;
+
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
       }
       document.addEventListener('mousedown', handleDown);
       document.addEventListener('keydown', handleKey);

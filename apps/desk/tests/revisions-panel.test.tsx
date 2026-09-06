@@ -240,6 +240,63 @@ describe('RevisionsPanel', function () {
     clicked.remove();
   });
 
+  /**
+   * One control the caret can reach inside the dialog, counted from the front or,
+   * with a negative index, from the back. Throws rather than returning undefined,
+   * so a dialog that stopped rendering its controls fails here by name.
+   */
+  function stop(view: ReturnType<typeof render>, index: number): HTMLElement {
+    const controls = Array.from(
+      view.getByRole('dialog').querySelectorAll<HTMLElement>('button:not([disabled])'),
+    );
+    const found = controls[index < 0 ? controls.length + index : index];
+    if (found === undefined) throw new Error(`the dialog has no reachable control at ${index}`);
+    return found;
+  }
+
+  // The three panels behind this are still in the tab order, so without the wrap
+  // the caret walks out of a dialog that told a screen reader it was modal.
+  it('should send Tab from the last control back to the first', function () {
+    const {view} = panel();
+    stop(view, -1).focus();
+
+    fireEvent.keyDown(document, {key: 'Tab'});
+
+    expect(document.activeElement).toBe(stop(view, 0));
+  });
+
+  it('should send Shift+Tab from the first control back to the last', function () {
+    const {view} = panel();
+    stop(view, 0).focus();
+
+    fireEvent.keyDown(document, {key: 'Tab', shiftKey: true});
+
+    expect(document.activeElement).toBe(stop(view, -1));
+  });
+
+  // The caret starts on the dialog itself, which is not a stop, so the first Tab
+  // has to enter the list rather than wrap past it.
+  it('should send the first Tab into the dialog rather than out of it', function () {
+    const {view} = panel();
+
+    fireEvent.keyDown(document, {key: 'Tab'});
+
+    expect(document.activeElement).toBe(stop(view, 0));
+  });
+
+  // A Tab in the middle of the list is the browser's to handle, and jsdom does
+  // not move focus for it. A trap that wrapped here rather than only at the edge
+  // would pull the caret back to the top of the list on every Tab.
+  it('should leave a Tab between two controls to the browser', function () {
+    const {view} = panel();
+    const middle = stop(view, 1);
+    middle.focus();
+
+    fireEvent.keyDown(document, {key: 'Tab'});
+
+    expect(document.activeElement).toBe(middle);
+  });
+
   it('should say so rather than show an empty box when there are no revisions', function () {
     const {view} = panel({revisions: []});
 
