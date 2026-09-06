@@ -36,6 +36,7 @@ import {
   exportSource,
   type FrontmatterChoice,
 } from './lib/export.ts';
+import {linkPasteSummary} from './lib/link-paste.ts';
 import {resolvePointer, type Pointer} from './lib/pointer.ts';
 import {assembleReferences} from './lib/references.ts';
 import {applyEdit, type Edit} from './lib/reply.ts';
@@ -43,7 +44,7 @@ import {docToHtml} from './lib/rich-text.tsx';
 import {cyclePin, deriveMode, indicatorFor, type FocusRegion} from './lib/turn.ts';
 import {useConversations} from './lib/use-conversations.ts';
 import {useFindings} from './lib/use-findings.ts';
-import {useReferences} from './lib/use-references.ts';
+import {useReferences, type BulkAttachRequest} from './lib/use-references.ts';
 import {useRevisions} from './lib/use-revisions.ts';
 import {useSuppressions} from './lib/use-suppressions.ts';
 import {useWorkspace} from './lib/use-workspace.ts';
@@ -322,6 +323,39 @@ export function App() {
     ],
   );
 
+  const {attachMany} = references;
+
+  /**
+   * A whole paste of links, attached and then said out loud.
+   *
+   * The confirmation is the point as much as the write is: the writer cannot
+   * see which of a dozen links were already attached, so silent partial success
+   * is what makes them paste the set a second time. Both counts go through the
+   * status bar's `info` channel, beside `Exported to ...`.
+   *
+   * The promise is returned rather than swallowed, because the field clears
+   * only on a resolve and a refused paste must stay where it can be retried.
+   */
+  const handleAttachMany = useCallback(
+    function (request: BulkAttachRequest) {
+      return attachMany(request).then(
+        function (counts) {
+          setOutputError(undefined);
+          showFlash(linkPasteSummary({...counts, ignored: request.ignoredLines}));
+          return counts;
+        },
+        function (error: unknown) {
+          console.warn('inkling: could not attach a paste of links', error);
+          setOutputError(
+            `could not attach those links: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          throw error;
+        },
+      );
+    },
+    [attachMany, showFlash],
+  );
+
   const referenceControls: ReferenceControls = useMemo(
     function () {
       return {
@@ -331,6 +365,7 @@ export function App() {
         // strip shows no controls at all rather than ones that fail silently.
         canAttach: dataReady && openPath !== undefined,
         onAttach: references.attach,
+        onAttachMany: handleAttachMany,
         onDetach: references.detach,
         onSuppress: references.suppress,
         onRestore: references.restore,
@@ -341,6 +376,7 @@ export function App() {
       openPath,
       dataReady,
       references.attach,
+      handleAttachMany,
       references.detach,
       references.suppress,
       references.restore,

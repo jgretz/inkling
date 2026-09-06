@@ -1,11 +1,13 @@
 import {useCallback, useState} from 'react';
+import ClipboardList from 'lucide-react/dist/esm/icons/clipboard-list';
 import Plus from 'lucide-react/dist/esm/icons/plus';
 import RotateCcw from 'lucide-react/dist/esm/icons/rotate-ccw';
 import X from 'lucide-react/dist/esm/icons/x';
 import {groupName, type DocSummary, type GroupPath} from '@inkling/vault';
 import {contextTokens, estimateTokens, type AgentContext} from '../../lib/agent.ts';
 import type {ContextReference} from '../../lib/references.ts';
-import type {AttachRequest} from '../../lib/use-references.ts';
+import type {AttachRequest, BulkAttachRequest} from '../../lib/use-references.ts';
+import {LinkPasteField} from './LinkPasteField.tsx';
 import {ReferencePicker} from './ReferencePicker.tsx';
 
 /** Everything the strip needs to change what the next turn will carry. */
@@ -17,6 +19,8 @@ export type ReferenceControls = {
   /** False when there is no vault database, which is where a reference lives. */
   canAttach: boolean;
   onAttach: (request: AttachRequest) => void;
+  /** A whole paste at once. Resolves when the write landed, so the field can clear. */
+  onAttachMany: (request: BulkAttachRequest) => Promise<unknown>;
   /** Deletes a reference the open document owns. */
   onDetach: (entry: ContextReference) => void;
   /** Turns an inherited reference off for the open document only. */
@@ -28,6 +32,9 @@ type ContextStripProps = {
   context: AgentContext;
   references: ReferenceControls;
 };
+
+/** Which way of attaching the writer opened. Neither is a mode; both close on cancel. */
+type Gesture = 'reference' | 'paste';
 
 /** One word on why a chip carries nothing, when it carries nothing. */
 type ChipState = 'missing' | 'off';
@@ -132,22 +139,26 @@ function actionFor(
  * document turned off, which stays visible at zero rather than disappearing.
  */
 export function ContextStrip({context, references}: ContextStripProps) {
-  const [picking, setPicking] = useState(false);
+  /** Which gesture is open, if either. Two buttons, one form at a time. */
+  const [open, setOpen] = useState<Gesture | undefined>(undefined);
   const total = contextTokens(context);
   const empty =
     context.doc === undefined && context.selection === undefined && context.references.length === 0;
 
   const openPicker = useCallback(function () {
-    setPicking(true);
+    setOpen('reference');
   }, []);
-  const closePicker = useCallback(function () {
-    setPicking(false);
+  const openPaste = useCallback(function () {
+    setOpen('paste');
+  }, []);
+  const close = useCallback(function () {
+    setOpen(undefined);
   }, []);
 
   const handleAttach = useCallback(
     function (request: AttachRequest) {
       references.onAttach(request);
-      setPicking(false);
+      setOpen(undefined);
     },
     [references],
   );
@@ -160,25 +171,45 @@ export function ContextStrip({context, references}: ContextStripProps) {
           <span className="text-[10px] tabular-nums text-ink-600">
             ~{total.toLocaleString()} tokens
           </span>
-          {references.canAttach && !picking && (
-            <button
-              type="button"
-              onClick={openPicker}
-              aria-label="Attach a reference"
-              className="rounded p-0.5 text-ink-600 transition-colors duration-100 hover:bg-ink-800 hover:text-ink-200"
-            >
-              <Plus size={12} aria-hidden />
-            </button>
+          {references.canAttach && open === undefined && (
+            <>
+              <button
+                type="button"
+                onClick={openPicker}
+                aria-label="Attach a reference"
+                className="rounded p-0.5 text-ink-600 transition-colors duration-100 hover:bg-ink-800 hover:text-ink-200"
+              >
+                <Plus size={12} aria-hidden />
+              </button>
+              <button
+                type="button"
+                onClick={openPaste}
+                aria-label="Paste a set of links"
+                className="rounded p-0.5 text-ink-600 transition-colors duration-100 hover:bg-ink-800 hover:text-ink-200"
+              >
+                <ClipboardList size={12} aria-hidden />
+              </button>
+            </>
           )}
         </div>
       </div>
 
-      {picking && (
+      {open === 'reference' && (
         <ReferencePicker
           docs={references.docs}
           group={references.group}
           onSubmit={handleAttach}
-          onCancel={closePicker}
+          onCancel={close}
+        />
+      )}
+
+      {/* Left open after a write, unlike the picker: a paste that landed clears
+          the textarea itself, and the writer often has a second set to add. */}
+      {open === 'paste' && (
+        <LinkPasteField
+          group={references.group}
+          onSubmit={references.onAttachMany}
+          onCancel={close}
         />
       )}
 

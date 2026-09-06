@@ -15,7 +15,7 @@
 //! pure TypeScript in `src/lib/references.ts`.
 
 use rusqlite::Connection;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::data::VaultDb;
@@ -162,41 +162,107 @@ pub(crate) fn select_all(conn: &Connection) -> rusqlite::Result<Vec<Reference>> 
 /// `voice.rs::insert` relies on: attaching the same reference twice is
 /// idempotent and both calls return the row that holds it.
 pub(crate) fn insert(conn: &Connection, new: &NewReference<'_>) -> Result<Reference, String> {
+    insert_one(conn, new).map(|(reference, _created)| reference)
+}
+
+/// The insert above, keeping the one thing it throws away: whether this call
+/// created the row or an earlier one already had it.
+///
+/// `conn.execute` returns 1 for a row written and 0 for a conflict the index
+/// swallowed, which is what "already attached at this level" is. Nobody
+/// compares URLs anywhere; the unique index over
+/// `(owner, kind, COALESCE(target_path, url))` decides it.
+fn insert_one(conn: &Connection, new: &NewReference<'_>) -> Result<(Reference, bool), String> {
     new.validate()?;
 
     let named = |error: rusqlite::Error| format!("attaching {}: {error}", new.title);
 
-    conn.execute(
-        "INSERT INTO reference (doc_path, group_path, kind, target_path, url, title, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-         ON CONFLICT DO NOTHING",
-        rusqlite::params![
-            new.doc_path,
-            new.group_path,
-            new.kind,
-            new.target_path,
-            new.url,
-            new.title
-        ],
-    )
-    .map_err(named)?;
+    let created = conn
+        .execute(
+            "INSERT INTO reference (doc_path, group_path, kind, target_path, url, title, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+             ON CONFLICT DO NOTHING",
+            rusqlite::params![
+                new.doc_path,
+                new.group_path,
+                new.kind,
+                new.target_path,
+                new.url,
+                new.title
+            ],
+        )
+        .map_err(named)?
+        == 1;
 
     let sql = format!(
         "SELECT {COLUMNS} FROM reference
          WHERE COALESCE(doc_path, '') = ?1 AND COALESCE(group_path, '') = ?2
            AND kind = ?3 AND COALESCE(target_path, url) = ?4"
     );
-    conn.query_row(
-        &sql,
-        rusqlite::params![
-            new.doc_path.unwrap_or(""),
-            new.group_path.unwrap_or(""),
-            new.kind,
-            new.target_path.or(new.url).unwrap_or("")
-        ],
-        row,
-    )
-    .map_err(named)
+
+    let stored = conn
+        .query_row(
+            &sql,
+            rusqlite::params![
+                new.doc_path.unwrap_or(""),
+                new.group_path.unwrap_or(""),
+                new.kind,
+                new.target_path.or(new.url).unwrap_or("")
+            ],
+            row,
+        )
+        .map_err(named)?;
+
+    Ok((stored, created))
+}
+
+/// What a batch of attachments did, split by whether it wrote anything.
+///
+/// Both halves are whole rows rather than counts: the frontend folds them into
+/// the state the strip renders, and a reference already there still belongs on
+/// screen. The serialised shape is a contract with `BulkAttachment` in
+/// `src/lib/bridge.ts`, pinned by `a_bulk_attachment_serialises_to_the_shape_the_frontend_reads`.
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachedReferences {
+    pub attached: Vec<Reference>,
+    pub skipped: Vec<Reference>,
+}
+
+/// A whole paste of references, written in one transaction.
+///
+/// Validated in full before the transaction opens, so a batch with one bad
+/// entry writes nothing at all rather than half of a paste the writer would
+/// then have to reconcile by hand. An empty list is not a mistake: a paste with
+/// no link in it is a thing that happens, and it reports two empty lists.
+pub(crate) fn insert_many(
+    conn: &Connection,
+    news: &[NewReference<'_>],
+) -> Result<AttachedReferences, String> {
+    for new in news {
+        new.validate()?;
+    }
+
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|error| format!("attaching {} references: {error}", news.len()))?;
+
+    let mut result = AttachedReferences {
+        attached: Vec::new(),
+        skipped: Vec::new(),
+    };
+    for new in news {
+        let (stored, created) = insert_one(&tx, new)?;
+        if created {
+            result.attached.push(stored);
+        } else {
+            result.skipped.push(stored);
+        }
+    }
+
+    tx.commit()
+        .map_err(|error| format!("attaching {} references: {error}", news.len()))?;
+    Ok(result)
 }
 
 pub(crate) fn delete(conn: &Connection, id: i64) -> rusqlite::Result<usize> {
@@ -298,6 +364,45 @@ pub fn add_reference(
         .ok_or_else(|| NO_CONNECTION.to_string())?
 }
 
+/// One link out of a paste, as the frontend sends it.
+///
+/// Links only, because a bulk paste is always links: a paste of vault paths is
+/// a different gesture and nothing asks for it. The kind is therefore not on
+/// the wire, it is set below.
+#[derive(Debug, Deserialize)]
+pub struct NewLink {
+    pub url: String,
+    pub title: String,
+}
+
+/// A whole paste of links, attached to one owner in one write.
+///
+/// One owner for the batch rather than one per link: the level is a single
+/// choice on the field the writer pasted into, the same choice the picker
+/// offers for one link.
+#[tauri::command]
+pub fn add_links(
+    doc_path: Option<String>,
+    group_path: Option<String>,
+    links: Vec<NewLink>,
+    db: State<'_, VaultDb>,
+) -> Result<AttachedReferences, String> {
+    let news: Vec<NewReference<'_>> = links
+        .iter()
+        .map(|link| NewReference {
+            doc_path: doc_path.as_deref(),
+            group_path: group_path.as_deref(),
+            kind: "link",
+            target_path: None,
+            url: Some(&link.url),
+            title: &link.title,
+        })
+        .collect();
+
+    db.with(|conn| insert_many(conn, &news))
+        .ok_or_else(|| NO_CONNECTION.to_string())?
+}
+
 /// Removing a reference sweeps the suppressions filed against it, through the
 /// cascade the table declares. The note's markdown file, if it had one, stays:
 /// the row is inkling's, the prose is the writer's.
@@ -339,8 +444,8 @@ pub fn remove_reference_suppression(id: i64, db: State<'_, VaultDb>) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::{
-        delete, insert, insert_suppression, select_all, select_all_suppressions, NewReference,
-        Reference,
+        delete, insert, insert_many, insert_suppression, select_all, select_all_suppressions,
+        AttachedReferences, NewReference, Reference,
     };
     use crate::data::VaultDb;
     use tempfile::tempdir;
@@ -688,6 +793,134 @@ mod tests {
         );
     }
 
+    /// One paste, one owner: what `add_links` builds before it reaches SQL.
+    fn paste<'a>(owner: &'a str, links: &'a [(&'a str, &'a str)]) -> Vec<NewReference<'a>> {
+        links
+            .iter()
+            .map(|(url, title)| NewReference {
+                doc_path: Some(owner),
+                group_path: None,
+                kind: "link",
+                target_path: None,
+                url: Some(url),
+                title,
+            })
+            .collect()
+    }
+
+    fn attach_many(db: &VaultDb, news: &[NewReference<'_>]) -> Result<AttachedReferences, String> {
+        db.with(|conn| insert_many(conn, news))
+            .expect("a vault should be open")
+    }
+
+    const PASTED: [(&str, &str); 3] = [
+        ("https://shiftmag.dev/a", "93% of Developers Use AI"),
+        ("https://kasava.dev/b", "The Agentic Platform"),
+        ("https://jeremyjenkins.me/c", "jeremyjenkins.me/c"),
+    ];
+
+    #[test]
+    fn should_attach_every_link_in_a_paste_and_skip_none() {
+        let (_vault, db) = open_vault();
+
+        let landed = attach_many(&db, &paste("drafts/a.md", &PASTED)).expect("should attach");
+
+        assert_eq!(landed.attached.len(), 3);
+        assert_eq!(landed.skipped.len(), 0);
+        assert_eq!(
+            landed.attached[0].title, "93% of Developers Use AI",
+            "the writer's own title should survive the write"
+        );
+        assert_eq!(listed(&db).len(), 3);
+    }
+
+    /// Pasting the same set again is the thing this feature has to survive: the
+    /// writer cannot tell what is already attached, so they paste the lot.
+    #[test]
+    fn should_report_every_link_skipped_when_the_same_paste_arrives_twice() {
+        let (_vault, db) = open_vault();
+        let first = attach_many(&db, &paste("drafts/a.md", &PASTED)).expect("should attach");
+
+        let second = attach_many(&db, &paste("drafts/a.md", &PASTED)).expect("should attach again");
+
+        assert_eq!(second.attached.len(), 0);
+        assert_eq!(second.skipped.len(), 3);
+        assert_eq!(
+            second
+                .skipped
+                .iter()
+                .map(|row| row.id)
+                .collect::<Vec<i64>>(),
+            first
+                .attached
+                .iter()
+                .map(|row| row.id)
+                .collect::<Vec<i64>>(),
+            "a skipped link should read back as the row that already holds it"
+        );
+        assert_eq!(listed(&db).len(), 3);
+    }
+
+    /// The unique index is over the owner too, so the same reading attached to
+    /// the group is a second row rather than a duplicate of the document's.
+    #[test]
+    fn should_attach_the_same_url_at_both_levels_rather_than_skipping_one() {
+        let (_vault, db) = open_vault();
+        let one = [("https://example.com/a", "The piece")];
+        attach_many(&db, &paste("drafts/a.md", &one)).expect("should attach");
+
+        let at_group = attach_many(
+            &db,
+            &[NewReference {
+                doc_path: None,
+                group_path: Some("drafts"),
+                kind: "link",
+                target_path: None,
+                url: Some("https://example.com/a"),
+                title: "The piece",
+            }],
+        )
+        .expect("should attach");
+
+        assert_eq!(at_group.attached.len(), 1);
+        assert_eq!(at_group.skipped.len(), 0);
+        assert_eq!(listed(&db).len(), 2);
+    }
+
+    /// Validated in full before anything is written, so a bad entry cannot
+    /// half-apply a paste and leave the writer reconciling it by hand.
+    #[test]
+    fn should_refuse_a_whole_paste_when_one_link_has_no_title() {
+        let (_vault, db) = open_vault();
+
+        let result = attach_many(
+            &db,
+            &paste(
+                "drafts/a.md",
+                &[
+                    ("https://example.com/a", "The piece"),
+                    ("https://example.com/b", "   "),
+                    ("https://example.com/c", "The other piece"),
+                ],
+            ),
+        );
+
+        assert!(result.is_err_and(|error| error.contains("needs a title")));
+        assert_eq!(listed(&db).len(), 0);
+    }
+
+    /// A paste with nothing in it is a thing that happens, not a failure.
+    #[test]
+    fn should_write_nothing_and_report_nothing_for_an_empty_paste() {
+        let (_vault, db) = open_vault();
+
+        let landed = attach_many(&db, &[]).expect("should accept an empty paste");
+
+        assert_eq!(landed.attached.len(), 0);
+        assert_eq!(landed.skipped.len(), 0);
+        assert_eq!(listed(&db).len(), 0);
+    }
+
     #[test]
     fn a_suppression_serialises_to_the_shape_the_frontend_reads() {
         let json = serde_json::to_string(&super::ReferenceSuppression {
@@ -701,6 +934,32 @@ mod tests {
         assert_eq!(
             json,
             r#"{"id":3,"docPath":"drafts/a.md","referenceId":7,"createdAt":"2026-01-01T00:00:00.000Z"}"#
+        );
+    }
+
+    /// `BulkAttachment` in `src/lib/bridge.ts` mirrors this by hand. Both keys
+    /// must cross even when a paste filled only one of them: the hook counts
+    /// the lengths, and an absent key would read as `undefined.length`.
+    #[test]
+    fn a_bulk_attachment_serialises_to_the_shape_the_frontend_reads() {
+        let json = serde_json::to_string(&AttachedReferences {
+            attached: vec![Reference {
+                id: 7,
+                doc_path: Some("drafts/a.md".to_string()),
+                group_path: None,
+                kind: "link".to_string(),
+                target_path: None,
+                url: Some("https://example.com".to_string()),
+                title: "The piece".to_string(),
+                created_at: "2026-01-01T00:00:00.000Z".to_string(),
+            }],
+            skipped: Vec::new(),
+        })
+        .expect("should serialise");
+
+        assert_eq!(
+            json,
+            r#"{"attached":[{"id":7,"docPath":"drafts/a.md","groupPath":null,"kind":"link","targetPath":null,"url":"https://example.com","title":"The piece","createdAt":"2026-01-01T00:00:00.000Z"}],"skipped":[]}"#
         );
     }
 }

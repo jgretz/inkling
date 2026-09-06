@@ -206,6 +206,41 @@ export function addReference(reference: NewReference): Promise<StoredReference> 
   });
 }
 
+/**
+ * What a whole paste of links did, as `references.rs` returns it.
+ *
+ * Rows rather than counts: a link that was already there still belongs in the
+ * strip, so both lists are folded into state. A hand-written mirror of
+ * `AttachedReferences`, pinned at the other end by
+ * `a_bulk_attachment_serialises_to_the_shape_the_frontend_reads`.
+ */
+export type BulkAttachment = {
+  /** The rows this call created. */
+  attached: StoredReference[];
+  /** The rows an earlier attachment already held, which the unique index skipped. */
+  skipped: StoredReference[];
+};
+
+/**
+ * Attaches a paste of links to one owner, in one write.
+ *
+ * One owner for the whole batch, because the level is one choice on the field
+ * the writer pasted into. A batch with one invalid entry is refused whole, so
+ * nothing here has to reconcile a half-applied paste.
+ */
+export function addLinks(
+  owner: ReferenceOwner,
+  links: readonly {url: string; title: string}[],
+): Promise<BulkAttachment> {
+  return invoke<BulkAttachment>('add_links', {
+    docPath: owner.kind === 'doc' ? owner.path : null,
+    groupPath: owner.kind === 'group' ? owner.path : null,
+    links: links.map(function (link) {
+      return {url: link.url, title: link.title};
+    }),
+  });
+}
+
 /** Removes the row. A note's markdown body, if it had one, is left alone. */
 export function removeReference(id: number): Promise<void> {
   return invoke<void>('remove_reference', {id});
