@@ -20,7 +20,7 @@ const ITEM =
 
 /**
  * Everything a writer does to the document as a whole: its two ways out, and
- * its two ways back.
+ * the two halves of a way back.
  *
  * A menu rather than five buttons in the bar, because these are the finishing
  * gestures and they are used once a piece is done, not while it is being
