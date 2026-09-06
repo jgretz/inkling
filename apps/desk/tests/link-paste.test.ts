@@ -92,6 +92,48 @@ describe('extractLinks', function () {
     expect(links).toEqual([{url: 'https://example.com/a', title: 'example.com/a', derived: true}]);
   });
 
+  /**
+   * The everyday case is Wikipedia's disambiguated titles. Cutting the address
+   * at the bracket its own title opened attaches a link that does not resolve,
+   * which is worse than ignoring the line: nothing says it went wrong.
+   */
+  it('should keep a bracket the address itself opened', function () {
+    const {links} = extractLinks('https://en.wikipedia.org/wiki/Mercury_(planet)');
+
+    expect(links[0]?.url).toBe('https://en.wikipedia.org/wiki/Mercury_(planet)');
+    expect(links[0]?.title).toBe('en.wikipedia.org/Mercury_(planet)');
+  });
+
+  it('should keep a bracket the address opened inside a markdown link', function () {
+    const {links} = extractLinks('[Mercury](https://en.wikipedia.org/wiki/Mercury_(planet))');
+
+    expect(links).toEqual([
+      {
+        url: 'https://en.wikipedia.org/wiki/Mercury_(planet)',
+        title: 'Mercury',
+        derived: false,
+      },
+    ]);
+  });
+
+  it('should leave off a bracket the sentence opened and the address did not', function () {
+    const {links} = extractLinks('The ending (see https://example.com/a) is the hard part.');
+
+    expect(links[0]?.url).toBe('https://example.com/a');
+  });
+
+  it('should take off a bracket and a full stop together', function () {
+    const {links} = extractLinks('(Worth reading: https://example.com/a.)');
+
+    expect(links[0]?.url).toBe('https://example.com/a');
+  });
+
+  it('should hand over the address of an angle-bracketed markdown link', function () {
+    const {links} = extractLinks('[The piece](<https://example.com/a>)');
+
+    expect(links[0]?.url).toBe('https://example.com/a');
+  });
+
   it('should keep a query string, which is part of the address', function () {
     const {links} = extractLinks('https://example.com/a?ref=b&utm=c');
 

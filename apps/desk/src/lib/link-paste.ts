@@ -43,12 +43,42 @@ export type LinkPasteCounts = {
  *
  * The markdown alternative is first on purpose: `[title](url)` matches as a
  * unit, so the bare-URL branch never re-reads the address inside one and emits
- * it a second time with no title.
+ * it a second time with no title. Its target takes a bracketed run whole, so a
+ * Wikipedia address is not cut off at the bracket its own title opened, and
+ * stops at `>` so the `[title](<url>)` spelling still hands over the address
+ * rather than the angle bracket after it.
+ *
+ * The bare branch matches brackets and hands the balancing to `trimEnclosing`,
+ * because at that point there is no telling a bracket in the address from the
+ * one the sentence wrapped it in.
  */
-const CANDIDATE = /\[([^\]\n]*)\]\(\s*<?(\S+?)>?\s*\)|(https?:\/\/[^\s<>()[\]]+)/g;
+const CANDIDATE =
+  /\[([^\]\n]*)\]\(\s*<?((?:[^\s()>]|\([^\s()>]*\))+)>?\s*\)|(https?:\/\/[^\s<>[\]]+)/g;
 
 /** Sentence punctuation that ends a line but is not part of the address. */
 const TRAILING = /[.,;:!?'"]+$/;
+
+/** How many times a character appears, for weighing brackets against each other. */
+function occurrences(text: string, character: string): number {
+  return text.split(character).length - 1;
+}
+
+/**
+ * The address with whatever the sentence around it left on the end taken off.
+ *
+ * Brackets are part of plenty of real addresses, Wikipedia's disambiguated
+ * titles being the everyday case, so a closing one is dropped only when the
+ * address never opened it: that bracket belongs to the prose that wrapped it.
+ * Punctuation and brackets interleave, so `(see https://example.com/a.)` needs
+ * both taken off in turn until nothing more comes away.
+ */
+function trimEnclosing(candidate: string): string {
+  const punctuated = candidate.replace(TRAILING, '');
+  const unbalanced =
+    punctuated.endsWith(')') && occurrences(punctuated, ')') > occurrences(punctuated, '(');
+  const trimmed = unbalanced ? punctuated.slice(0, -1) : punctuated;
+  return trimmed === candidate ? trimmed : trimEnclosing(trimmed);
+}
 
 /**
  * The address as `URL` spells it, or nothing at all.
@@ -58,7 +88,7 @@ const TRAILING = /[.,;:!?'"]+$/;
  * check would let `notes/a.md` through as a link.
  */
 function addressOf(candidate: string): string | undefined {
-  const trimmed = candidate.trim().replace(TRAILING, '');
+  const trimmed = trimEnclosing(candidate.trim());
   if (trimmed.length === 0) return undefined;
   try {
     const url = new URL(trimmed);
