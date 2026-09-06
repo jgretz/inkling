@@ -24,6 +24,23 @@ tests have no `document` without it.
   markup rather than behavior.
 - Tauri wiring, Vite config, the icon script.
 
+## What the suite does not catch
+
+Five bugs reached a running app past a green suite, four clean typechecks and a
+clean format check. Every one was in a class no test here can see:
+
+- **Permissions, which fail silently.** A capability that is not granted refuses
+  the call and says nothing. See `apps/desk/tests/capabilities.test.ts`.
+- **WebKit-only runtime behaviour.** See the section below.
+- **Layout under real content.** A pasted URL is one unbreakable token; it grew a
+  panel and dragged the whole window sideways.
+- **Effect ordering.** A restore effect that re-ran and undid its own first pass.
+- **Derivations that never re-run.** Everything shown about a document came only
+  from a full vault scan.
+
+Two of them were visible in one screenshot. Run the app and look at it, and
+treat a screenshot as a debugging input rather than a courtesy.
+
 ## Running the suite
 
 `bun test` from the repo root. `bunfig.toml` preloads `scripts/dom-setup.ts` so

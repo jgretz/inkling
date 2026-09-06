@@ -22,21 +22,21 @@ possible.
 
 ## In flight
 
-| Run        | Item                         | Waits on |
-| ---------- | ---------------------------- | -------- |
-| `3ab6b706` | 6a export and rich clipboard | nothing  |
+| Run        | Item                          | Waits on   |
+| ---------- | ----------------------------- | ---------- |
+| `f0f1bab8` | Deleting documents and groups | nothing    |
+| `2185b7a0` | Adding many links at once     | delete     |
+| `8564e3d9` | The agent panel as tabs       | bulk links |
 
-Phases 1 through 4 are complete and merged, and so is 6.3.
+Phases 1 through 6 are complete and merged. Phase 5, research inflow, is the
+only roadmap item left and is deliberately unqueued: by the time it starts the
+app will have been used to write something real, which will say more about what
+retrieval should do than this document can.
 
-Phase 6 runs before phase 5, which is a change from the order written here.
-Until export exists, nothing written in inkling has ever left it: the only way
-out is opening the file in Finder, so the tool that helped write a piece plays no
-part in delivering it. Research inflow is an enhancement to a loop that already
-closes. Export is the loop closing at all.
-
-Phase 5 is deliberately not queued. It is the last thing on the plan, and by the
-time it starts the app will have been used to write something real, which will
-say more about what retrieval should do than this document can.
+Everything in flight came from using the app rather than from this plan. That is
+now the more productive source of work, and it is worth reading
+`docs/testing.md` before writing another suite: the bugs an evening of use found
+were all in classes the suite is structurally blind to.
 
 ## Shared files
 
