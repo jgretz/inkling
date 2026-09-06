@@ -36,44 +36,52 @@ type ContextStripProps = {
 /** Which way of attaching the writer opened. Neither is a mode; both close on cancel. */
 type Gesture = 'reference' | 'paste';
 
-/** One word on why a chip carries nothing, when it carries nothing. */
-type ChipState = 'missing' | 'off';
+/** One word on why an entry carries nothing, when it carries nothing. */
+type EntryState = 'missing' | 'off';
 
-type ChipProps = {
+type EntryRowProps = {
   label: string;
   tokens: number;
   /** The group an inherited reference came from. */
   from?: string;
-  state?: ChipState;
+  state?: EntryState;
   action?: {label: string; kind: 'remove' | 'restore'; onClick: () => void};
 };
 
 /**
  * One thing the turn will carry, with what it costs.
  *
- * The token count is last in the chip's text on purpose: it is the number the
- * header claims to total, and a reader (or a test) parsing the chip should find
+ * A full-width row rather than a pill: the tab is as tall as the panel now, so
+ * a title has room to wrap and be read whole, where a pill on a wrapped line
+ * could only truncate it and leave four references sharing one visible prefix.
+ *
+ * The token count is last in the row's text on purpose: it is the number the
+ * header claims to total, and a reader (or a test) parsing the row should find
  * it in the same place on every one of them.
  */
-function Chip({label, tokens, from, state, action}: ChipProps) {
+function EntryRow({label, tokens, from, state, action}: EntryRowProps) {
   const Icon = action?.kind === 'restore' ? RotateCcw : X;
 
   return (
     <li
-      className={`inline-flex max-w-[14rem] items-center gap-1 rounded-full bg-ink-800 py-0.5 pl-2 pr-1.5 text-[10px] ${
+      className={`flex items-baseline gap-1.5 rounded px-1.5 py-1 text-[11px] hover:bg-ink-900 ${
         state === undefined ? 'text-ink-300' : 'text-ink-500'
       }`}
     >
-      <span className="truncate">{label}</span>
-      {from !== undefined && <span className="shrink-0 text-ink-600">from {from}</span>}
-      {state !== undefined && <span className="shrink-0 text-voice-mark-strong">{state}</span>}
-      <span className="tabular-nums text-ink-600">{tokens.toLocaleString()}</span>
+      <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{label}</span>
+      {from !== undefined && <span className="shrink-0 text-[10px] text-ink-600">from {from}</span>}
+      {state !== undefined && (
+        <span className="shrink-0 text-[10px] text-voice-mark-strong">{state}</span>
+      )}
+      <span className="shrink-0 tabular-nums text-[10px] text-ink-600">
+        {tokens.toLocaleString()}
+      </span>
       {action !== undefined && (
         <button
           type="button"
           onClick={action.onClick}
           aria-label={action.label}
-          className="rounded-full p-0.5 text-ink-600 transition-colors duration-100 hover:bg-ink-700 hover:text-ink-200"
+          className="shrink-0 self-center rounded-full p-0.5 text-ink-600 transition-colors duration-100 hover:bg-ink-700 hover:text-ink-200"
         >
           <Icon size={10} aria-hidden />
         </button>
@@ -83,7 +91,7 @@ function Chip({label, tokens, from, state, action}: ChipProps) {
 }
 
 /** Why a reference carries nothing, when it carries nothing. */
-function stateOf(entry: ContextReference): ChipState | undefined {
+function stateOf(entry: ContextReference): EntryState | undefined {
   if (entry.suppressedBy !== undefined) return 'off';
   if (entry.missing) return 'missing';
   return undefined;
@@ -100,7 +108,7 @@ function stateOf(entry: ContextReference): ChipState | undefined {
 function actionFor(
   entry: ContextReference,
   controls: ReferenceControls,
-): NonNullable<ChipProps['action']> {
+): NonNullable<EntryRowProps['action']> {
   if (entry.origin.level === 'document') {
     return {
       label: `Detach ${entry.title} from this document`,
@@ -130,13 +138,18 @@ function actionFor(
 }
 
 /**
- * What the agent will be sent, shown above the composer.
+ * What the agent will be sent, on a tab of its own.
  *
  * This is the app's honesty surface: the writer should never have to guess
  * which of their documents is about to leave the machine, so everything in the
  * turn's context appears here with its own token cost. That includes what a
- * group above the document attached, which the chip names, and what this
+ * group above the document attached, which the row names, and what this
  * document turned off, which stays visible at zero rather than disappearing.
+ *
+ * It fills the height it is given: the header and the attach forms stay put and
+ * only the entries scroll, so the total is readable however long the list gets.
+ * The always-visible summary above the composer is what carries the same
+ * promise back to the writer while they are on the other tab.
  */
 export function ContextStrip({context, references}: ContextStripProps) {
   /** Which gesture is open, if either. Two buttons, one form at a time. */
@@ -164,8 +177,8 @@ export function ContextStrip({context, references}: ContextStripProps) {
   );
 
   return (
-    <div className="shrink-0 border-t border-ink-800 px-3 py-2">
-      <div className="mb-1.5 flex items-center justify-between">
+    <div className="flex h-full min-w-0 flex-col px-3 py-2">
+      <div className="mb-1.5 flex shrink-0 items-center justify-between">
         <span className="text-[10px] uppercase tracking-wider text-ink-600">Context</span>
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] tabular-nums text-ink-600">
@@ -194,38 +207,42 @@ export function ContextStrip({context, references}: ContextStripProps) {
         </div>
       </div>
 
-      {open === 'reference' && (
-        <ReferencePicker
-          docs={references.docs}
-          group={references.group}
-          onSubmit={handleAttach}
-          onCancel={close}
-        />
-      )}
-
-      {/* Left open after a write, unlike the picker: a paste that landed clears
-          the textarea itself, and the writer often has a second set to add. */}
-      {open === 'paste' && (
-        <LinkPasteField
-          group={references.group}
-          onSubmit={references.onAttachMany}
-          onCancel={close}
-        />
+      {/* The form stays where it was opened while the list scrolls under it.
+          The paste field is left open after a write, unlike the picker: a paste
+          that landed clears the textarea itself, and the writer often has a
+          second set to add. */}
+      {open !== undefined && (
+        <div className="shrink-0">
+          {open === 'reference' ? (
+            <ReferencePicker
+              docs={references.docs}
+              group={references.group}
+              onSubmit={handleAttach}
+              onCancel={close}
+            />
+          ) : (
+            <LinkPasteField
+              group={references.group}
+              onSubmit={references.onAttachMany}
+              onCancel={close}
+            />
+          )}
+        </div>
       )}
 
       {empty ? (
-        <p className="text-[11px] text-ink-600">Nothing attached</p>
+        <p className="shrink-0 text-[11px] text-ink-600">Nothing attached</p>
       ) : (
-        <ul className="flex flex-wrap gap-1">
+        <ul className="min-h-0 flex-1 overflow-y-auto">
           {context.doc !== undefined && (
-            <Chip label={context.doc.title} tokens={estimateTokens(context.doc.source)} />
+            <EntryRow label={context.doc.title} tokens={estimateTokens(context.doc.source)} />
           )}
           {context.selection !== undefined && (
-            <Chip label="Selection" tokens={estimateTokens(context.selection.quote)} />
+            <EntryRow label="Selection" tokens={estimateTokens(context.selection.quote)} />
           )}
           {context.references.map(function (entry) {
             return (
-              <Chip
+              <EntryRow
                 key={entry.id}
                 label={entry.title}
                 tokens={entry.tokens}

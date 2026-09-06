@@ -28,7 +28,9 @@ collapsible library sits left of the preview.
    offered back: prose the vault holds nowhere else, so discarding `.inkling/`
    discards it for good.
 2. **The writer always knows what the agent can see.** Every byte in a turn's
-   context is named in the context strip before it is sent. No hidden retrieval.
+   context is named on the agent panel's Context tab, and totalled on a line
+   above the composer that both tabs show, before it is sent. No hidden
+   retrieval.
 3. **Pure logic in `packages/*`, effects in `apps/*`.** The reducer, the parser
    and the summariser are testable without a filesystem or a window; keep them
    that way. See [`docs/testing.md`](./docs/testing.md).
