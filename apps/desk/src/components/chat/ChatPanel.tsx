@@ -10,6 +10,7 @@ import type {Conversation} from '../../lib/conversations.ts';
 import {pointerFor, type Miss, type Pointer} from '../../lib/pointer.ts';
 import type {AgentReply, Edit} from '../../lib/reply.ts';
 import type {TurnMode} from '../../lib/turn.ts';
+import {Splitter} from '../shell/Splitter.tsx';
 import {ContextStrip, type ReferenceControls} from './ContextStrip.tsx';
 
 /** The conversations of the open document, and how the writer moves between them. */
@@ -64,6 +65,9 @@ type ChatPanelProps = {
   onPoint: (pointer: Pointer) => void;
   /** Fires when focus lands in the panel anywhere but the composer. */
   onFocus: () => void;
+  /** Height of the message box, in pixels, and how the writer changes it. */
+  composerHeight: number;
+  onResizeComposer: (height: number) => void;
 };
 
 /**
@@ -273,6 +277,8 @@ export function ChatPanel({
   onLand,
   onPoint,
   onFocus,
+  composerHeight,
+  onResizeComposer,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>(initial);
   const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
@@ -562,21 +568,33 @@ export function ChatPanel({
 
       <ContextStrip context={context} references={references} />
 
-      <div className="shrink-0 border-t border-ink-800 p-2">
+      {/* On the top edge, because the box is already at the bottom of the panel
+          and the only room it has to grow is upwards. A corner grip below it
+          would pull toward the one direction there is no space in. */}
+      <Splitter
+        size={composerHeight}
+        onResize={onResizeComposer}
+        side="bottom"
+        min={64}
+        max={480}
+        label="Resize the message box"
+      />
+
+      <div className="shrink-0 p-2">
         <div className="flex items-end gap-2 rounded-lg bg-ink-850 p-2 focus-within:ring-1 focus-within:ring-accent-muted">
           <textarea
             ref={composer}
             value={input}
             onChange={handleInput}
             onKeyDown={handleKey}
-            rows={2}
             placeholder="Message the agent"
             aria-label="Message the agent"
-            // Vertical only, and no ceiling: the width is the panel's own
-            // splitter, and a writer briefing an agent on a piece writes
-            // paragraphs, which `max-h-40` turned into a four-line porthole
-            // with the top of their own message scrolled out of sight.
-            className="selectable min-h-16 flex-1 resize-y bg-transparent text-[13px] leading-relaxed text-ink-100 placeholder:text-ink-600 focus:outline-none"
+            style={{height: composerHeight}}
+            // The handle above owns the height, so the native grip is off. A
+            // writer briefing an agent on a piece writes paragraphs, and the
+            // two rows this used to be turned that into a porthole with the top
+            // of their own message scrolled out of sight.
+            className="selectable flex-1 resize-none bg-transparent text-[13px] leading-relaxed text-ink-100 placeholder:text-ink-600 focus:outline-none"
           />
           <button
             type="button"

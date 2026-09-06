@@ -237,6 +237,12 @@ export function App() {
     },
     [resize],
   );
+  const resizeComposer = useCallback(
+    function (height: number) {
+      resize('composerHeight', height);
+    },
+    [resize],
+  );
   const resizeChat = useCallback(
     function (width: number) {
       resize('chatWidth', width);
@@ -742,7 +748,7 @@ export function App() {
               />
             </div>
             <Splitter
-              width={layout.libraryWidth}
+              size={layout.libraryWidth}
               onResize={resizeLibrary}
               side="left"
               min={180}
@@ -775,7 +781,7 @@ export function App() {
                   <PreviewPanel source={draft} />
                 </div>
                 <Splitter
-                  width={layout.previewWidth}
+                  size={layout.previewWidth}
                   onResize={resizePreview}
                   side="left"
                   label="Resize the preview"
@@ -811,7 +817,7 @@ export function App() {
         {layout.chatOpen && (
           <>
             <Splitter
-              width={layout.chatWidth}
+              size={layout.chatWidth}
               onResize={resizeChat}
               side="right"
               min={300}
@@ -837,6 +843,8 @@ export function App() {
                   onLand={handleLand}
                   onPoint={handlePoint}
                   onFocus={handleChatFocus}
+                  composerHeight={layout.composerHeight}
+                  onResizeComposer={resizeComposer}
                 />
               ) : (
                 <section className="h-full border-l border-ink-800 bg-ink-950" />

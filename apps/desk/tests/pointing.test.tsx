@@ -166,6 +166,8 @@ function Harness({quotes, onChange = noop, onSave = noop}: HarnessProps) {
         onLand={noop}
         onPoint={handlePoint}
         onFocus={noop}
+        composerHeight={96}
+        onResizeComposer={noop}
       />
       {error !== undefined && <p>{error}</p>}
     </div>

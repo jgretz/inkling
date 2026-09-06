@@ -30,6 +30,8 @@ export type LayoutSettings = {
    * `undefined` for the derived mode. Not a `ToggleKey`: it has three states.
    */
   turnPin: TurnPin;
+  /** Height of the agent's message box, in pixels. */
+  composerHeight: number;
   /** Panel widths in pixels; the editor takes whatever is left. */
   libraryWidth: number;
   previewWidth: number;
@@ -45,6 +47,7 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   chatOpen: true,
   marksOn: true,
   turnPin: undefined,
+  composerHeight: 96,
   libraryWidth: 240,
   previewWidth: 420,
   chatWidth: 380,
@@ -105,6 +108,7 @@ export function parseSettings(raw: unknown): Settings {
       previewOpen: asBoolean(layout['previewOpen'], DEFAULT_LAYOUT.previewOpen),
       chatOpen: asBoolean(layout['chatOpen'], DEFAULT_LAYOUT.chatOpen),
       marksOn: asBoolean(layout['marksOn'], DEFAULT_LAYOUT.marksOn),
+      composerHeight: asWidth(layout['composerHeight'], DEFAULT_LAYOUT.composerHeight),
       turnPin: asPin(layout['turnPin']),
       libraryWidth: asWidth(layout['libraryWidth'], DEFAULT_LAYOUT.libraryWidth),
       previewWidth: asWidth(layout['previewWidth'], DEFAULT_LAYOUT.previewWidth),

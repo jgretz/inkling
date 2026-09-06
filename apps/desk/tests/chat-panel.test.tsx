@@ -123,6 +123,8 @@ function Harness({
       onLand={onLand}
       onPoint={onPoint}
       onFocus={onFocus}
+      composerHeight={96}
+      onResizeComposer={noop}
     />
   );
 }
