@@ -1,7 +1,14 @@
 import {autoCleanup} from './setup.ts';
 import {describe, expect, it} from 'bun:test';
 import {act, renderHook} from '@testing-library/react';
-import type {DocPath, GroupPath, VaultPath} from '@inkling/vault';
+import {
+  parseDoc,
+  templateFor,
+  templatePathFor,
+  type DocPath,
+  type GroupPath,
+  type VaultPath,
+} from '@inkling/vault';
 import {useWorkspace, type WorkspaceBridge} from '../src/lib/use-workspace.ts';
 
 autoCleanup();
@@ -11,8 +18,8 @@ autoCleanup();
  * after it.
  *
  * The bridge is a value the hook takes rather than a module it imports, so a
- * whole vault is a `Map` here and nothing needs a webview. Never a
- * `mock.module` on `bridge.ts` instead: bun's mock registry is global to a run
+ * whole vault is a `Map` here and nothing needs a webview. Never a module
+ * mock of `bridge.ts` instead: bun's mock registry is global to a run
  * and would reach every other file that imports it.
  */
 
@@ -39,6 +46,8 @@ type Disk = {
   deleted: string[];
   /** What the vault holds now, so a test can ask whether a file came back. */
   files: Map<string, string>;
+  /** Every document a create was asked for, with the bytes it was given. */
+  created: {path: string; source: string}[];
   /** Held open across one write, so a flush can be caught mid-flight. */
   hold: {promise: Promise<void>; open: () => void} | undefined;
 };
@@ -61,6 +70,7 @@ function disk(initial: string): Disk {
     reads: 0,
     deleted: [],
     files,
+    created: [],
     hold: undefined,
     bridge: {
       listDocs() {
@@ -100,7 +110,9 @@ function disk(initial: string): Disk {
           return '2';
         });
       },
-      createDoc() {
+      createDoc(_vault, path, source) {
+        state.created.push({path, source});
+        files.set(path, source);
         return Promise.resolve();
       },
       createGroup() {
@@ -399,5 +411,51 @@ describe('deleting', function () {
 
     expect(state.deleted).toEqual([DOC]);
     expect(state.files.has(DOC)).toBe(false);
+  });
+});
+
+describe('creating a document', function () {
+  const FRESH = 'fresh.md' as DocPath;
+  const SKELETON = parseDoc(templateFor('proposal', 'Pricing', '2026-01-01T00:00:00.000Z')).body;
+  const OVERRIDE = '---\ntitle: Ours\nkind: proposal\n---\n# {{title}}\n\n## Our terms\n';
+  const OVERRIDDEN = '# Pricing\n\n## Our terms\n';
+
+  /** A hook with the vault chosen and scanned, so its sources are in hand. */
+  async function chosen(state: Disk) {
+    const view = renderHook(function () {
+      return useWorkspace(state.bridge);
+    });
+    await act(async function () {
+      view.result.current.chooseVault(VAULT);
+    });
+    return view;
+  }
+
+  it('should start from the built-in skeleton when the vault has no template of its own', async function () {
+    expect(parseDoc(OVERRIDE).body).not.toBe(SKELETON);
+    const state = disk('The ending.\n');
+    const {result} = await chosen(state);
+
+    await act(async function () {
+      result.current.createDoc(FRESH, 'Pricing', 'proposal');
+    });
+
+    expect(state.created).toHaveLength(1);
+    expect(state.created[0]?.path).toBe(FRESH);
+    expect(parseDoc(state.created[0]?.source ?? '').body).toBe(SKELETON);
+  });
+
+  it("should start from the vault's own template when it holds one for the kind", async function () {
+    expect(OVERRIDDEN).not.toBe(SKELETON);
+    const state = disk('The ending.\n');
+    state.files.set(templatePathFor('proposal'), OVERRIDE);
+    const {result} = await chosen(state);
+
+    await act(async function () {
+      result.current.createDoc(FRESH, 'Pricing', 'proposal');
+    });
+
+    expect(state.created).toHaveLength(1);
+    expect(parseDoc(state.created[0]?.source ?? '').body).toBe(OVERRIDDEN);
   });
 });

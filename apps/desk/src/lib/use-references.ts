@@ -1,19 +1,14 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {groupOf, templateFor, type DocPath, type VaultPath} from '@inkling/vault';
+import type {PastedLink} from './link-paste.ts';
 import {
-  addLinks,
-  addReference,
-  addReferenceSuppression,
-  createDoc,
-  listReferences,
-  listReferenceSuppressions,
-  removeReference,
-  removeReferenceSuppression,
+  notePathFor,
+  type ContextReference,
+  type ReferenceKind,
+  type ReferenceStore,
   type StoredReference,
   type StoredReferenceSuppression,
-} from './bridge.ts';
-import type {PastedLink} from './link-paste.ts';
-import {notePathFor, type ContextReference, type ReferenceKind} from './references.ts';
+} from './references.ts';
 
 /** What the picker hands back: a kind, a target, and which level owns it. */
 export type AttachRequest = {
@@ -69,6 +64,8 @@ export type References = {
 };
 
 type Options = {
+  /** Where the rows live; `tauriReferences` in the app, a fake in a test. */
+  store: ReferenceStore;
   vault: VaultPath | undefined;
   /** The open document, which owns an attachment and any suppression. */
   docPath: DocPath | undefined;
@@ -99,7 +96,14 @@ type Options = {
  * whose database will not open leaves this empty and every attachment a no-op,
  * which is the same degradation `dataNotice` explains in the status bar.
  */
-export function useReferences({vault, docPath, ready, taken, onNoteWritten}: Options): References {
+export function useReferences({
+  store,
+  vault,
+  docPath,
+  ready,
+  taken,
+  onNoteWritten,
+}: Options): References {
   const [rows, setRows] = useState<readonly StoredReference[]>([]);
   const [suppressions, setSuppressions] = useState<readonly StoredReferenceSuppression[]>([]);
 
@@ -113,7 +117,7 @@ export function useReferences({vault, docPath, ready, taken, onNoteWritten}: Opt
 
       let live = true;
       // One round trip's latency rather than two: neither read needs the other.
-      Promise.all([listReferences(), listReferenceSuppressions()])
+      Promise.all([store.list(), store.listSuppressions()])
         .then(function ([stored, off]) {
           if (!live) return;
           setRows(stored);
@@ -126,7 +130,7 @@ export function useReferences({vault, docPath, ready, taken, onNoteWritten}: Opt
         live = false;
       };
     },
-    [vault, ready, taken],
+    [store, vault, ready, taken],
   );
 
   // Held in refs, the way `useWorkspace` holds its sources: depending on the
@@ -181,16 +185,18 @@ export function useReferences({vault, docPath, ready, taken, onNoteWritten}: Opt
             // would render as broken the moment it was attached.
             (function () {
               const path = notePathFor(request.title, new Set(takenRef.current));
-              return createDoc(
-                vault,
-                path,
-                templateFor('note', request.title, new Date().toISOString()),
-              ).then(function () {
-                notifyRef.current();
-                return addReference({owner, kind: 'note', title: request.title, targetPath: path});
-              });
+              return store
+                .createDoc(
+                  vault,
+                  path,
+                  templateFor('note', request.title, new Date().toISOString()),
+                )
+                .then(function () {
+                  notifyRef.current();
+                  return store.add({owner, kind: 'note', title: request.title, targetPath: path});
+                });
             })()
-          : addReference({
+          : store.add({
               owner,
               kind: request.kind,
               title: request.title,
@@ -202,7 +208,7 @@ export function useReferences({vault, docPath, ready, taken, onNoteWritten}: Opt
         console.warn(`inkling: could not attach ${request.title}`, error);
       });
     },
-    [vault, docPath, ready, remember],
+    [store, vault, docPath, ready, remember],
   );
 
   /**
@@ -226,18 +232,19 @@ export function useReferences({vault, docPath, ready, taken, onNoteWritten}: Opt
         return Promise.reject(new Error('this document is not in a group'));
       }
 
-      return addLinks(owner, request.links).then(function (landed) {
+      return store.addLinks(owner, request.links).then(function (landed) {
         rememberAll([...landed.attached, ...landed.skipped]);
         return {attached: landed.attached.length, skipped: landed.skipped.length};
       });
     },
-    [vault, docPath, ready, rememberAll],
+    [store, vault, docPath, ready, rememberAll],
   );
 
   const detach = useCallback(
     function (entry: ContextReference) {
       if (!ready) return;
-      removeReference(entry.id)
+      store
+        .remove(entry.id)
         .then(function () {
           setRows(function (current) {
             return current.filter(function (row) {
@@ -256,13 +263,14 @@ export function useReferences({vault, docPath, ready, taken, onNoteWritten}: Opt
           console.warn(`inkling: could not detach ${entry.title}`, error);
         });
     },
-    [ready],
+    [store, ready],
   );
 
   const suppress = useCallback(
     function (entry: ContextReference) {
       if (docPath === undefined || !ready) return;
-      addReferenceSuppression(docPath, entry.id)
+      store
+        .suppress(docPath, entry.id)
         .then(function (row) {
           setSuppressions(function (current) {
             return [
@@ -277,14 +285,15 @@ export function useReferences({vault, docPath, ready, taken, onNoteWritten}: Opt
           console.warn(`inkling: could not turn off ${entry.title}`, error);
         });
     },
-    [docPath, ready],
+    [store, docPath, ready],
   );
 
   const restore = useCallback(
     function (entry: ContextReference) {
       const id = entry.suppressedBy;
       if (id === undefined || !ready) return;
-      removeReferenceSuppression(id)
+      store
+        .restore(id)
         .then(function () {
           setSuppressions(function (current) {
             return current.filter(function (row) {
@@ -296,7 +305,7 @@ export function useReferences({vault, docPath, ready, taken, onNoteWritten}: Opt
           console.warn(`inkling: could not restore ${entry.title}`, error);
         });
     },
-    [ready],
+    [store, ready],
   );
 
   return {rows, suppressions, attach, attachMany, detach, suppress, restore};
