@@ -61,6 +61,10 @@ const FIXTURES: readonly Fixture[] = [
   {id: 'throat-clearing', source: 'It is worth noting that the preview never lags the editor.'},
   {id: 'signposting', source: "Let's dive into how the reducer handles a stale result."},
   {
+    id: 'automatic-interpretation',
+    source: 'The team shipped on time, highlighting its commitment to quality.',
+  },
+  {
     id: 'rule-of-three',
     source: [
       'Sometimes they’re career-oriented, sometimes about immediate tasks, and sometimes they’re a therapy session.',

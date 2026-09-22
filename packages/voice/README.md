@@ -38,7 +38,16 @@ The three statistical thresholds (triplet density, consecutive formal
 connectives, and the sentence-length standard-deviation ratio) are adopted from
 [AI-Writing-Rules](https://github.com/Abdulkader-Safi/AI-Writing-Rules) by
 Abdulkader Safi, which is MIT licensed. The word lists and every `explain` string
-here are written fresh.
+here are written fresh, with one exception below.
+
+The `automatic-interpretation` trigger words (`highlighting`, `underscoring`,
+`reflecting`, `showcasing`, `demonstrating`, `cementing`, `paving the way for`,
+and `which underscores / reflects / speaks to`) follow the
+`automatic_interpretation` pattern table in
+[the-less-ai-like-writing-skill](https://github.com/tonyexpo/the-less-ai-like-writing-skill)
+(`tools/patterns.py`), which is licensed under the
+[Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0). The
+regular expressions and `explain` strings here are written fresh.
 
 ```
 MIT License

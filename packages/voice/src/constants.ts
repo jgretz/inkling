@@ -104,6 +104,7 @@ export const DEFAULT_DETECTORS: readonly string[] = Object.freeze([
   'banned-openers',
   'throat-clearing',
   'signposting',
+  'automatic-interpretation',
   'rule-of-three',
   'transition-stacking',
   'sentence-length-uniformity',
