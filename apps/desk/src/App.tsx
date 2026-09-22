@@ -1,13 +1,6 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {confirm, open, save} from '@tauri-apps/plugin-dialog';
-import {
-  groupOf,
-  isUnder,
-  parseDoc,
-  type DocPath,
-  type GroupPath,
-  type VaultPath,
-} from '@inkling/vault';
+import {groupOf, parseDoc, type DocPath, type GroupPath, type VaultPath} from '@inkling/vault';
 import {resolveVoice, type Finding} from '@inkling/voice';
 import {createHeldSessionClient} from '@inkling/toryo';
 import {
@@ -25,9 +18,14 @@ import {
   type ToggleKey,
 } from './lib/settings.ts';
 import type {AgentContext} from './lib/agent.ts';
+import {
+  askDeleteConversation,
+  askDeleteDoc,
+  askDeleteGroup,
+  askRestoreRevision,
+} from './lib/ask-first.ts';
 import {copyRichText, systemClipboard} from './lib/clipboard.ts';
 import {daemonToken, initDaemonToken, refreshDaemonToken} from './lib/daemon-token.ts';
-import {docDeletePrompt, groupDeletePrompt} from './lib/deletion.ts';
 import {createDispatchTransport, type TokenAccess} from './lib/dispatch-transport.ts';
 import {
   defaultExportPath,
@@ -493,33 +491,15 @@ export function App() {
     [transport],
   );
 
-  // Asked before rather than undone after: a conversation takes every turn of it
-  // through the table's cascade, and the prose either side of a session is the
-  // part of this that cannot be recovered.
+  // Asked first, in `lib/ask-first.ts`, which is handed Tauri's dialog.
   const {remove: removeConversation} = conversations;
   const handleDeleteConversation = useCallback(
     function () {
-      const doomed = conversationRef.current;
-      if (doomed === undefined) return;
-      void confirm(`Delete "${doomed.title}" and everything said in it?`, {
-        title: 'Delete conversation',
-        kind: 'warning',
-      })
-        .then(function (agreed) {
-          if (agreed) removeConversation(doomed.id);
-        })
-        .catch(function (error) {
-          console.warn('inkling: could not ask about deleting a conversation', error);
-        });
+      void askDeleteConversation(confirm, conversationRef.current, removeConversation);
     },
     [removeConversation],
   );
 
-  // Asked before rather than undone after, for the reason deleting a
-  // conversation is: the file has the Trash to come back from, and what inkling
-  // stored about it has nothing at all. Neither path can be turned off: there is
-  // no setting, no prop and no environment check between the click and this.
-  //
   // The document list is read through a ref, for the reason the draft is: it is
   // re-derived by every vault scan, and depending on it would give both handlers
   // a new identity each time and re-render every memoised library row.
@@ -529,39 +509,14 @@ export function App() {
 
   const handleDeleteDoc = useCallback(
     function (path: DocPath) {
-      const doomed = docsRef.current.find(function (doc) {
-        return doc.path === path;
-      });
-      void confirm(docDeletePrompt(doomed?.title ?? path), {
-        title: 'Delete document',
-        kind: 'warning',
-      })
-        .then(function (agreed) {
-          if (agreed) deleteDoc(path);
-        })
-        .catch(function (error) {
-          console.warn('inkling: could not ask about deleting a document', error);
-        });
+      void askDeleteDoc(confirm, docsRef.current, path, deleteDoc);
     },
     [deleteDoc],
   );
 
   const handleDeleteGroup = useCallback(
     function (group: GroupPath) {
-      // Everything under it, however deep, because that is what goes.
-      const count = docsRef.current.filter(function (doc) {
-        return isUnder(doc.path, group);
-      }).length;
-      void confirm(groupDeletePrompt(group, count), {
-        title: 'Delete group',
-        kind: 'warning',
-      })
-        .then(function (agreed) {
-          if (agreed) deleteGroup(group);
-        })
-        .catch(function (error) {
-          console.warn('inkling: could not ask about deleting a group', error);
-        });
+      void askDeleteGroup(confirm, docsRef.current, group, deleteGroup);
     },
     [deleteGroup],
   );
@@ -709,33 +664,15 @@ export function App() {
     [openPath],
   );
 
-  /**
-   * A kept revision, written back over the live document.
-   *
-   * Asked before rather than undone after, the way deleting a conversation is:
-   * the draft on screen may hold work the writer has not thought about losing,
-   * and this replaces the whole document with the older one.
-   *
-   * `land` rather than a second write path: it writes, reads the file back, and
-   * refuses when the path is no longer the open document, which is exactly what
-   * restoring wants.
-   */
+  /** A kept revision, written back over the live document once the writer agrees. */
   const handleRestoreRevision = useCallback(
     function (source: string) {
-      const path = openPath;
-      if (path === undefined) return;
-      void confirm(
-        `Replace ${path} with this revision? What is in the editor now is overwritten.`,
-        {title: 'Restore revision', kind: 'warning'},
-      )
-        .then(function (agreed) {
-          if (!agreed) return;
+      void askRestoreRevision(confirm, openPath, source, {
+        close() {
           setRevisionsOpen(false);
-          return land(source, path);
-        })
-        .catch(function (error) {
-          console.warn('inkling: could not ask about restoring a revision', error);
-        });
+        },
+        land,
+      });
     },
     [openPath, land],
   );
