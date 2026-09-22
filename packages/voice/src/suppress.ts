@@ -1,5 +1,5 @@
-import {resolveAnchor, sharedPrefix, sharedSuffix} from './anchor.ts';
-import type {Anchor, Finding, Range} from './types.ts';
+import {resolvePassage} from './anchor.ts';
+import type {Anchor, Finding} from './types.ts';
 
 /**
  * One finding the writer dismissed, as it is stored.
@@ -28,38 +28,12 @@ export type SuppressedFinding<S extends Suppression = Suppression> = {
 };
 
 /**
- * How much of an anchor's remembered context must still agree where it landed.
- *
- * `resolveAnchor` always returns its best candidate, however poor: it answers
- * "where is this quote now", not "is this the same passage". For a quote like
- * `—`, which occurs all over a document, that is the difference between a
- * dismissal following its sentence and a dismissal jumping to somebody else's.
- * Deleting the em dash a writer dismissed must not silence the next one down
- * the page, so a landing that kept less than half its neighbours is not the
- * passage that was dismissed.
- */
-const MIN_CONTEXT_AGREEMENT = 0.5;
-
-/** Whether a resolved span still reads like the passage the anchor recorded. */
-function agrees(source: string, anchor: Anchor, range: Range): boolean {
-  const remembered = anchor.prefix.length + anchor.suffix.length;
-  // A quote with no neighbours, at both ends of a one-line document. There is
-  // nothing to disagree with.
-  if (remembered === 0) return true;
-
-  const before = source.slice(Math.max(0, range.start - anchor.prefix.length), range.start);
-  const after = source.slice(range.end, range.end + anchor.suffix.length);
-  const shared = sharedSuffix(anchor.prefix, before) + sharedPrefix(anchor.suffix, after);
-
-  return shared >= remembered * MIN_CONTEXT_AGREEMENT;
-}
-
-/**
  * Splits findings into the ones to show and the ones the writer already
  * dismissed.
  *
- * Each suppression's anchor is resolved against the current draft once, so a
- * dismissal follows its quote as the text above it grows and shrinks. A finding
+ * Each suppression's anchor is resolved against the current draft once, with
+ * `resolvePassage`, so a dismissal follows its quote as the text above it grows
+ * and shrinks but does not jump to another occurrence of the same text. A finding
  * is suppressed when a suppression with the same rule lands on exactly its
  * range: same rule, same span, same dismissal.
  *
@@ -78,9 +52,8 @@ export function applySuppressions<S extends Suppression>(
   const silenced = new Map<string, S>();
 
   suppressions.forEach(function (suppression) {
-    const range = resolveAnchor(source, suppression.anchor);
+    const range = resolvePassage(source, suppression.anchor);
     if (range === undefined) return;
-    if (!agrees(source, suppression.anchor, range)) return;
     silenced.set(`${suppression.ruleId}:${range.start}:${range.end}`, suppression);
   });
 

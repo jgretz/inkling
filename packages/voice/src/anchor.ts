@@ -1,13 +1,8 @@
 import {THRESHOLDS} from './constants.ts';
 import type {Anchor, Range} from './types.ts';
 
-/**
- * Length of the longest common suffix of two strings.
- *
- * Exported for `suppress.ts`, which scores a resolved span the same way this
- * file scores a candidate. One scoring rule, in one place.
- */
-export function sharedSuffix(a: string, b: string): number {
+/** Length of the longest common suffix of two strings. */
+function sharedSuffix(a: string, b: string): number {
   const limit = Math.min(a.length, b.length);
   let shared = 0;
   while (shared < limit && a[a.length - 1 - shared] === b[b.length - 1 - shared]) shared += 1;
@@ -15,7 +10,7 @@ export function sharedSuffix(a: string, b: string): number {
 }
 
 /** Length of the longest common prefix of two strings. See `sharedSuffix`. */
-export function sharedPrefix(a: string, b: string): number {
+function sharedPrefix(a: string, b: string): number {
   const limit = Math.min(a.length, b.length);
   let shared = 0;
   while (shared < limit && a[shared] === b[shared]) shared += 1;
@@ -52,18 +47,27 @@ export function createAnchor(source: string, start: number, end: number): Anchor
 }
 
 /**
- * Finds an anchor's span in a document that has since been edited.
+ * How much of an anchor's remembered context must still agree where it landed
+ * for `resolvePassage` to call it the same passage.
+ *
+ * A quote like `—` occurs all over a document. After the one an anchor recorded
+ * is deleted, the next one down the page is the only candidate left, and it
+ * wins however little of its neighbourhood agrees. A landing that kept less
+ * than half its neighbours is somebody else's sentence, not the one recorded.
+ */
+const MIN_CONTEXT_AGREEMENT = 0.5;
+
+/**
+ * The best-scoring occurrence of an anchor's quote, and the fraction of its
+ * remembered context that still agrees there.
  *
  * Every occurrence of the quote is scored on how much of the remembered prefix
  * and suffix still agree, so an anchor lands on the right one of several
  * identical sentences even after text has moved. `hint` only breaks a tie,
  * because a document that grew above the quote makes it a lie about position
  * while leaving the surrounding words true.
- *
- * Returns `undefined` when the quoted text is gone, which is the honest answer:
- * whatever was flagged no longer exists to flag.
  */
-export function resolveAnchor(source: string, anchor: Anchor): Range | undefined {
+function land(source: string, anchor: Anchor): {range: Range; agreement: number} | undefined {
   if (anchor.quote.length === 0) return undefined;
 
   const candidates = occurrences(source, anchor.quote);
@@ -87,5 +91,41 @@ export function resolveAnchor(source: string, anchor: Anchor): Range | undefined
     return candidate.distance < winner.distance ? candidate : winner;
   });
 
-  return {start: best.start, end: best.end};
+  const remembered = anchor.prefix.length + anchor.suffix.length;
+  // A quote with no neighbours, at both ends of a one-line document, has
+  // nothing to disagree with.
+  const agreement = remembered === 0 ? 1 : best.score / remembered;
+
+  return {range: {start: best.start, end: best.end}, agreement};
+}
+
+/**
+ * Finds where an anchor's quote is now, in a document that has since been
+ * edited.
+ *
+ * This answers "where is this quote now", not "is this still the same
+ * passage". It returns the best-scoring occurrence however poorly it scored, so
+ * once the recorded occurrence is deleted it lands on another occurrence of the
+ * same text if one exists. A caller keyed on the passage's identity, such as a
+ * dismissal, wants `resolvePassage`.
+ *
+ * Returns `undefined` when the quoted text is gone everywhere, which is the
+ * honest answer: whatever was flagged no longer exists to flag.
+ */
+export function resolveAnchor(source: string, anchor: Anchor): Range | undefined {
+  return land(source, anchor)?.range;
+}
+
+/**
+ * Finds an anchor's span only while it is still the passage that was recorded.
+ *
+ * Searches exactly as `resolveAnchor` does, then refuses a landing where less
+ * than `MIN_CONTEXT_AGREEMENT` of the remembered prefix and suffix still
+ * agree. Returns `undefined` when the quote is gone, and when the only
+ * surviving occurrences sit among different words.
+ */
+export function resolvePassage(source: string, anchor: Anchor): Range | undefined {
+  const landing = land(source, anchor);
+  if (landing === undefined || landing.agreement < MIN_CONTEXT_AGREEMENT) return undefined;
+  return landing.range;
 }

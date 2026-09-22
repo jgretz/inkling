@@ -87,9 +87,9 @@ describe('applySuppressions', function () {
 
     const {kept, suppressed} = applySuppressions(after, emDashes(after), [dismiss(dismissed)]);
 
-    // Without the context floor this passes to the surviving em dash instead:
-    // `resolveAnchor` answers "where is this quote now", and a lone candidate
-    // wins however little of its neighbourhood agrees.
+    // With `resolveAnchor` this passes to the surviving em dash instead: it
+    // answers "where is this quote now", and a lone candidate wins however
+    // little of its neighbourhood agrees. `resolvePassage` refuses that landing.
     expect(starts(kept)).toEqual([at(emDashes(after), 0).range.start]);
     expect(suppressed).toEqual([]);
   });
