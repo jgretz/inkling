@@ -21,8 +21,14 @@ const START = "(?<![\\p{L}\\p{N}'’-])";
 
 const WORD = "[\\p{L}\\p{N}'’-]+";
 
+/**
+ * An item's first word opens on a letter or a digit, so a list bullet's `-` is
+ * never read as the first word of a triplet that follows it.
+ */
+const LEAD = "[\\p{L}\\p{N}][\\p{L}\\p{N}'’-]*";
+
 /** One to four words, which is as long as a list item gets before it is a clause. */
-const ITEM = `${START}${NOT_A_CLAUSE}${WORD}(?:[ \\t]+${WORD}){0,3}`;
+const ITEM = `${START}${NOT_A_CLAUSE}${LEAD}(?:[ \\t]+${WORD}){0,3}`;
 
 /**
  * The middle item, when no comma separates it from `and`. Its boundaries are
@@ -38,7 +44,7 @@ const ITEM = `${START}${NOT_A_CLAUSE}${WORD}(?:[ \\t]+${WORD}){0,3}`;
  * middle item is two words. Telling it from a real list needs part-of-speech
  * knowledge this package does not have.
  */
-const SHORT = `${START}${NOT_A_CLAUSE}${WORD}(?:[ \\t]+${WORD}){0,1}`;
+const SHORT = `${START}${NOT_A_CLAUSE}${LEAD}(?:[ \\t]+${WORD}){0,1}`;
 
 /** At least one space, and at most one line break, so a triplet may wrap. */
 const GAP = '(?:[ \\t]+\\n?[ \\t]*|\\n[ \\t]*)';

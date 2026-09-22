@@ -210,7 +210,7 @@ export const NEGATIVE_PARALLELISM: readonly PhraseRule[] = [
   },
   {
     pattern:
-      /\b(?:it|this|that)(?:'s| is| was) not[ \t]+[^.!?\n]{2,60}[.!?][ \t]+(?:it|this|that)(?:'s| is| was)\b/gi,
+      /\b(?:it|this|that)(?:['’]s| is| was) not[ \t]+[^.!?\n]{2,60}[.!?][ \t]+(?:it|this|that)(?:['’]s| is| was)\b/gi,
     explain: 'delete the first sentence and keep the second.',
   },
 ];

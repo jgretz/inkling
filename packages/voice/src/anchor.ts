@@ -2,20 +2,36 @@ import {THRESHOLDS} from './constants.ts';
 import type {Anchor, Range} from './types.ts';
 
 /**
- * Length of the longest common suffix of two strings.
+ * Where an anchor landed, and how much of its remembered context agrees there.
  *
- * Exported for `suppress.ts`, which scores a resolved span the same way this
- * file scores a candidate. One scoring rule, in one place.
+ * `agreement` runs from 0 to 1: the share of the anchor's prefix and suffix
+ * characters that still sit next to the quote at `range`.
  */
-export function sharedSuffix(a: string, b: string): number {
+export type ResolvedAnchor = {range: Range; agreement: number};
+
+/**
+ * How much of an anchor's remembered context must still agree where it landed.
+ *
+ * `resolveAnchor` always returns its best candidate, however poor: it answers
+ * "where is this quote now", not "is this the same passage". For a quote like
+ * `—`, which occurs all over a document, that is the difference between a
+ * dismissal following its sentence and a dismissal jumping to somebody else's.
+ * Deleting the em dash a writer dismissed must not silence the next one down
+ * the page, so a landing that kept less than half its neighbours is not the
+ * passage that was anchored.
+ */
+export const MIN_CONTEXT_AGREEMENT = 0.5;
+
+/** Length of the longest common suffix of two strings. */
+function sharedSuffix(a: string, b: string): number {
   const limit = Math.min(a.length, b.length);
   let shared = 0;
   while (shared < limit && a[a.length - 1 - shared] === b[b.length - 1 - shared]) shared += 1;
   return shared;
 }
 
-/** Length of the longest common prefix of two strings. See `sharedSuffix`. */
-export function sharedPrefix(a: string, b: string): number {
+/** Length of the longest common prefix of two strings. */
+function sharedPrefix(a: string, b: string): number {
   const limit = Math.min(a.length, b.length);
   let shared = 0;
   while (shared < limit && a[shared] === b[shared]) shared += 1;
@@ -62,8 +78,20 @@ export function createAnchor(source: string, start: number, end: number): Anchor
  *
  * Returns `undefined` when the quoted text is gone, which is the honest answer:
  * whatever was flagged no longer exists to flag.
+ *
+ * This answers where the quote is, not whether it is the same passage: a caller
+ * that needs identity, such as a dismissal, uses `resolvePassage`.
  */
 export function resolveAnchor(source: string, anchor: Anchor): Range | undefined {
+  return resolveAnchorScored(source, anchor)?.range;
+}
+
+/**
+ * `resolveAnchor`, with how well the landing's neighbours agree with the ones
+ * the anchor remembered. An anchor that remembered no context, a quote alone in
+ * a one-line document, has nothing to disagree with and reports 1.
+ */
+export function resolveAnchorScored(source: string, anchor: Anchor): ResolvedAnchor | undefined {
   if (anchor.quote.length === 0) return undefined;
 
   const candidates = occurrences(source, anchor.quote);
@@ -87,5 +115,21 @@ export function resolveAnchor(source: string, anchor: Anchor): Range | undefined
     return candidate.distance < winner.distance ? candidate : winner;
   });
 
-  return {start: best.start, end: best.end};
+  const remembered = anchor.prefix.length + anchor.suffix.length;
+  return {
+    range: {start: best.start, end: best.end},
+    agreement: remembered === 0 ? 1 : best.score / remembered,
+  };
+}
+
+/**
+ * Finds an anchor's span only if it is still the passage that was anchored.
+ *
+ * Returns `undefined` when the quote is gone, and also when the best landing
+ * kept less than `MIN_CONTEXT_AGREEMENT` of its remembered context.
+ */
+export function resolvePassage(source: string, anchor: Anchor): Range | undefined {
+  const resolved = resolveAnchorScored(source, anchor);
+  if (resolved === undefined || resolved.agreement < MIN_CONTEXT_AGREEMENT) return undefined;
+  return resolved.range;
 }

@@ -16,6 +16,15 @@ function isWord(char: string | undefined): boolean {
   return char !== undefined && WORD_CHAR.test(char);
 }
 
+/** A list bullet or an ordered-list number, and the space after it. */
+const LIST_MARKER = /^(?:[-*+]|\d+[.)])[ \t]/;
+
+/**
+ * `bold-term-colon`'s span deliberately includes the bullet
+ * (`bold-term-colon.ts:20`): the list item is the shape it flags.
+ */
+const BULLET_IS_THE_SHAPE = new Set(['bold-term-colon']);
+
 type Fixture = {
   id: string;
   source: string;
@@ -58,6 +67,7 @@ const FIXTURES: readonly Fixture[] = [
       'When it does, I communicate early and appreciate the same.',
       'The vault holds drafts, references and notes.',
       'The editor tracks the caret, the selection and the scroll.',
+      '- intensity of focus, attention to detail, and an innate rigidity about it.',
     ].join(' '),
   },
   {
@@ -110,6 +120,20 @@ describe('finding word boundaries', function () {
         });
 
       expect(split).toEqual([]);
+    });
+
+    it(`should not start a ${fixture.id} finding on a list bullet`, function () {
+      if (BULLET_IS_THE_SHAPE.has(fixture.id)) return;
+
+      const bulleted = check(fixture.source, {detectors: [fixture.id]})
+        .map(function (finding) {
+          return finding.anchor.quote;
+        })
+        .filter(function (quote) {
+          return LIST_MARKER.test(quote);
+        });
+
+      expect(bulleted).toEqual([]);
     });
   });
 });

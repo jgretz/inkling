@@ -13,7 +13,10 @@ const findings = check(source);
 
 Every finding's `range` indexes the original source, so a caller can decorate the
 editor without re-resolving anything. The `anchor` is what survives an edit: pass
-it to `resolveAnchor(source, anchor)` after the document has changed.
+it to `resolveAnchor(source, anchor)` after the document has changed. That
+answers where the quote is now; to ask whether it is still the same passage, as
+a dismissal must, use `resolvePassage(source, anchor)`, which refuses a landing
+that kept too little of its surrounding text.
 
 ## What is not checked
 

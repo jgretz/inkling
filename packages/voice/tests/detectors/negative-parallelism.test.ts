@@ -31,6 +31,10 @@ describe('negative-parallelism', function () {
     expect(findings("It's not a scheduler, but a queue with a worker on the end.")).toHaveLength(1);
   });
 
+  it('should flag the two-sentence version with a curly apostrophe', function () {
+    expect(findings('It’s not a tool. It’s a habit.')).toHaveLength(1);
+  });
+
   it('should flag an explicit intensifier with no copula in front of it', function () {
     expect(findings('We shipped not merely a checker, but a habit.')).toHaveLength(1);
   });

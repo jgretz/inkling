@@ -24,6 +24,24 @@ describe('spaced-hyphen', function () {
     expect(source.slice(found[0]?.range.start, found[0]?.range.end)).toBe('--');
   });
 
+  it('should flag a spaced three-dash run', function () {
+    const source = 'The gate fails closed --- a missing judge never auto-approves.';
+
+    const found = findings(source);
+
+    expect(found).toHaveLength(1);
+    expect(source.slice(found[0]?.range.start, found[0]?.range.end)).toBe('---');
+  });
+
+  it('should flag a spaced hyphen that ends a line', function () {
+    const source = 'The gate fails closed -\na missing judge never auto-approves.';
+
+    const found = findings(source);
+
+    expect(found).toHaveLength(1);
+    expect(source.slice(found[0]?.range.start, found[0]?.range.end)).toBe('-');
+  });
+
   it('should push toward punctuation rather than a substitution', function () {
     const explain = findings('The gate fails closed - it never auto-approves.')[0]?.explain ?? '';
 
@@ -49,9 +67,8 @@ describe('spaced-hyphen', function () {
   });
 
   /**
-   * The two-dash form is the one that reaches the guard at all: a three-dash
-   * run has no whitespace between its own hyphens, so the pattern never matches
-   * `| --- |` in the first place.
+   * Every run of one to three dashes in a separator row now matches the pattern,
+   * so the row guard is what keeps `| -- |` and `| --- |` alike silent.
    */
   it('should not flag a two-dash table separator row', function () {
     expect(findings('| What | Command |\n| -- | -- |\n| Test | bun test |\n')).toEqual([]);
@@ -63,6 +80,22 @@ describe('spaced-hyphen', function () {
 
   it('should not flag a spaced thematic break', function () {
     expect(findings('The draft ends here.\n\n- - -\n\nThe notes begin.\n')).toEqual([]);
+  });
+
+  it('should not flag a bare thematic break', function () {
+    expect(findings('The draft ends here.\n\n---\n\nThe notes begin.\n')).toEqual([]);
+  });
+
+  it('should not flag an indented thematic break', function () {
+    expect(findings('The draft ends here.\n\n ---\n\nThe notes begin.\n')).toEqual([]);
+  });
+
+  it('should not flag a setext heading underline', function () {
+    expect(findings('A Heading\n---\n\nBody.\n')).toEqual([]);
+  });
+
+  it('should not flag a spaced thematic break that ends the document', function () {
+    expect(findings('The draft ends here.\n\n - - -\n')).toEqual([]);
   });
 
   it('should not flag a numeric range', function () {

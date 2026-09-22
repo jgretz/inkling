@@ -79,6 +79,22 @@ describe('rule-of-three', function () {
     ]);
   });
 
+  /** The first triplet is inside the budget, so the bullet-led one is raised. */
+  it('should not start a finding on a list bullet', function () {
+    const source = [
+      'Sometimes they’re career-oriented, sometimes about immediate tasks, and sometimes they’re a therapy session.',
+      '',
+      '- intensity of focus, attention to detail, and an innate rigidity about it.',
+    ].join('\n');
+
+    const quotes = findings(source).map(function (finding) {
+      return finding.anchor.quote;
+    });
+
+    expect(quotes).toHaveLength(1);
+    expect(quotes[0]?.startsWith('intensity')).toBe(true);
+  });
+
   it('should not flag triplets inside a fenced code block', function () {
     const source = [
       '```ts',

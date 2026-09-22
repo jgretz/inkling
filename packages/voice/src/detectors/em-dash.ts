@@ -5,8 +5,8 @@ import type {Detector} from '../types.ts';
 const ID = 'em-dash';
 
 /**
- * The single strongest surface tell of machine-written prose, and the one a
- * writer can always fix: every em dash has better punctuation waiting for it.
+ * House style, not a detector of authorship: every em dash has better
+ * punctuation waiting for it, and a writer can always fix one.
  */
 export const emDash: Detector = {
   id: ID,
