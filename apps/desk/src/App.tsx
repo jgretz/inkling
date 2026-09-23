@@ -9,6 +9,7 @@ import {
   loadSettings,
   saveSettings,
   tauriConversations,
+  tauriReferences,
   tauriRevisions,
 } from './lib/bridge.ts';
 import {
@@ -299,6 +300,7 @@ export function App() {
 
   const dataReady = workspace.data.kind === 'ready';
   const references = useReferences({
+    store: tauriReferences,
     vault,
     docPath: openPath,
     ready: dataReady,

@@ -1,4 +1,4 @@
-import {ancestorGroups, type DocPath, type GroupPath} from '@inkling/vault';
+import {ancestorGroups, type DocPath, type GroupPath, type VaultPath} from '@inkling/vault';
 import {estimateTokens} from './agent.ts';
 
 /**
@@ -51,6 +51,58 @@ export type StoredReferenceSuppression = {
 };
 
 export type ReferenceKind = 'doc' | 'link' | 'note';
+
+/** Who a reference is attached to, flattened into two columns on the wire. */
+export type ReferenceOwner = {kind: 'doc'; path: DocPath} | {kind: 'group'; path: GroupPath};
+
+export type NewReference = {
+  owner: ReferenceOwner;
+  kind: ReferenceKind;
+  title: string;
+  /** The vault path for a `doc` or a `note`. */
+  targetPath?: DocPath;
+  /** The address for a `link`. */
+  url?: string;
+};
+
+/**
+ * What a whole paste of links did, as `references.rs` returns it.
+ *
+ * Rows rather than counts: a link that was already there still belongs in the
+ * strip, so both lists are folded into state. A hand-written mirror of
+ * `AttachedReferences`, pinned at the other end by
+ * `a_bulk_attachment_serialises_to_the_shape_the_frontend_reads`.
+ */
+export type BulkAttachment = {
+  /** The rows this call created. */
+  attached: StoredReference[];
+  /** The rows an earlier attachment already held, which the unique index skipped. */
+  skipped: StoredReference[];
+};
+
+/**
+ * Every call the references hook makes, as one value.
+ *
+ * Declared here rather than taken from `bridge.ts` because that file imports
+ * `@tauri-apps/api`, which a test with no webview cannot load. `bridge.ts`
+ * implements it once as `tauriReferences` and `App.tsx` passes it in, the way
+ * `RevisionStore` reaches `useRevisions`.
+ */
+export type ReferenceStore = {
+  list: () => Promise<StoredReference[]>;
+  listSuppressions: () => Promise<StoredReferenceSuppression[]>;
+  /** Resolves to the stored row whether this call created it or an earlier one did. */
+  add: (reference: NewReference) => Promise<StoredReference>;
+  addLinks: (
+    owner: ReferenceOwner,
+    links: readonly {url: string; title: string}[],
+  ) => Promise<BulkAttachment>;
+  remove: (id: number) => Promise<void>;
+  suppress: (docPath: DocPath, referenceId: number) => Promise<StoredReferenceSuppression>;
+  restore: (id: number) => Promise<void>;
+  /** Writes a new note's markdown body. Refuses to overwrite, like `create_doc`. */
+  createDoc: (vault: VaultPath, path: DocPath, source: string) => Promise<void>;
+};
 
 /** Which level of the cascade an entry came from. */
 export type ReferenceOrigin = {level: 'document'} | {level: 'group'; group: GroupPath};

@@ -1,6 +1,13 @@
 import {invoke} from '@tauri-apps/api/core';
 import type {DocPath, GroupPath, VaultPath} from '@inkling/vault';
-import type {ReferenceKind, StoredReference, StoredReferenceSuppression} from './references.ts';
+import type {
+  BulkAttachment,
+  NewReference,
+  ReferenceOwner,
+  ReferenceStore,
+  StoredReference,
+  StoredReferenceSuppression,
+} from './references.ts';
 import type {Conversation, ConversationStore, StoredTurn, TurnState} from './conversations.ts';
 import type {Revision, RevisionStore, RevisionSummary} from './revisions.ts';
 
@@ -160,26 +167,20 @@ export function removeSuppression(id: number): Promise<void> {
 }
 
 /**
- * The stored row shapes, re-exported so callers reach one module for the wire.
+ * The reference shapes, re-exported so callers reach one module for the wire.
  *
  * They are declared in `references.ts` rather than here because the assembler
- * that reads them must not name this file: it imports `@tauri-apps/api`, which
- * a test with no webview cannot load. `serialises_to_the_shape_the_frontend_reads`
- * in `src-tauri/src/references.rs` pins the other end of both.
+ * and the hook that read them must not name this file: it imports
+ * `@tauri-apps/api`, which a test with no webview cannot load.
+ * `serialises_to_the_shape_the_frontend_reads` in `src-tauri/src/references.rs`
+ * pins the other end of both stored rows.
  */
-export type {StoredReference, StoredReferenceSuppression};
-
-/** Who a reference is attached to, flattened into the two columns below. */
-export type ReferenceOwner = {kind: 'doc'; path: DocPath} | {kind: 'group'; path: GroupPath};
-
-export type NewReference = {
-  owner: ReferenceOwner;
-  kind: ReferenceKind;
-  title: string;
-  /** The vault path for a `doc` or a `note`. */
-  targetPath?: DocPath;
-  /** The address for a `link`. */
-  url?: string;
+export type {
+  BulkAttachment,
+  NewReference,
+  ReferenceOwner,
+  StoredReference,
+  StoredReferenceSuppression,
 };
 
 /** Every reference in the vault. The cascade is assembled from these app-side. */
@@ -205,21 +206,6 @@ export function addReference(reference: NewReference): Promise<StoredReference> 
     title: reference.title,
   });
 }
-
-/**
- * What a whole paste of links did, as `references.rs` returns it.
- *
- * Rows rather than counts: a link that was already there still belongs in the
- * strip, so both lists are folded into state. A hand-written mirror of
- * `AttachedReferences`, pinned at the other end by
- * `a_bulk_attachment_serialises_to_the_shape_the_frontend_reads`.
- */
-export type BulkAttachment = {
-  /** The rows this call created. */
-  attached: StoredReference[];
-  /** The rows an earlier attachment already held, which the unique index skipped. */
-  skipped: StoredReference[];
-};
 
 /**
  * Attaches a paste of links to one owner, in one write.
@@ -261,6 +247,25 @@ export function addReferenceSuppression(
 export function removeReferenceSuppression(id: number): Promise<void> {
   return invoke<void>('remove_reference_suppression', {id});
 }
+
+/**
+ * The reference calls above, and `createDoc` for a note's body, as one value,
+ * which is what the references hook takes.
+ *
+ * Assembled here and passed down from `App.tsx` rather than imported where it is
+ * used, so the hook never names this file and stays drivable with no webview.
+ * See `ReferenceStore` in `references.ts`.
+ */
+export const tauriReferences: ReferenceStore = {
+  list: listReferences,
+  listSuppressions: listReferenceSuppressions,
+  add: addReference,
+  addLinks,
+  remove: removeReference,
+  suppress: addReferenceSuppression,
+  restore: removeReferenceSuppression,
+  createDoc,
+};
 
 /**
  * The stored conversation shapes, re-exported so callers reach one module for
