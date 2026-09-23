@@ -1,5 +1,5 @@
 export {check} from './check.ts';
-export {createAnchor, resolveAnchor} from './anchor.ts';
+export {createAnchor, resolveAnchor, resolvePassage} from './anchor.ts';
 export {extract, findingAt, sentenceAt, spansMask, toSourceOffset} from './prose.ts';
 export {DETECTORS, DETECTORS_BY_ID} from './registry.ts';
 export {DEFAULT_DETECTORS, DEFAULT_VOICE_THRESHOLDS, THRESHOLDS} from './constants.ts';
