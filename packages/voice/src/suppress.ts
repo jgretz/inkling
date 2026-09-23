@@ -31,8 +31,9 @@ export type SuppressedFinding<S extends Suppression = Suppression> = {
  * Splits findings into the ones to show and the ones the writer already
  * dismissed.
  *
- * Each suppression's anchor is resolved against the current draft once, so a
- * dismissal follows its quote as the text above it grows and shrinks. A finding
+ * Each suppression's anchor is resolved against the current draft once, with
+ * `resolvePassage`, so a dismissal follows its quote as the text above it grows
+ * and shrinks but does not jump to another occurrence of the same text. A finding
  * is suppressed when a suppression with the same rule lands on exactly its
  * range: same rule, same span, same dismissal.
  *

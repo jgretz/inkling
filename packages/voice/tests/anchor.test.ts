@@ -127,4 +127,46 @@ describe('resolvePassage', function () {
 
     expect(resolvePassage('No dashes here at all.', anchor)).toBeUndefined();
   });
+
+  it('should resolve the same span as resolveAnchor after text is inserted before the quote', function () {
+    const anchor = createAnchor(source, start, start + quote.length);
+    const edited = `A new opening paragraph sits above it.\n\n${source}`;
+
+    const resolved = resolvePassage(edited, anchor);
+
+    expect(resolved).toEqual(resolveAnchor(edited, anchor));
+    expect(edited.slice(resolved?.start, resolved?.end)).toBe(quote);
+  });
+
+  it('should refuse the duplicate that resolveAnchor lands on once the original is deleted', function () {
+    const original = 'Say it once. Then say it twice. Say it once.';
+    const anchor = createAnchor(original, 0, 'Say it once.'.length);
+    const edited = 'Then say it twice. Say it once.';
+
+    expect(resolveAnchor(edited, anchor)).toEqual({start: 19, end: 31});
+    expect(resolvePassage(edited, anchor)).toBeUndefined();
+  });
+
+  it('should accept a landing where exactly half the context still agrees', function () {
+    const anchor = {quote: 'X', prefix: 'ab', suffix: 'cd', hint: 0};
+
+    expect(resolvePassage('abXzz', anchor)).toEqual({start: 2, end: 3});
+  });
+
+  it('should refuse a landing where less than half the context still agrees', function () {
+    const anchor = {quote: 'X', prefix: 'ab', suffix: 'cd', hint: 0};
+
+    expect(resolvePassage('zbXzz', anchor)).toBeUndefined();
+  });
+
+  it('should resolve a quote with no remembered context', function () {
+    expect(resolvePassage('X', {quote: 'X', prefix: '', suffix: '', hint: 0})).toEqual({
+      start: 0,
+      end: 1,
+    });
+  });
+
+  it('should return undefined for an empty quote', function () {
+    expect(resolvePassage(source, {quote: '', prefix: '', suffix: '', hint: 0})).toBeUndefined();
+  });
 });
