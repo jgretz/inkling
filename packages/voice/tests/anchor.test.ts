@@ -1,5 +1,11 @@
 import {describe, expect, it} from 'bun:test';
-import {createAnchor, resolveAnchor, resolvePassage} from '../src/anchor.ts';
+import {
+  createAnchor,
+  MIN_CONTEXT_AGREEMENT,
+  resolveAnchor,
+  resolveAnchorScored,
+  resolvePassage,
+} from '../src/anchor.ts';
 
 const source = 'The trouble with most tools is that they answer a question nobody asked.';
 const quote = 'answer a question';
@@ -67,7 +73,61 @@ describe('resolveAnchor', function () {
   });
 });
 
+describe('resolveAnchorScored', function () {
+  it('should report full agreement against the unchanged source', function () {
+    const anchor = createAnchor(source, start, start + quote.length);
+
+    const resolved = resolveAnchorScored(source, anchor);
+
+    expect(resolved?.range).toEqual({start, end: start + quote.length});
+    expect(resolved?.agreement).toBe(1);
+  });
+
+  it('should report full agreement for an anchor that remembered no context', function () {
+    const resolved = resolveAnchorScored('—', {quote: '—', prefix: '', suffix: '', hint: 0});
+
+    expect(resolved?.agreement).toBe(1);
+  });
+});
+
 describe('resolvePassage', function () {
+  const before = 'Tuesday — the meeting day.\n\nSheep, counted — one at a time.';
+  const after = 'Tuesday — the meeting day.\n\nSheep, counted, one at a time.';
+  const second = before.lastIndexOf('—');
+  const survivor = after.indexOf('—');
+
+  it('should return the passage while its context still agrees', function () {
+    const anchor = createAnchor(before, second, second + 1);
+
+    expect(resolvePassage(before, anchor)).toEqual({start: second, end: second + 1});
+  });
+
+  /**
+   * The anchored em dash was deleted. The only one left is somebody else's:
+   * the quote is still in the document, but not the passage.
+   */
+  it('should refuse a landing that kept too little of its context', function () {
+    const anchor = createAnchor(before, second, second + 1);
+
+    const scored = resolveAnchorScored(after, anchor);
+
+    expect(scored?.range).toEqual({start: survivor, end: survivor + 1});
+    expect(scored?.agreement).toBeLessThan(MIN_CONTEXT_AGREEMENT);
+    expect(resolvePassage(after, anchor)).toBeUndefined();
+  });
+
+  it('should leave resolveAnchor answering where the quote is', function () {
+    const anchor = createAnchor(before, second, second + 1);
+
+    expect(resolveAnchor(after, anchor)).toEqual({start: survivor, end: survivor + 1});
+  });
+
+  it('should return undefined when the quote is gone', function () {
+    const anchor = createAnchor(before, second, second + 1);
+
+    expect(resolvePassage('No dashes here at all.', anchor)).toBeUndefined();
+  });
+
   it('should resolve the same span as resolveAnchor after text is inserted before the quote', function () {
     const anchor = createAnchor(source, start, start + quote.length);
     const edited = `A new opening paragraph sits above it.\n\n${source}`;

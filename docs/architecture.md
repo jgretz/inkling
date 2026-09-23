@@ -22,7 +22,7 @@ apps/desk/            the Tauri desktop app
     migrations/       one .sql file per migration
 packages/toryo/       a vendored held-session client for toryo's dispatch daemon
 packages/vault/       markdown parsing and document summaries, pure
-packages/voice/       the sixteen voice detectors and `check`, pure
+packages/voice/       the seventeen voice detectors and `check`, pure
   src/rules.ts        rule sets: parsed, validated, cascaded
   src/suppress.ts     matching dismissals to findings through an edit
 examples/vault/       a small vault to develop against

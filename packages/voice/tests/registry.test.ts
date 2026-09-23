@@ -22,6 +22,7 @@ const EXPECTED = [
   'banned-openers',
   'throat-clearing',
   'signposting',
+  'automatic-interpretation',
   'rule-of-three',
   'transition-stacking',
   'sentence-length-uniformity',

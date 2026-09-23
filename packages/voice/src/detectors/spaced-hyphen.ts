@@ -5,11 +5,12 @@ import type {Detector, Finding, Prose} from '../types.ts';
 const ID = 'spaced-hyphen';
 
 /**
- * One or two hyphens with a space or a tab on both sides. A spaced run of three
- * reads as a dash as well, but the corpus contains none, so the rule stops at
- * the two forms the prose it is measured against actually uses.
+ * A run of one to three hyphens after a space or a tab, followed by a space, a
+ * tab, a line break or the end of the text: spaced, or ending a line, any of
+ * them reads as a dash. A four-hyphen run does not match, because the lookahead
+ * fails on the fourth hyphen.
  */
-const SPACED_HYPHEN = /[ \t]-{1,2}[ \t]/g;
+const SPACED_HYPHEN = /[ \t]-{1,3}(?=[ \t\r\n]|$)/g;
 
 /** `2020 - 2024` and `pages 10 - 20` are a range, whatever the character. */
 const RANGE_BEFORE = /\d\s?$/;
@@ -47,8 +48,9 @@ function lineAt(text: string, offset: number): {start: number; end: number} {
 function spacedHyphens(prose: Prose): Finding[] {
   return [...prose.text.matchAll(SPACED_HYPHEN)]
     .map(function (match) {
-      // The flanking whitespace triggers the match; the hyphen run is the finding.
-      return {start: match.index + 1, end: match.index + match[0].length - 1};
+      // The leading whitespace is consumed and the trailing side is only a
+      // lookahead, so the hyphen run is everything after the first character.
+      return {start: match.index + 1, end: match.index + match[0].length};
     })
     .filter(function (span) {
       if (spansMask(prose, span.start, span.end)) return false;

@@ -37,10 +37,10 @@ export type SuppressedFinding<S extends Suppression = Suppression> = {
  * is suppressed when a suppression with the same rule lands on exactly its
  * range: same rule, same span, same dismissal.
  *
- * A suppression whose quote is gone, or whose landing kept too little of its
- * context, suppresses nothing. That is the honest answer rather than an error,
- * and it is the known limit of this: rewriting the flagged text itself
- * re-raises the finding, because the thing that was judged no longer exists.
+ * A suppression whose quote is gone, or whose landing `resolvePassage` does not
+ * accept as the same passage, suppresses nothing. That is the honest answer
+ * rather than an error, and it is the known limit of this: rewriting the flagged
+ * text itself re-raises the finding, because the thing that was judged no longer exists.
  *
  * `kept` holds the surviving findings in the order they arrived.
  */

@@ -189,6 +189,25 @@ export const SIGNPOSTING: readonly PhraseRule[] = [
 ];
 
 /**
+ * Commentary tacked onto a factual clause, telling the reader what the fact
+ * means instead of letting it mean it. The participle must follow a comma,
+ * which is what makes it commentary on the clause before it; the span starts at
+ * the participle, not at the comma.
+ */
+export const AUTOMATIC_INTERPRETATION: readonly PhraseRule[] = [
+  {
+    pattern:
+      /(?<=,[ \t]+)(?:highlighting|underscoring|reflecting|showcasing|demonstrating|cementing|paving the way for)\b/giu,
+    explain:
+      'end the sentence at the fact. If the meaning needs saying, give it its own sentence and its evidence.',
+  },
+  {
+    pattern: /\bwhich[ \t]+(?:underscores|reflects|speaks to)\b/giu,
+    explain: 'end the sentence at the fact, and let the reader draw the conclusion.',
+  },
+];
+
+/**
  * A false contrast on a predicate, and the two-sentence version of the same
  * move. The negation has to sit on the predicate itself, either after a copula
  * (`is not`, `it's not`) or behind an explicit intensifier (`not just`, `not
@@ -210,7 +229,7 @@ export const NEGATIVE_PARALLELISM: readonly PhraseRule[] = [
   },
   {
     pattern:
-      /\b(?:it|this|that)(?:'s| is| was) not[ \t]+[^.!?\n]{2,60}[.!?][ \t]+(?:it|this|that)(?:'s| is| was)\b/gi,
+      /\b(?:it|this|that)(?:['’]s| is| was) not[ \t]+[^.!?\n]{2,60}[.!?][ \t]+(?:it|this|that)(?:['’]s| is| was)\b/gi,
     explain: 'delete the first sentence and keep the second.',
   },
 ];

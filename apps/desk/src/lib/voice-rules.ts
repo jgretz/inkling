@@ -27,6 +27,7 @@ export const RULE_LABELS: Record<string, string> = {
   'banned-openers': 'Banned opener',
   'throat-clearing': 'Throat clearing',
   signposting: 'Signposting',
+  'automatic-interpretation': 'Automatic interpretation',
   'rule-of-three': 'Rule of three',
   'transition-stacking': 'Stacked transitions',
   'sentence-length-uniformity': 'Uniform sentence length',

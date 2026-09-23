@@ -17,7 +17,7 @@ function anchor(fields: Partial<Anchor>): Anchor {
 
 describe('ruleLabel', function () {
   it('should label every registered detector, in registry order', function () {
-    // Asserted against the registry rather than against a count: a seventeenth
+    // Asserted against the registry rather than against a count: an eighteenth
     // detector, or a renamed id, has to fail here until it is labelled.
     const labels = DETECTORS.map(function (detector) {
       return ruleLabel(detector.id);
@@ -37,6 +37,7 @@ describe('ruleLabel', function () {
       'Banned opener',
       'Throat clearing',
       'Signposting',
+      'Automatic interpretation',
       'Rule of three',
       'Stacked transitions',
       'Uniform sentence length',

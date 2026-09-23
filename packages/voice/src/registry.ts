@@ -1,3 +1,4 @@
+import {automaticInterpretation} from './detectors/automatic-interpretation.ts';
 import {bannedOpeners} from './detectors/banned-openers.ts';
 import {bannedWords} from './detectors/banned-words.ts';
 import {boldTermColon} from './detectors/bold-term-colon.ts';
@@ -35,6 +36,7 @@ export const DETECTORS: readonly Detector[] = [
   bannedOpeners,
   throatClearing,
   signposting,
+  automaticInterpretation,
   ruleOfThree,
   transitionStacking,
   sentenceLengthUniformity,
