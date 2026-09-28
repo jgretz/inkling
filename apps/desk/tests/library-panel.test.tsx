@@ -390,6 +390,23 @@ describe('LibraryPanel edits', function () {
     );
   });
 
+  // A group past the indent limit is labelled with more than one segment, and
+  // that label must not be mistaken for its name.
+  it('should prefill a deep group’s own name and rename nothing when it is submitted unchanged', function () {
+    const onRenameGroup = mock(function () {});
+    const view = panel({
+      docs: [],
+      groups: ['a', 'a/b', 'a/b/c', 'a/b/c/d'] as GroupPath[],
+      onRenameGroup,
+    });
+
+    pick(view, groupMore(view, 'c/d'), 'Rename…');
+    expect((view.getByLabelText('Name') as HTMLInputElement).value).toBe('d');
+    fireEvent.submit(view.getByLabelText('Name'));
+
+    expect(onRenameGroup).not.toHaveBeenCalled();
+  });
+
   it('should list the current group as unpickable when a document is being moved', function () {
     const view = panel();
 

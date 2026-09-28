@@ -102,9 +102,6 @@ describe('renamedGroup', function () {
     expect(renamedGroup('drafts' as GroupPath, 'notes')).toBe('notes' as GroupPath);
   });
 
-  // The field is prefilled with the last segment, so a group past the indent
-  // limit, labelled with more than one segment, must not have its label
-  // mistaken for its name.
   it('should rename only the last segment when the group is deep', function () {
     expect(renamedGroup('a/b/c/d' as GroupPath, 'e')).toBe('a/b/c/e' as GroupPath);
   });
