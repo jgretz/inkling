@@ -26,7 +26,7 @@ import {
   askRestoreRevision,
 } from './lib/ask-first.ts';
 import {copyRichText, systemClipboard} from './lib/clipboard.ts';
-import {showMode, type DocMode, type ModeState} from './lib/doc-mode.ts';
+import type {ModeState} from './lib/doc-mode.ts';
 import {daemonToken, initDaemonToken, refreshDaemonToken} from './lib/daemon-token.ts';
 import {createDispatchTransport, type TokenAccess} from './lib/dispatch-transport.ts';
 import {
@@ -250,15 +250,6 @@ export function App() {
       return {...current, ...update({docMode: current.docMode, editMode: current.editMode})};
     });
   }, []);
-
-  const handleDocMode = useCallback(
-    function (mode: DocMode) {
-      updateDocMode(function (state) {
-        return showMode(state, mode);
-      });
-    },
-    [updateDocMode],
-  );
 
   // Read is not a place focus can be, so arriving there ends the editor's claim
   // to it. The chat's claim stands: a turn handed to the agent stays handed.
@@ -793,7 +784,6 @@ export function App() {
         save={workspace.open?.save}
         layout={layout}
         onToggle={handleToggle}
-        onDocMode={handleDocMode}
         turn={indicatorFor(mode, landing)}
         pinned={layout.turnPin !== undefined}
         onPin={handlePin}

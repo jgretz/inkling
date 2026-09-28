@@ -1,7 +1,8 @@
-import {useEffect, type ComponentProps} from 'react';
+import {useCallback, useEffect, type ComponentProps} from 'react';
 import {
   isToggleEditKey,
   isToggleReadKey,
+  showMode,
   toggleEditMode,
   toggleRead,
   type DocMode,
@@ -9,6 +10,7 @@ import {
 import {EditorPanel} from '../editor/EditorPanel.tsx';
 import {FindingsStrip} from '../findings/FindingsStrip.tsx';
 import {PreviewPanel} from '../preview/PreviewPanel.tsx';
+import {DocumentBar} from './DocumentBar.tsx';
 import type {ModeUpdate} from './use-reveal.ts';
 
 type DocumentPanelProps = Omit<ComponentProps<typeof EditorPanel>, 'hidden'> &
@@ -23,6 +25,9 @@ type DocumentPanelProps = Omit<ComponentProps<typeof EditorPanel>, 'hidden'> &
  * The editor stays mounted in every mode and is only hidden in Read, so the
  * view is never rebuilt by a switch: the document, its undo history, its caret
  * and its marks are all where they were on the way back.
+ *
+ * The mode switch sits on top in every mode, Read included, so the way back to
+ * editing is always one click in the same place.
  *
  * Command-E (Read and back) and Command-Shift-E (Live and Source) are heard on
  * the window rather than in the editor, because they have to work from the chat
@@ -60,8 +65,18 @@ export function DocumentPanel({
     [onMode],
   );
 
+  const show = useCallback(
+    function (target: DocMode) {
+      onMode(function (state) {
+        return showMode(state, target);
+      });
+    },
+    [onMode],
+  );
+
   return (
     <>
+      <DocumentBar mode={mode} onShow={show} />
       <div className="min-h-0 flex-1">
         <EditorPanel {...editor} findings={findings} hidden={mode === 'read'} />
         {mode === 'read' && <PreviewPanel source={editor.source} />}

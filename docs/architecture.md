@@ -99,10 +99,11 @@ app through them.
 
 The library shows the vault as the writer's own folders arrange it: documents at
 the root first, in an unnamed section, then a group per directory, nested as
-deep as they go. The library and the agent toggle from the title bar, the
-document's mode is the switch beside them, Command-E (Read and back) or
-Command-Shift-E (Live and Source), and each boundary is a draggable splitter;
-the widths persist across restarts.
+deep as they go. The library and the agent toggle from the title bar. The
+document's mode is the switch centered in the bar above the document
+(`components/document/DocumentBar.tsx`), or Command-E (Read and back) and
+Command-Shift-E (Live and Source). Each boundary is a draggable splitter; the
+widths persist across restarts.
 
 ## State
 

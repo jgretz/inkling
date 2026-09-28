@@ -271,3 +271,98 @@ describe('the document panel', function () {
     expect(view.hasFocus).toBe(false);
   });
 });
+
+describe('the document mode switch', function () {
+  function modeGroup(result: ReturnType<typeof mount>): HTMLElement {
+    return result.getByRole('group', {name: 'Document mode'});
+  }
+
+  function modeButton(result: ReturnType<typeof mount>, label: string): HTMLButtonElement {
+    const button = modeGroup(result).querySelector<HTMLButtonElement>(
+      `button[aria-label="${label}"]`,
+    );
+    if (button === null) throw new Error(`the switch has no ${label} button`);
+    return button;
+  }
+
+  function pressedLabels(result: ReturnType<typeof mount>): (string | null)[] {
+    return [...modeGroup(result).querySelectorAll('button[aria-pressed="true"]')].map(
+      function (button) {
+        return button.getAttribute('aria-label');
+      },
+    );
+  }
+
+  it('should list Live, Source and Read in that order', function () {
+    const labels = [...modeGroup(mount(modeState('live'))).querySelectorAll('button')].map(
+      function (button) {
+        return button.getAttribute('aria-label');
+      },
+    );
+
+    expect(labels).toEqual(['Live', 'Source', 'Read']);
+  });
+
+  it('should show the switch in every mode', function () {
+    for (const mode of ['live', 'source', 'read'] as const) {
+      const result = mount(modeState(mode));
+      expect(modeGroup(result)).toBeDefined();
+      result.unmount();
+    }
+  });
+
+  it('should mark exactly the current mode pressed', function () {
+    const pressed = (['live', 'source', 'read'] as const).map(function (mode) {
+      const result = mount(modeState(mode));
+      const labels = pressedLabels(result);
+      result.unmount();
+      return labels;
+    });
+
+    expect(pressed).toEqual([['Live'], ['Source'], ['Read']]);
+  });
+
+  it('should show the rendered document when Read is clicked from live', function () {
+    const result = mount(modeState('live'));
+
+    fireEvent.click(modeButton(result, 'Read'));
+
+    expect(editorHost(result.view).hidden).toBe(true);
+    expect(result.container.querySelector('article')).not.toBeNull();
+    expect(pressedLabels(result)).toEqual(['Read']);
+  });
+
+  it('should show the editor in source when Source is clicked from read', function () {
+    const result = mount(modeState('read', 'live'));
+
+    fireEvent.click(modeButton(result, 'Source'));
+
+    expect(editorHost(result.view).hidden).toBe(false);
+    expect(result.container.querySelector('article')).toBeNull();
+    expect(drawsLive(result.view)).toBe(false);
+  });
+
+  it('should draw live on the same view when Live is clicked from source', function () {
+    const result = mount(modeState('source'));
+    expect(drawsLive(result.view)).toBe(false);
+
+    fireEvent.click(modeButton(result, 'Live'));
+
+    expect(EditorView.findFromDOM(result.container as HTMLElement)).toBe(result.view);
+    expect(drawsLive(result.view)).toBe(true);
+  });
+
+  it('should give every button a hover', function () {
+    const titles = [...modeGroup(mount(modeState('live'))).querySelectorAll('button')].map(
+      function (button) {
+        return button.title;
+      },
+    );
+
+    expect(titles).toEqual([
+      'Live (⌘⇧E switches to Source)',
+      'Source (⌘⇧E switches to Live)',
+      'Read (⌘E toggles)',
+    ]);
+  });
+});
