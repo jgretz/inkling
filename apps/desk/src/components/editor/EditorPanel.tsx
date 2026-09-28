@@ -1,12 +1,14 @@
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useImperativeHandle, useRef, useState, type Ref} from 'react';
 import {Compartment, EditorState, type Extension} from '@codemirror/state';
 import {EditorView, drawSelection, highlightActiveLine, keymap} from '@codemirror/view';
 import {defaultKeymap, history, historyKeymap} from '@codemirror/commands';
 import {markdown, markdownLanguage} from '@codemirror/lang-markdown';
+import {syntaxTree} from '@codemirror/language';
 import type {Finding, Range} from '@inkling/voice';
 import type {EditMode} from '../../lib/doc-mode.ts';
 import {pointerAt, type Pointer} from '../../lib/pointer.ts';
 import {inklingTheme, proseSurface, sourceSurface} from './theme.ts';
+import {activeFormats, formatKeymap, runFormat, sameFormats, type FormatName} from './format.ts';
 import {setFindings, voiceFindings} from './findings-marks.ts';
 import {openingCaret} from './frontmatter-fold.ts';
 import {liveMarks} from './live-marks.ts';
@@ -33,6 +35,12 @@ export type Reveal = {
    * entry they clicked already names it, and the underline is already there.
    */
   mark?: boolean;
+};
+
+/** What the document panel may ask of the editor. */
+export type EditorHandle = {
+  /** Applies `name` to the selection and hands focus back to the editor. */
+  format: (name: FormatName) => void;
 };
 
 /** What each editing mode adds to the view on top of what every mode shares. */
@@ -74,6 +82,9 @@ type EditorPanelProps = {
    * another, so the document, its undo history and its caret survive a switch.
    */
   editMode: EditMode;
+  ref?: Ref<EditorHandle>;
+  /** Fires with the formats the selection is in, whenever they change. */
+  onActiveFormats?: (active: ReadonlySet<FormatName>) => void;
 };
 
 /**
@@ -100,14 +111,24 @@ export function EditorPanel({
   reveal,
   hidden,
   editMode,
+  ref,
+  onActiveFormats,
 }: EditorPanelProps) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
 
   // Callbacks live in refs so the view is built once per document rather than
   // torn down whenever the parent re-renders with new function identities.
-  const handlers = useRef({onChange, onSelect, onSave});
-  handlers.current = {onChange, onSelect, onSave};
+  const handlers = useRef({onChange, onSelect, onSave, onActiveFormats});
+  handlers.current = {onChange, onSelect, onSave, onActiveFormats};
+
+  const lastActive = useRef<ReadonlySet<FormatName> | null>(null);
+  function reportFormats(state: EditorState) {
+    const active = activeFormats(state);
+    if (lastActive.current !== null && sameFormats(lastActive.current, active)) return;
+    lastActive.current = active;
+    handlers.current.onActiveFormats?.(active);
+  }
 
   // Same reason, and one more: a new view has to be decorated at creation. The
   // effect below fires only when `findings` changes identity, which it does not
@@ -138,6 +159,15 @@ export function EditorPanel({
             from === to ? undefined : pointerAt(update.state.doc.toString(), from, to),
           );
         }
+        // A tree the parser finished in the background can put an unchanged
+        // caret inside a construct it did not know about before.
+        if (
+          update.selectionSet ||
+          update.docChanged ||
+          syntaxTree(update.state) !== syntaxTree(update.startState)
+        ) {
+          reportFormats(update.state);
+        }
       });
 
       const saveKey = keymap.of([
@@ -164,6 +194,8 @@ export function EditorPanel({
         agentPoint(),
         listener,
         saveKey,
+        // Before the default keymap, which binds Mod-i to `selectParentSyntax`.
+        formatKeymap(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
       ];
 
@@ -178,6 +210,7 @@ export function EditorPanel({
       instance.dispatch({
         effects: setFindings.of(marks.current.marksOn ? marks.current.findings : []),
       });
+      reportFormats(instance.state);
 
       return function () {
         instance.destroy();
@@ -269,6 +302,21 @@ export function EditorPanel({
     // to hand back an equal request. `seq` increases on every pick by contract,
     // so `reveal.range` above cannot be read from a request this already ran.
     [reveal?.seq],
+  );
+
+  useImperativeHandle(
+    ref,
+    function () {
+      return {
+        format(name) {
+          const instance = view.current;
+          if (instance === null) return;
+          runFormat(instance, name);
+          instance.focus();
+        },
+      };
+    },
+    [],
   );
 
   // React delegates focus at the tree's root, so focus landing on a node

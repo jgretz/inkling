@@ -1,7 +1,7 @@
 import {autoCleanup} from './setup.ts';
 import {describe, expect, it} from 'bun:test';
 import {useState} from 'react';
-import {fireEvent, render} from '@testing-library/react';
+import {act, fireEvent, render} from '@testing-library/react';
 import {EditorView} from '@codemirror/view';
 import {undo} from '@codemirror/commands';
 import {check, resolveVoice, type Range} from '@inkling/voice';
@@ -363,6 +363,89 @@ describe('the document mode switch', function () {
       'Live (⌘⇧E switches to Source)',
       'Source (⌘⇧E switches to Live)',
       'Read (⌘E toggles)',
+    ]);
+  });
+});
+
+describe('the formatting toolbar', function () {
+  function formatButton(result: ReturnType<typeof mount>, label: string): HTMLButtonElement {
+    const button = result
+      .getByRole('group', {name: 'Formatting'})
+      .querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+    if (button === null) throw new Error(`the toolbar has no ${label} button`);
+    return button;
+  }
+
+  function select(view: EditorView, anchor: number, head = anchor) {
+    act(function () {
+      view.dispatch({selection: {anchor, head}});
+    });
+  }
+
+  it('should bold the selected word as one undo step and keep focus in the editor when Bold is clicked', function () {
+    const result = mount(modeState('live'));
+    const {view} = result;
+    view.focus();
+    select(view, 2, 10);
+    expect(view.state.sliceDoc(2, 10)).toBe('sentence');
+    const bold = formatButton(result, 'Bold');
+
+    const proceeded = fireEvent.mouseDown(bold);
+    fireEvent.click(bold);
+
+    expect(proceeded).toBe(false);
+    expect(view.state.doc.toString()).toBe(`A **sentence**${MIXED.slice(10)}${BOLD_LINE}`);
+    expect(view.hasFocus).toBe(true);
+    act(function () {
+      undo(view);
+    });
+    expect(view.state.doc.toString()).toBe(MIXED + BOLD_LINE);
+  });
+
+  it('should press Bold while the caret is in bold text and release it on plain text', function () {
+    const result = mount(modeState('live'));
+    const inBold = MIXED.length + BOLD_LINE.indexOf('bold') + 2;
+
+    select(result.view, inBold);
+    expect(formatButton(result, 'Bold').getAttribute('aria-pressed')).toBe('true');
+
+    select(result.view, 4);
+    expect(formatButton(result, 'Bold').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('should show the toolbar in live and source and not in read', function () {
+    const shown = (['live', 'source', 'read'] as const).map(function (mode) {
+      const result = mount(modeState(mode));
+      const present = result.queryByRole('group', {name: 'Formatting'}) !== null;
+      result.unmount();
+      return present;
+    });
+
+    expect(shown).toEqual([true, true, false]);
+  });
+
+  it('should give every button its label and its key as the hover', function () {
+    const titles = [
+      ...mount(modeState('live'))
+        .getByRole('group', {name: 'Formatting'})
+        .querySelectorAll('button'),
+    ].map(function (button) {
+      return button.title;
+    });
+
+    expect(titles).toEqual([
+      'Bold (⌘B)',
+      'Italic (⌘I)',
+      'Strikethrough (⌘⇧X)',
+      'Inline code (⌘⇧C)',
+      'Link (⌘K)',
+      'Heading 1',
+      'Heading 2',
+      'Heading 3',
+      'Bulleted list',
+      'Numbered list',
+      'Task',
+      'Quote',
     ]);
   });
 });
