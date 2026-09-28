@@ -4,9 +4,11 @@ import {tags} from '@lezer/highlight';
 import type {Extension} from '@codemirror/state';
 
 /**
- * The editor's look. It deliberately does not resemble a code editor: markdown
- * syntax is dimmed rather than coloured, so the eye lands on the prose and the
- * markers stay legible without competing with it.
+ * The editor's look. It deliberately does not resemble a code editor: the prose
+ * is set as reading type, in the preview's serif and on the preview's measure,
+ * so one document does not speak in two voices side by side. Markdown syntax is
+ * dimmed rather than coloured, so the eye lands on the prose and the markers
+ * stay legible without competing with it. Monospace is kept for code alone.
  */
 const paint = EditorView.theme(
   {
@@ -14,17 +16,21 @@ const paint = EditorView.theme(
       color: 'var(--color-ink-100)',
       backgroundColor: 'var(--color-ink-900)',
       height: '100%',
-      fontSize: '15px',
+      fontSize: '18px',
     },
     '.cm-scroller': {
-      fontFamily: 'var(--font-mono)',
-      lineHeight: '1.7',
+      fontFamily: 'var(--font-prose)',
+      // 28px at 18px, and unitless so the larger headings get proportional
+      // leading rather than a fixed 28px that would crowd them.
+      lineHeight: '1.556',
       padding: '2rem 0',
       overflow: 'auto',
     },
     '.cm-content': {
       caretColor: 'var(--color-accent)',
-      maxWidth: '72ch',
+      // `.cm-content` is border-box, so the `+ 3rem` pays for the side padding
+      // and leaves a 62ch text column, the preview's measure.
+      maxWidth: 'calc(62ch + 3rem)',
       margin: '0 auto',
       padding: '0 1.5rem',
     },
@@ -91,7 +97,14 @@ const highlight = HighlightStyle.define([
   {tag: tags.link, color: 'var(--color-accent)'},
   {tag: tags.url, color: 'var(--color-accent-muted)'},
   {tag: tags.quote, color: 'var(--color-ink-300)', fontStyle: 'italic'},
-  {tag: [tags.monospace, tags.content], color: 'var(--color-ink-200)'},
+  {tag: tags.content, color: 'var(--color-ink-200)'},
+  // Smaller because SF Mono's x-height would loom over the serif around it.
+  {
+    tag: tags.monospace,
+    fontFamily: 'var(--font-mono)',
+    fontSize: '0.875em',
+    color: 'var(--color-ink-200)',
+  },
   // The syntax characters themselves: present, but out of the way.
   {tag: [tags.processingInstruction, tags.meta, tags.punctuation], color: 'var(--color-ink-600)'},
 ]);
