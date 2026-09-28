@@ -2,19 +2,18 @@ import {autoCleanup} from './setup.ts';
 import {describe, expect, it, mock} from 'bun:test';
 import {fireEvent, render} from '@testing-library/react';
 import type {DocPath, DocSummary, GroupPath} from '@inkling/vault';
-import {fileNameFor, LibraryPanel} from '../src/components/library/LibraryPanel.tsx';
-import {relativeTime} from '../src/components/library/DocRow.tsx';
-import {indentOf, labelOf} from '../src/components/library/GroupRow.tsx';
+import {LibraryPanel} from '../src/components/library/LibraryPanel.tsx';
+import {labelOf, nestsContents} from '../src/components/library/GroupRow.tsx';
 
 autoCleanup();
 
-function doc(path: string, title: string): DocSummary {
+function doc(path: string, title: string, updatedAt = '2026-09-04T12:00:00.000Z'): DocSummary {
   return {
     path: path as DocPath,
     title,
     kind: undefined,
     tags: [],
-    updatedAt: '2026-09-04T12:00:00.000Z',
+    updatedAt,
     words: 100,
   };
 }
@@ -48,53 +47,110 @@ function panel(overrides: Partial<Parameters<typeof LibraryPanel>[0]> = {}) {
   );
 }
 
-/**
- * A group header, found by the label on the row's rename control rather than by
- * its text: every document's "Move to" select carries an option per group, so
- * a group's name is on screen once per row as well as on its header.
- */
-function header(view: ReturnType<typeof panel>, group: string): HTMLElement {
-  const row = view.getByLabelText(`Rename the group ${group}`).closest('li');
-  const found = row?.querySelector('button[aria-expanded]');
-  if (!(found instanceof HTMLElement)) throw new Error(`no header for the group ${group}`);
-  return found;
+type View = ReturnType<typeof panel>;
+
+/** A group's header, which is the button named by the folder. */
+function header(view: View, group: string): HTMLElement {
+  return view.getByRole('button', {name: group});
 }
 
 /** The list item wrapping a whole group, header and contents alike. */
-function section(view: ReturnType<typeof panel>, group: string): HTMLElement {
-  const row = view.getByLabelText(`Rename the group ${group}`).closest('li');
+function section(view: View, group: string): HTMLElement {
+  const row = header(view, group).closest('li');
   if (!(row instanceof HTMLElement)) throw new Error(`no section for the group ${group}`);
   return row;
 }
 
-describe('LibraryPanel', function () {
-  it('should render a document inside its group and not at the top level', function () {
+function more(view: View, title: string): HTMLElement {
+  return view.getByRole('button', {name: `Actions for ${title}`});
+}
+
+function groupMore(view: View, group: string): HTMLElement {
+  return view.getByRole('button', {name: `Actions for the group ${group}`});
+}
+
+function menuLabels(view: View): (string | null)[] {
+  return view.getAllByRole('menuitem').map(function (item) {
+    return item.textContent;
+  });
+}
+
+/** Opens a menu from its trigger and picks one of its items. */
+function pick(view: View, opener: HTMLElement, item: string) {
+  fireEvent.click(opener);
+  fireEvent.click(view.getByRole('menuitem', {name: item}));
+}
+
+function submitField(view: View, label: string, value: string) {
+  const field = view.getByLabelText(label);
+  fireEvent.change(field, {target: {value}});
+  fireEvent.submit(field);
+}
+
+describe('LibraryPanel tree', function () {
+  it('should render a document inside its group when it sits in that directory', function () {
     const view = panel();
 
     const row = view.getByText('On writing');
 
     expect(section(view, 'drafts').contains(row)).toBe(true);
-    // Not a sibling of the groups: the flat list this replaced put it there.
     expect(section(view, 'essays').contains(row)).toBe(false);
   });
 
-  it('should render a document at the vault root in the ungrouped section', function () {
+  it('should render a document in the ungrouped section when it sits at the vault root', function () {
     const view = panel();
 
     const row = view.getByText('Root piece');
 
     expect(section(view, 'drafts').contains(row)).toBe(false);
-    expect(view.getByRole('button', {name: 'No group'}).closest('li')?.contains(row)).toBe(true);
+    expect(section(view, 'No group').contains(row)).toBe(true);
   });
 
-  it('should show a group the writer made and put nothing in yet', function () {
+  it('should show a group when the writer made it and put nothing in it yet', function () {
     const view = panel({docs: [], groups: ['essays'] as GroupPath[]});
 
     expect(view.queryByText('No documents yet')).toBeNull();
     expect(header(view, 'essays')).toBeDefined();
   });
 
-  it('should keep every document in a group whose own name matches the filter', function () {
+  it('should render a document row as its title and nothing else when it is at rest', function () {
+    const view = panel();
+
+    const opens = view.getByRole('button', {name: 'On writing'});
+
+    expect(opens.closest('li')?.textContent).toBe('On writing');
+    expect(opens.textContent).toBe('On writing');
+  });
+
+  it('should name a group header by its folder in normal case when it is rendered', function () {
+    const view = panel();
+
+    const drafts = header(view, 'drafts');
+
+    expect(drafts.className).not.toContain('uppercase');
+    expect(drafts.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('should order a group’s documents by title when they arrive most recent first', function () {
+    const view = panel({
+      docs: [
+        doc('drafts/c.md', 'C last', '2026-09-04T12:00:00.000Z'),
+        doc('drafts/b.md', 'b middle', '2026-09-03T12:00:00.000Z'),
+        doc('drafts/a.md', 'A draft first', '2026-09-02T12:00:00.000Z'),
+      ],
+      groups: ['drafts'] as GroupPath[],
+    });
+
+    const titles = Array.from(section(view, 'drafts').querySelectorAll('ul > li')).map(
+      function (item) {
+        return item.textContent;
+      },
+    );
+
+    expect(titles).toEqual(['A draft first', 'b middle', 'C last']);
+  });
+
+  it('should keep every document in a group when the group’s own name matches the filter', function () {
     const {getByLabelText, getByText, queryByText} = panel();
 
     fireEvent.change(getByLabelText('Search documents'), {target: {value: 'drafts'}});
@@ -104,7 +160,7 @@ describe('LibraryPanel', function () {
     expect(queryByText('A draft of nothing')).toBeNull();
   });
 
-  it('should keep only the matching document in a group that merely contains one', function () {
+  it('should keep only the matching document when a group merely contains one', function () {
     const {getByLabelText, getByText, queryByText} = panel();
 
     fireEvent.change(getByLabelText('Search documents'), {target: {value: 'draft of'}});
@@ -114,7 +170,7 @@ describe('LibraryPanel', function () {
     expect(queryByText('Something else')).toBeNull();
   });
 
-  it('should hide a collapsed group’s documents and leave the ungrouped section open', function () {
+  it('should hide a group’s documents and nothing else when it is collapsed', function () {
     const view = panel();
 
     fireEvent.click(header(view, 'drafts'));
@@ -124,16 +180,16 @@ describe('LibraryPanel', function () {
     expect(view.getByText('A draft of nothing')).toBeDefined();
   });
 
-  it('should hide the ungrouped documents without touching the groups', function () {
+  it('should hide the ungrouped documents without touching the groups when that section is collapsed', function () {
     const view = panel();
 
-    fireEvent.click(view.getByRole('button', {name: 'No group'}));
+    fireEvent.click(header(view, 'No group'));
 
     expect(view.queryByText('Root piece')).toBeNull();
     expect(view.getByText('On writing')).toBeDefined();
   });
 
-  it('should reveal a match inside a group the writer had folded shut', function () {
+  it('should reveal a match when it is inside a group the writer had folded shut', function () {
     const view = panel();
     fireEvent.click(header(view, 'drafts'));
     expect(view.queryByText('On writing')).toBeNull();
@@ -143,7 +199,7 @@ describe('LibraryPanel', function () {
     expect(view.getByText('On writing')).toBeDefined();
   });
 
-  it('should fold the group shut again once the filter is cleared', function () {
+  it('should fold the group shut again when the filter is cleared', function () {
     const view = panel();
     fireEvent.click(header(view, 'drafts'));
     fireEvent.change(view.getByLabelText('Search documents'), {target: {value: 'On writing'}});
@@ -155,7 +211,7 @@ describe('LibraryPanel', function () {
 
   it('should reveal a match among the ungrouped documents when they are folded shut', function () {
     const view = panel();
-    fireEvent.click(view.getByRole('button', {name: 'No group'}));
+    fireEvent.click(header(view, 'No group'));
     expect(view.queryByText('Root piece')).toBeNull();
 
     fireEvent.change(view.getByLabelText('Search documents'), {target: {value: 'Root piece'}});
@@ -172,197 +228,7 @@ describe('LibraryPanel', function () {
     expect(onOpen).toHaveBeenCalledWith('drafts/one.md' as DocPath);
   });
 
-  it('should make a group from what is typed into the inline field', function () {
-    const onCreateGroup = mock(function () {});
-    const {getByLabelText} = panel({onCreateGroup});
-
-    fireEvent.click(getByLabelText('New group'));
-    const field = getByLabelText('Name of the new group');
-    fireEvent.change(field, {target: {value: 'notes'}});
-    fireEvent.submit(field);
-
-    expect(onCreateGroup).toHaveBeenCalledWith('notes' as GroupPath);
-  });
-
-  it('should rename a group under the same parent', function () {
-    const onRenameGroup = mock(function () {});
-    const {getByLabelText} = panel({
-      docs: [doc('drafts/2026/a.md', 'Buried')],
-      groups: ['drafts', 'drafts/2026'] as GroupPath[],
-      onRenameGroup,
-    });
-
-    fireEvent.click(getByLabelText('Rename the group 2026'));
-    const field = getByLabelText('Rename the group 2026');
-    fireEvent.change(field, {target: {value: '2027'}});
-    fireEvent.submit(field);
-
-    expect(onRenameGroup).toHaveBeenCalledWith(
-      'drafts/2026' as GroupPath,
-      'drafts/2027' as GroupPath,
-    );
-  });
-
-  it('should move a document into the group picked on its row', function () {
-    const onMoveDoc = mock(function () {});
-    const {getByLabelText} = panel({onMoveDoc});
-
-    fireEvent.change(getByLabelText('Move On writing to a group'), {target: {value: 'essays'}});
-
-    expect(onMoveDoc).toHaveBeenCalledWith('drafts/one.md' as DocPath, 'essays/one.md' as DocPath);
-  });
-
-  it('should move a document out to the vault root', function () {
-    const onMoveDoc = mock(function () {});
-    const {getByLabelText} = panel({onMoveDoc});
-
-    fireEvent.change(getByLabelText('Move On writing to a group'), {target: {value: ''}});
-
-    expect(onMoveDoc).toHaveBeenCalledWith('drafts/one.md' as DocPath, 'one.md' as DocPath);
-  });
-
-  it('should create a new document inside the group it was asked for', function () {
-    const onCreateDoc = mock(function () {});
-    const {getByLabelText} = panel({onCreateDoc});
-
-    fireEvent.click(getByLabelText('New document in drafts'));
-    const field = getByLabelText('Title of the new document in drafts');
-    fireEvent.change(field, {target: {value: 'On Endings'}});
-    fireEvent.submit(field);
-
-    expect(onCreateDoc).toHaveBeenCalledWith(
-      'drafts/on-endings.md' as DocPath,
-      'On Endings',
-      'article',
-    );
-  });
-
-  it('should create a new document at the vault root', function () {
-    const onCreateDoc = mock(function () {});
-    const {getByLabelText} = panel({onCreateDoc});
-
-    fireEvent.click(getByLabelText('New document'));
-    const field = getByLabelText('Title of the new document');
-    fireEvent.change(field, {target: {value: 'On Endings'}});
-    fireEvent.submit(field);
-
-    expect(onCreateDoc).toHaveBeenCalledWith('on-endings.md' as DocPath, 'On Endings', 'article');
-  });
-
-  it('should offer every kind inkling writes, in the order they are declared', function () {
-    const {getByLabelText} = panel();
-
-    fireEvent.click(getByLabelText('New document'));
-    const select = getByLabelText('Kind of the new document');
-
-    expect(
-      Array.from(select.querySelectorAll('option')).map(function (option) {
-        return option.textContent;
-      }),
-    ).toEqual(['article', 'email', 'proposal', 'note']);
-  });
-
-  it('should create the kind the writer picked at the vault root', function () {
-    const onCreateDoc = mock(function () {});
-    const {getByLabelText} = panel({onCreateDoc});
-
-    fireEvent.click(getByLabelText('New document'));
-    fireEvent.change(getByLabelText('Kind of the new document'), {target: {value: 'proposal'}});
-    const field = getByLabelText('Title of the new document');
-    fireEvent.change(field, {target: {value: 'On Endings'}});
-    fireEvent.submit(field);
-
-    expect(onCreateDoc).toHaveBeenCalledWith('on-endings.md' as DocPath, 'On Endings', 'proposal');
-  });
-
-  it('should create the kind the writer picked inside a group', function () {
-    const onCreateDoc = mock(function () {});
-    const {getByLabelText} = panel({onCreateDoc});
-
-    fireEvent.click(getByLabelText('New document in drafts'));
-    fireEvent.change(getByLabelText('Kind of the new document in drafts'), {
-      target: {value: 'proposal'},
-    });
-    const field = getByLabelText('Title of the new document in drafts');
-    fireEvent.change(field, {target: {value: 'On Endings'}});
-    fireEvent.submit(field);
-
-    expect(onCreateDoc).toHaveBeenCalledWith(
-      'drafts/on-endings.md' as DocPath,
-      'On Endings',
-      'proposal',
-    );
-  });
-
-  it('should cancel rather than create a document when the title is submitted empty', function () {
-    const onCreateDoc = mock(function () {});
-    const {getByLabelText, queryByLabelText} = panel({onCreateDoc});
-
-    fireEvent.click(getByLabelText('New document'));
-    fireEvent.submit(getByLabelText('Title of the new document'));
-
-    expect(onCreateDoc).not.toHaveBeenCalled();
-    expect(queryByLabelText('Title of the new document')).toBeNull();
-  });
-
-  it('should close the new-document field on Escape', function () {
-    const {getByLabelText, queryByLabelText} = panel();
-
-    fireEvent.click(getByLabelText('New document'));
-    fireEvent.keyDown(getByLabelText('Title of the new document'), {key: 'Escape'});
-
-    expect(queryByLabelText('Title of the new document')).toBeNull();
-    expect(queryByLabelText('Kind of the new document')).toBeNull();
-  });
-
-  it('should cancel rather than create when the field is submitted empty', function () {
-    const onCreateGroup = mock(function () {});
-    const {getByLabelText, queryByLabelText} = panel({onCreateGroup});
-
-    fireEvent.click(getByLabelText('New group'));
-    fireEvent.submit(getByLabelText('Name of the new group'));
-
-    expect(onCreateGroup).not.toHaveBeenCalled();
-    expect(queryByLabelText('Name of the new group')).toBeNull();
-  });
-
-  it('should raise a delete for the document whose row it was clicked on', function () {
-    const onDeleteDoc = mock(function () {});
-    const {getByLabelText} = panel({onDeleteDoc});
-
-    fireEvent.click(getByLabelText('Delete On writing'));
-
-    expect(onDeleteDoc).toHaveBeenCalledWith('drafts/one.md' as DocPath);
-  });
-
-  it('should raise a delete for the group whose header it was clicked on', function () {
-    const onDeleteGroup = mock(function () {});
-    const {getByLabelText} = panel({onDeleteGroup});
-
-    fireEvent.click(getByLabelText('Delete the group drafts'));
-
-    expect(onDeleteGroup).toHaveBeenCalledWith('drafts' as GroupPath);
-  });
-
-  // The gesture a writer makes all day and the one they cannot undo must not
-  // share an edge, and a control inside the opening button could not be clicked
-  // without opening the document first.
-  it('should keep the delete control out of the button that opens the document', function () {
-    const view = panel();
-
-    const remove = view.getByLabelText('Delete On writing');
-    const opens = view.getByText('On writing').closest('button');
-
-    expect(opens).not.toBeNull();
-    expect(opens?.contains(remove)).toBe(false);
-    // Past the move control, which is what sits between the two.
-    const move = view.getByLabelText('Move On writing to a group');
-    expect(move.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeGreaterThan(
-      0,
-    );
-  });
-
-  it('should say nothing matches rather than that the vault is empty', function () {
+  it('should say nothing matches rather than that the vault is empty when a filter finds nothing', function () {
     const {getByLabelText, getByText} = panel();
 
     fireEvent.change(getByLabelText('Search documents'), {target: {value: 'nothing here'}});
@@ -371,53 +237,364 @@ describe('LibraryPanel', function () {
   });
 });
 
-describe('relativeTime', function () {
-  const now = Date.parse('2026-09-04T12:00:00.000Z');
+describe('LibraryPanel menus', function () {
+  it('should offer rename, move and delete when a document’s ⋯ is clicked', function () {
+    const view = panel();
 
-  it('should say "just now" under a minute', function () {
-    expect(relativeTime('2026-09-04T11:59:40.000Z', now)).toBe('just now');
+    fireEvent.click(more(view, 'On writing'));
+
+    expect(view.getByRole('menu')).toBeDefined();
+    expect(menuLabels(view)).toEqual(['Rename…', 'Move to…', 'Delete']);
   });
 
-  it('should count minutes under an hour', function () {
-    expect(relativeTime('2026-09-04T11:20:00.000Z', now)).toBe('40m');
+  it('should offer the same items when a document’s row is right-clicked', function () {
+    const view = panel();
+
+    fireEvent.contextMenu(view.getByRole('button', {name: 'On writing'}));
+
+    expect(menuLabels(view)).toEqual(['Rename…', 'Move to…', 'Delete']);
   });
 
-  it('should count hours under a day', function () {
-    expect(relativeTime('2026-09-04T04:00:00.000Z', now)).toBe('8h');
+  it('should offer new document, rename and delete when a group’s ⋯ is clicked', function () {
+    const view = panel();
+
+    fireEvent.click(groupMore(view, 'drafts'));
+
+    expect(menuLabels(view)).toEqual(['New document…', 'Rename…', 'Delete']);
   });
 
-  it('should count days under a week', function () {
-    expect(relativeTime('2026-09-01T12:00:00.000Z', now)).toBe('3d');
+  it('should offer a new document and a new group when the header’s + is clicked', function () {
+    const view = panel();
+
+    fireEvent.click(view.getByRole('button', {name: 'New'}));
+
+    expect(menuLabels(view)).toEqual(['New document…', 'New group…']);
   });
 
-  it('should fall back to a date past a week', function () {
-    expect(relativeTime('2026-07-01T12:00:00.000Z', now)).not.toMatch(/^\d+[mhd]$/);
+  it('should mark the ⋯ expanded when its menu is up', function () {
+    const view = panel();
+
+    fireEvent.click(more(view, 'On writing'));
+
+    expect(more(view, 'On writing').getAttribute('aria-expanded')).toBe('true');
+    expect(more(view, 'Something else').getAttribute('aria-expanded')).toBe('false');
   });
 
-  it('should return an empty string for a timestamp it cannot read', function () {
-    expect(relativeTime('not a date', now)).toBe('');
+  it('should close the menu when its ⋯ is clicked a second time', function () {
+    const view = panel();
+    fireEvent.click(more(view, 'On writing'));
+
+    fireEvent.click(more(view, 'On writing'));
+
+    expect(view.queryByRole('menu')).toBeNull();
+  });
+
+  it('should move the caret to the next item when ArrowDown is pressed', function () {
+    const view = panel();
+    fireEvent.click(more(view, 'On writing'));
+    const items = view.getAllByRole('menuitem');
+    expect(document.activeElement).toBe(items[0] as HTMLElement);
+
+    fireEvent.keyDown(items[0] as HTMLElement, {key: 'ArrowDown'});
+
+    expect(document.activeElement).toBe(items[1] as HTMLElement);
+  });
+
+  it('should wrap from the last item to the first when ArrowDown is pressed on the last', function () {
+    const view = panel();
+    fireEvent.click(more(view, 'On writing'));
+    const items = view.getAllByRole('menuitem');
+    fireEvent.keyDown(items[0] as HTMLElement, {key: 'End'});
+    expect(document.activeElement).toBe(items[2] as HTMLElement);
+
+    fireEvent.keyDown(items[2] as HTMLElement, {key: 'ArrowDown'});
+
+    expect(document.activeElement).toBe(items[0] as HTMLElement);
+  });
+
+  it('should close the menu and hand the caret to its ⋯ when Escape is pressed', function () {
+    const view = panel();
+    fireEvent.click(more(view, 'On writing'));
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, {key: 'Escape'});
+
+    expect(view.queryByRole('menu')).toBeNull();
+    expect(document.activeElement).toBe(more(view, 'On writing'));
+  });
+
+  it('should start on the first item when another row is right-clicked with a menu up', function () {
+    const view = panel();
+    fireEvent.click(more(view, 'On writing'));
+    fireEvent.keyDown(document.activeElement as HTMLElement, {key: 'End'});
+
+    fireEvent.contextMenu(header(view, 'drafts'));
+
+    const items = view.getAllByRole('menuitem');
+    expect(menuLabels(view)).toEqual(['New document…', 'Rename…', 'Delete']);
+    expect(document.activeElement).toBe(items[0] as HTMLElement);
+    expect(items[0]?.getAttribute('tabindex')).toBe('0');
+  });
+
+  it('should close the menu when the writer clicks outside it', function () {
+    const view = panel();
+    fireEvent.click(more(view, 'On writing'));
+
+    fireEvent.mouseDown(document.body);
+
+    expect(view.queryByRole('menu')).toBeNull();
   });
 });
 
-describe('fileNameFor', function () {
-  it('should slug a title into a markdown filename', function () {
-    expect(fileNameFor('On Writing, With an Agent')).toBe('on-writing-with-an-agent.md');
+describe('LibraryPanel edits', function () {
+  it('should rename the file in its group when a document is renamed', function () {
+    const onMoveDoc = mock(function () {});
+    const view = panel({onMoveDoc});
+
+    pick(view, more(view, 'On writing'), 'Rename…');
+    submitField(view, 'Title', 'Second thoughts');
+
+    expect(onMoveDoc).toHaveBeenCalledWith(
+      'drafts/one.md' as DocPath,
+      'drafts/second-thoughts.md' as DocPath,
+    );
+    expect(view.queryByRole('dialog')).toBeNull();
   });
 
-  it('should fall back to untitled when nothing survives slugging', function () {
-    expect(fileNameFor('!!!')).toBe('untitled.md');
+  it('should do nothing and close when a document’s title is submitted unchanged', function () {
+    const onMoveDoc = mock(function () {});
+    const view = panel({onMoveDoc});
+    pick(view, more(view, 'On writing'), 'Rename…');
+    expect((view.getByLabelText('Title') as HTMLInputElement).value).toBe('On writing');
+
+    fireEvent.submit(view.getByLabelText('Title'));
+
+    expect(onMoveDoc).not.toHaveBeenCalled();
+    expect(view.queryByRole('dialog')).toBeNull();
+  });
+
+  it('should rename a group under the same parent when its name is changed', function () {
+    const onRenameGroup = mock(function () {});
+    const view = panel({
+      docs: [doc('drafts/2026/a.md', 'Buried')],
+      groups: ['drafts', 'drafts/2026'] as GroupPath[],
+      onRenameGroup,
+    });
+
+    pick(view, groupMore(view, '2026'), 'Rename…');
+    expect((view.getByLabelText('Name') as HTMLInputElement).value).toBe('2026');
+    submitField(view, 'Name', '2027');
+
+    expect(onRenameGroup).toHaveBeenCalledWith(
+      'drafts/2026' as GroupPath,
+      'drafts/2027' as GroupPath,
+    );
+  });
+
+  // A group past the indent limit is labelled with more than one segment, and
+  // that label must not be mistaken for its name.
+  it('should prefill a deep group’s own name and rename nothing when it is submitted unchanged', function () {
+    const onRenameGroup = mock(function () {});
+    const view = panel({
+      docs: [],
+      groups: ['a', 'a/b', 'a/b/c', 'a/b/c/d'] as GroupPath[],
+      onRenameGroup,
+    });
+
+    pick(view, groupMore(view, 'c/d'), 'Rename…');
+    expect((view.getByLabelText('Name') as HTMLInputElement).value).toBe('d');
+    fireEvent.submit(view.getByLabelText('Name'));
+
+    expect(onRenameGroup).not.toHaveBeenCalled();
+  });
+
+  it('should list the current group as unpickable when a document is being moved', function () {
+    const view = panel();
+
+    pick(view, more(view, 'On writing'), 'Move to…');
+    const drafts = view.getByRole('option', {name: /drafts/});
+
+    expect(drafts.getAttribute('aria-disabled')).toBe('true');
+    expect(drafts.textContent).toContain('current');
+  });
+
+  it('should move the document into the picked group when the move is submitted', function () {
+    const onMoveDoc = mock(function () {});
+    const view = panel({onMoveDoc});
+    pick(view, more(view, 'On writing'), 'Move to…');
+
+    fireEvent.click(view.getByRole('option', {name: 'essays'}));
+    fireEvent.click(view.getByRole('button', {name: 'Move'}));
+
+    expect(onMoveDoc).toHaveBeenCalledWith('drafts/one.md' as DocPath, 'essays/one.md' as DocPath);
+  });
+
+  it('should move the document to the vault root when No group is picked', function () {
+    const onMoveDoc = mock(function () {});
+    const view = panel({onMoveDoc});
+    pick(view, more(view, 'On writing'), 'Move to…');
+
+    fireEvent.click(view.getByRole('option', {name: 'No group'}));
+    fireEvent.click(view.getByRole('button', {name: 'Move'}));
+
+    expect(onMoveDoc).toHaveBeenCalledWith('drafts/one.md' as DocPath, 'one.md' as DocPath);
+  });
+
+  it('should ignore a click on the current group when a document is being moved', function () {
+    const onMoveDoc = mock(function () {});
+    const view = panel({onMoveDoc});
+    pick(view, more(view, 'On writing'), 'Move to…');
+
+    fireEvent.click(view.getByRole('option', {name: /drafts/}));
+    fireEvent.click(view.getByRole('button', {name: 'Move'}));
+
+    // Still on the first thing it could pick, which is the vault root.
+    expect(onMoveDoc).toHaveBeenCalledWith('drafts/one.md' as DocPath, 'one.md' as DocPath);
+  });
+
+  it('should move to the group the filter narrowed to when Enter is pressed', function () {
+    const onMoveDoc = mock(function () {});
+    const view = panel({onMoveDoc});
+    pick(view, more(view, 'On writing'), 'Move to…');
+
+    submitField(view, 'Filter groups', 'ess');
+
+    expect(onMoveDoc).toHaveBeenCalledWith('drafts/one.md' as DocPath, 'essays/one.md' as DocPath);
+  });
+
+  it('should skip the current group when the arrow keys move the pick', function () {
+    const onMoveDoc = mock(function () {});
+    const view = panel({onMoveDoc});
+    pick(view, more(view, 'On writing'), 'Move to…');
+    const filter = view.getByLabelText('Filter groups');
+
+    fireEvent.keyDown(filter, {key: 'ArrowDown'});
+    fireEvent.submit(filter);
+
+    expect(onMoveDoc).toHaveBeenCalledWith('drafts/one.md' as DocPath, 'essays/one.md' as DocPath);
+  });
+
+  it('should create the picked kind inside the group when New document is raised from a group', function () {
+    const onCreateDoc = mock(function () {});
+    const view = panel({onCreateDoc});
+
+    pick(view, groupMore(view, 'drafts'), 'New document…');
+    fireEvent.change(view.getByLabelText('Kind'), {target: {value: 'proposal'}});
+    submitField(view, 'Title', 'On Endings');
+
+    expect(onCreateDoc).toHaveBeenCalledWith(
+      'drafts/on-endings.md' as DocPath,
+      'On Endings',
+      'proposal',
+    );
+  });
+
+  it('should create an article at the vault root when New document is raised from the header', function () {
+    const onCreateDoc = mock(function () {});
+    const view = panel({onCreateDoc});
+
+    pick(view, view.getByRole('button', {name: 'New'}), 'New document…');
+    submitField(view, 'Title', 'On Endings');
+
+    expect(onCreateDoc).toHaveBeenCalledWith('on-endings.md' as DocPath, 'On Endings', 'article');
+  });
+
+  it('should offer every kind inkling writes in declared order when a document is being made', function () {
+    const view = panel();
+
+    pick(view, view.getByRole('button', {name: 'New'}), 'New document…');
+    const options = Array.from(view.getByLabelText('Kind').querySelectorAll('option'));
+
+    expect(
+      options.map(function (option) {
+        return option.textContent;
+      }),
+    ).toEqual(['article', 'email', 'proposal', 'note']);
+  });
+
+  it('should create nothing and close when a new document’s title is submitted empty', function () {
+    const onCreateDoc = mock(function () {});
+    const view = panel({onCreateDoc});
+    pick(view, view.getByRole('button', {name: 'New'}), 'New document…');
+
+    fireEvent.submit(view.getByLabelText('Title'));
+
+    expect(onCreateDoc).not.toHaveBeenCalled();
+    expect(view.queryByRole('dialog')).toBeNull();
+  });
+
+  it('should make a group from the path typed when New group is submitted', function () {
+    const onCreateGroup = mock(function () {});
+    const view = panel({onCreateGroup});
+
+    pick(view, view.getByRole('button', {name: 'New'}), 'New group…');
+    submitField(view, 'Name', 'essays/2026');
+
+    expect(onCreateGroup).toHaveBeenCalledWith('essays/2026' as GroupPath);
+  });
+
+  it('should make nothing and close when New group is submitted empty', function () {
+    const onCreateGroup = mock(function () {});
+    const view = panel({onCreateGroup});
+    pick(view, view.getByRole('button', {name: 'New'}), 'New group…');
+
+    fireEvent.submit(view.getByLabelText('Name'));
+
+    expect(onCreateGroup).not.toHaveBeenCalled();
+    expect(view.queryByRole('dialog')).toBeNull();
+  });
+
+  it('should raise the document’s delete without a modal when Delete is picked on it', function () {
+    const onDeleteDoc = mock(function () {});
+    const view = panel({onDeleteDoc});
+
+    pick(view, more(view, 'On writing'), 'Delete');
+
+    expect(onDeleteDoc).toHaveBeenCalledWith('drafts/one.md' as DocPath);
+    expect(view.queryByRole('dialog')).toBeNull();
+    expect(view.queryByRole('menu')).toBeNull();
+  });
+
+  it('should raise the group’s delete without a modal when Delete is picked on it', function () {
+    const onDeleteGroup = mock(function () {});
+    const view = panel({onDeleteGroup});
+
+    pick(view, groupMore(view, 'drafts'), 'Delete');
+
+    expect(onDeleteGroup).toHaveBeenCalledWith('drafts' as GroupPath);
+    expect(view.queryByRole('dialog')).toBeNull();
+  });
+
+  it('should hand the caret back to the row’s ⋯ when a modal is cancelled with Escape', function () {
+    const view = panel();
+    pick(view, more(view, 'On writing'), 'Rename…');
+    expect(document.activeElement).toBe(view.getByLabelText('Title'));
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, {key: 'Escape'});
+
+    expect(view.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(more(view, 'On writing'));
+  });
+
+  it('should hand the caret back to the + when a modal raised from the header is cancelled', function () {
+    const view = panel();
+    pick(view, view.getByRole('button', {name: 'New'}), 'New group…');
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, {key: 'Escape'});
+
+    expect(view.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(view.getByRole('button', {name: 'New'}));
   });
 });
 
 describe('GroupRow paths', function () {
-  it('should indent each level until the third and then stop', function () {
-    expect(indentOf('a')).toBe(0);
-    expect(indentOf('a/b')).toBeGreaterThan(0);
-    expect(indentOf('a/b/c')).toBeGreaterThan(0);
-    expect(indentOf('a/b/c/d')).toBe(0);
+  it('should step each group’s contents in until the indent limit and then stop', function () {
+    expect(nestsContents('a')).toBe(true);
+    expect(nestsContents('a/b')).toBe(true);
+    expect(nestsContents('a/b/c')).toBe(true);
+    expect(nestsContents('a/b/c/d')).toBe(false);
   });
 
-  it('should label a group past the last indent with enough path to place it', function () {
+  it('should label a group with enough path to place it when it is past the last indent', function () {
     expect(labelOf('a/b/c')).toBe('c');
     expect(labelOf('a/b/c/d')).toBe('c/d');
     expect(labelOf('a/b/c/d/e')).toBe('c/d/e');

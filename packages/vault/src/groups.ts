@@ -114,8 +114,10 @@ export function ancestorGroups(path: string): GroupPath[] {
  * its own but sits above one that does appears as well, because dropping it
  * would leave its children with nowhere to hang.
  *
- * Document order within a group is the order handed in, which is the
- * most-recently-touched-first order the workspace already sorts into.
+ * Documents, at the root and within each group, are ordered by title, case
+ * insensitively, with the path breaking a tie. Not the order handed in, which
+ * is the workspace's most-recently-touched-first: the library shows a title and
+ * nothing else, and recency with no time beside it reads as no order at all.
  */
 export function groupTree(
   docs: readonly DocSummary[],
@@ -169,9 +171,16 @@ export function groupTree(
 
   nodes.forEach(function (node) {
     node.children.sort(byName);
+    node.docs.sort(byTitle);
   });
 
-  return {root, groups: top.sort(byName)};
+  return {root: root.sort(byTitle), groups: top.sort(byName)};
+}
+
+function byTitle(a: DocSummary, b: DocSummary): number {
+  return (
+    a.title.localeCompare(b.title, undefined, {sensitivity: 'base'}) || a.path.localeCompare(b.path)
+  );
 }
 
 function matches(haystack: string, needle: string): boolean {

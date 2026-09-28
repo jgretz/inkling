@@ -1,47 +1,30 @@
-import {memo, useCallback} from 'react';
+import {memo, useCallback, useMemo, useRef} from 'react';
+import type {MouseEvent} from 'react';
 import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down';
 import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right';
-import FilePlus from 'lucide-react/dist/esm/icons/file-plus';
-import Pencil from 'lucide-react/dist/esm/icons/pencil';
-import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
-import type {DocKind, DocPath, GroupNode, GroupPath} from '@inkling/vault';
+import type {DocPath, GroupNode, GroupPath} from '@inkling/vault';
 import {DocRow} from './DocRow.tsx';
-import {InlineField} from './InlineField.tsx';
-import {NewDocField} from './NewDocField.tsx';
-
-/**
- * Which inline field is open, and what it will name when it is submitted.
- *
- * One value rather than a flag per affordance: at most one field is ever open,
- * and three booleans would let two of them be true.
- */
-export type Editing =
-  | {kind: 'newGroup'}
-  | {kind: 'renameGroup'; group: GroupPath}
-  | {kind: 'newDoc'; group: GroupPath | undefined};
+import {targetKey, type Target} from './library-actions.ts';
+import {MoreButton, type OpenMenu} from './MoreButton.tsx';
 
 /**
  * How deep the tree indents before it stops.
  *
  * Groups nest arbitrarily, but a 200-pixel panel runs out of room long before
- * a writer runs out of folders. Past this depth every group renders at the same
- * indent and carries the rest of its path in its label, so a deeply buried
- * group is cramped rather than unreachable.
+ * a writer runs out of folders. Past this depth everything renders at the same
+ * indent and a group carries the rest of its path in its label, so a deeply
+ * buried group is cramped rather than unreachable.
  */
 export const MAX_DEPTH = 2;
 
-const INDENT_PX = 10;
-
 /**
- * How far a group steps in **from the group above it**, in pixels.
+ * Whether a group's contents step in under its header.
  *
- * Relative rather than absolute, because a group is rendered inside its
- * parent's list and the two paddings add up. Past [`MAX_DEPTH`] the step is
- * zero, so everything deeper shares the third indent.
+ * True down to [`MAX_DEPTH`]; below that the contents share their header's
+ * indent, so everything deeper sits at the last one.
  */
-export function indentOf(group: string): number {
-  const depth = group.split('/').length - 1;
-  return depth >= 1 && depth <= MAX_DEPTH ? INDENT_PX : 0;
+export function nestsContents(group: string): boolean {
+  return group.split('/').length - 1 <= MAX_DEPTH;
 }
 
 /**
@@ -54,51 +37,54 @@ export function labelOf(group: string): string {
   return segments.slice(MAX_DEPTH).join('/');
 }
 
-const ACTION =
-  'shrink-0 rounded p-1 text-ink-600 opacity-0 transition-opacity duration-100 hover:text-ink-200 focus:opacity-100 focus:outline-none focus:ring-1 focus:ring-accent-muted group-hover/group:opacity-100';
+/**
+ * A section header's look, shared with the ungrouped section: a folder name in
+ * the same case and size as the documents under it.
+ */
+export const SECTION_HEADER =
+  'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] text-ink-300 transition-colors duration-100 group-hover/row:bg-ink-800 group-hover/row:text-ink-100';
+
+/**
+ * The list under a header: one step in, with a guide line under the header's
+ * chevron. The two numbers put the line under the chevron's middle and the
+ * contents' text under the header's name.
+ */
+export const NESTED = 'ml-[13px] space-y-px border-l border-ink-800 pl-1';
+
+const FLAT = 'space-y-px';
 
 type GroupRowProps = {
   node: GroupNode;
   openPath: DocPath | undefined;
-  /** Every group in the vault, for the move control on each document. */
-  groups: readonly GroupPath[];
   /** Group paths the writer has folded shut. Everything else is open. */
   collapsed: readonly string[];
-  editing: Editing | undefined;
+  /** Which row's menu is up, as `targetKey` names it. */
+  menuKey: string | undefined;
   onToggle: (group: GroupPath) => void;
   onOpen: (path: DocPath) => void;
-  onMove: (from: DocPath, to: DocPath) => void;
-  /** Raises a document's delete. The confirmation is put in `App.tsx`. */
-  onDeleteDoc: (path: DocPath) => void;
-  /** Raises this group's delete, which takes everything under it. */
-  onDeleteGroup: (group: GroupPath) => void;
-  onEdit: (editing: Editing | undefined) => void;
-  /** Renames this group to the name the writer typed. */
-  onSubmitName: (value: string) => void;
-  /** Creates a document in this group, as the kind the writer picked. */
-  onSubmitDoc: (value: string, kind: DocKind) => void;
+  onMenu: OpenMenu;
 };
 
 /** One group, its documents, and every group below it. */
 export const GroupRow = memo(function GroupRow({
   node,
   openPath,
-  groups,
   collapsed,
-  editing,
+  menuKey,
   onToggle,
   onOpen,
-  onMove,
-  onDeleteDoc,
-  onDeleteGroup,
-  onEdit,
-  onSubmitName,
-  onSubmitDoc,
+  onMenu,
 }: GroupRowProps) {
   const open = !collapsed.includes(node.path);
   const Chevron = open ? ChevronDown : ChevronRight;
-  const renaming = editing?.kind === 'renameGroup' && editing.group === node.path;
-  const naming = editing?.kind === 'newDoc' && editing.group === node.path;
+  const more = useRef<HTMLButtonElement>(null);
+  const target = useMemo(
+    function (): Target {
+      return {kind: 'group', group: node.path};
+    },
+    [node.path],
+  );
+  const menuOpen = menuKey === targetKey(target);
 
   const handleToggle = useCallback(
     function () {
@@ -107,109 +93,50 @@ export const GroupRow = memo(function GroupRow({
     [node.path, onToggle],
   );
 
-  const handleRename = useCallback(
-    function () {
-      onEdit({kind: 'renameGroup', group: node.path});
+  const handleContextMenu = useCallback(
+    function (event: MouseEvent) {
+      event.preventDefault();
+      if (more.current !== null) onMenu(target, {x: event.clientX, y: event.clientY}, more.current);
     },
-    [node.path, onEdit],
-  );
-
-  const handleNewDoc = useCallback(
-    function () {
-      onEdit({kind: 'newDoc', group: node.path});
-    },
-    [node.path, onEdit],
-  );
-
-  const handleCancel = useCallback(
-    function () {
-      onEdit(undefined);
-    },
-    [onEdit],
-  );
-
-  const handleDelete = useCallback(
-    function () {
-      onDeleteGroup(node.path);
-    },
-    [node.path, onDeleteGroup],
+    [target, onMenu],
   );
 
   const label = labelOf(node.path);
 
   return (
-    <li style={{paddingLeft: indentOf(node.path)}}>
-      {renaming ? (
-        <InlineField
-          label={`Rename the group ${label}`}
-          placeholder="Group name"
-          initial={label}
-          onSubmit={onSubmitName}
-          onCancel={handleCancel}
+    <li>
+      <div className="group/row relative" onContextMenu={handleContextMenu}>
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={handleToggle}
+          className={SECTION_HEADER}
+        >
+          <Chevron size={12} className="shrink-0 text-ink-600" aria-hidden />
+          <span className="truncate">{label}</span>
+        </button>
+        <MoreButton
+          ref={more}
+          label={`Actions for the group ${label}`}
+          target={target}
+          shown={menuOpen}
+          expanded={menuOpen}
+          rowActive={false}
+          onMenu={onMenu}
         />
-      ) : (
-        <div className="group/group flex items-center">
-          <button
-            type="button"
-            aria-expanded={open}
-            onClick={handleToggle}
-            className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] uppercase tracking-wider text-ink-400 transition-colors duration-100 hover:bg-ink-800 hover:text-ink-200"
-          >
-            <Chevron size={12} className="shrink-0 text-ink-600" aria-hidden />
-            <span className="truncate">{label}</span>
-          </button>
-
-          <button
-            type="button"
-            aria-label={`Rename the group ${label}`}
-            onClick={handleRename}
-            className={ACTION}
-          >
-            <Pencil size={12} aria-hidden />
-          </button>
-          <button
-            type="button"
-            aria-label={`New document in ${label}`}
-            onClick={handleNewDoc}
-            className={ACTION}
-          >
-            <FilePlus size={12} aria-hidden />
-          </button>
-          {/* Last in the strip: the destructive one is furthest from the header
-              button that folds the group open and shut. */}
-          <button
-            type="button"
-            aria-label={`Delete the group ${label}`}
-            onClick={handleDelete}
-            className={ACTION}
-          >
-            <Trash2 size={12} aria-hidden />
-          </button>
-        </div>
-      )}
-
-      {naming && (
-        <NewDocField
-          label={`Title of the new document in ${label}`}
-          kindLabel={`Kind of the new document in ${label}`}
-          placeholder="Document title"
-          onSubmit={onSubmitDoc}
-          onCancel={handleCancel}
-        />
-      )}
+      </div>
 
       {open && (
-        <ul className="space-y-0.5">
+        <ul className={nestsContents(node.path) ? NESTED : FLAT}>
           {node.docs.map(function (doc) {
             return (
               <li key={doc.path}>
                 <DocRow
                   doc={doc}
                   active={doc.path === openPath}
-                  groups={groups}
+                  menuOpen={menuKey === targetKey({kind: 'doc', doc})}
                   onOpen={onOpen}
-                  onMove={onMove}
-                  onDelete={onDeleteDoc}
+                  onMenu={onMenu}
                 />
               </li>
             );
@@ -220,17 +147,11 @@ export const GroupRow = memo(function GroupRow({
                 key={child.path}
                 node={child}
                 openPath={openPath}
-                groups={groups}
                 collapsed={collapsed}
-                editing={editing}
+                menuKey={menuKey}
                 onToggle={onToggle}
                 onOpen={onOpen}
-                onMove={onMove}
-                onDeleteDoc={onDeleteDoc}
-                onDeleteGroup={onDeleteGroup}
-                onEdit={onEdit}
-                onSubmitName={onSubmitName}
-                onSubmitDoc={onSubmitDoc}
+                onMenu={onMenu}
               />
             );
           })}

@@ -192,6 +192,28 @@ describe('groupTree', function () {
     expect(tree.groups[0]?.name).toBe('drafts');
     expect(tree.groups[0]?.children[0]?.name).toBe('2026');
   });
+
+  it('should order a group’s documents by title when they are handed in by recency', function () {
+    const tree = groupTree([
+      doc('drafts/z.md', 'c'),
+      doc('drafts/y.md', 'b'),
+      doc('drafts/x.md', 'A'),
+    ]);
+
+    expect(tree.groups[0]?.docs.map((entry) => entry.title)).toEqual(['A', 'b', 'c']);
+  });
+
+  it('should order the root documents by title when they are handed in by recency', function () {
+    const tree = groupTree([doc('z.md', 'c'), doc('y.md', 'b'), doc('x.md', 'A')]);
+
+    expect(tree.root.map((entry) => entry.title)).toEqual(['A', 'b', 'c']);
+  });
+
+  it('should break a tie between two equal titles by path when the case differs', function () {
+    const tree = groupTree([doc('b.md', 'Same'), doc('a.md', 'same')]);
+
+    expect(tree.root.map((entry) => entry.path)).toEqual(['a.md', 'b.md'] as DocPath[]);
+  });
 });
 
 describe('filterTree', function () {

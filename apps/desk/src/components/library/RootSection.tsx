@@ -1,84 +1,64 @@
 import {memo} from 'react';
 import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down';
 import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right';
-import type {DocKind, DocPath, DocSummary, GroupPath} from '@inkling/vault';
+import type {DocPath, DocSummary} from '@inkling/vault';
 import {DocRow} from './DocRow.tsx';
-import {NewDocField} from './NewDocField.tsx';
+import {NESTED, SECTION_HEADER} from './GroupRow.tsx';
+import {targetKey} from './library-actions.ts';
+import type {OpenMenu} from './MoreButton.tsx';
 
 type RootSectionProps = {
   docs: readonly DocSummary[];
   openPath: DocPath | undefined;
-  /** Every group in the vault, for the move control on each document. */
-  groups: readonly GroupPath[];
   open: boolean;
-  /** True while the writer is titling a new document destined for the root. */
-  naming: boolean;
+  /** Which row's menu is up, as `targetKey` names it. */
+  menuKey: string | undefined;
   onToggle: () => void;
   onOpen: (path: DocPath) => void;
-  onMove: (from: DocPath, to: DocPath) => void;
-  /** Raises a document's delete. The confirmation is put in `App.tsx`. */
-  onDeleteDoc: (path: DocPath) => void;
-  onSubmit: (value: string, kind: DocKind) => void;
-  onCancel: () => void;
+  onMenu: OpenMenu;
 };
 
 /**
- * The documents at the vault root, in a section with no name.
+ * The documents at the vault root, in a section of their own.
  *
  * It looks like a group and is not one. The root is where a rule set governs
  * every document rather than one folder's worth, which is why `docs/model.md`
  * keeps Root and Group as separate rows, and why this collapses on its own flag
- * rather than on a sentinel wedged into the list of collapsed group paths.
+ * rather than on a sentinel wedged into the list of collapsed group paths. It
+ * has no ⋯ for the same reason: there is nothing to rename or delete, and the
+ * library header's `+` already makes things here.
  */
 export const RootSection = memo(function RootSection({
   docs,
   openPath,
-  groups,
   open,
-  naming,
+  menuKey,
   onToggle,
   onOpen,
-  onMove,
-  onDeleteDoc,
-  onSubmit,
-  onCancel,
+  onMenu,
 }: RootSectionProps) {
   const Chevron = open ? ChevronDown : ChevronRight;
 
   return (
     <li>
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={onToggle}
-        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] uppercase tracking-wider text-ink-400 transition-colors duration-100 hover:bg-ink-800 hover:text-ink-200"
-      >
-        <Chevron size={12} className="shrink-0 text-ink-600" aria-hidden />
-        <span className="truncate">No group</span>
-      </button>
-
-      {naming && (
-        <NewDocField
-          label="Title of the new document"
-          kindLabel="Kind of the new document"
-          placeholder="Document title"
-          onSubmit={onSubmit}
-          onCancel={onCancel}
-        />
-      )}
+      <div className="group/row">
+        <button type="button" aria-expanded={open} onClick={onToggle} className={SECTION_HEADER}>
+          <Chevron size={12} className="shrink-0 text-ink-600" aria-hidden />
+          <span className="truncate">No group</span>
+        </button>
+      </div>
 
       {open && (
-        <ul className="space-y-0.5">
+        <ul className={NESTED}>
           {docs.map(function (doc) {
             return (
               <li key={doc.path}>
                 <DocRow
                   doc={doc}
                   active={doc.path === openPath}
-                  groups={groups}
+                  menuOpen={menuKey === targetKey({kind: 'doc', doc})}
                   onOpen={onOpen}
-                  onMove={onMove}
-                  onDelete={onDeleteDoc}
+                  onMenu={onMenu}
                 />
               </li>
             );

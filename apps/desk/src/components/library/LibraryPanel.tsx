@@ -1,11 +1,11 @@
 import {useCallback, useDeferredValue, useMemo, useState} from 'react';
-import type {ChangeEvent} from 'react';
-import {match} from 'ts-pattern';
-import FilePlus from 'lucide-react/dist/esm/icons/file-plus';
-import FolderPlus from 'lucide-react/dist/esm/icons/folder-plus';
+import type {ChangeEvent, MouseEvent} from 'react';
+import {match, P} from 'ts-pattern';
+import Plus from 'lucide-react/dist/esm/icons/plus';
 import Search from 'lucide-react/dist/esm/icons/search';
 import {
   filterTree,
+  groupName,
   groupTree,
   movedTo,
   type DocKind,
@@ -14,8 +14,21 @@ import {
   type GroupNode,
   type GroupPath,
 } from '@inkling/vault';
-import {GroupRow, type Editing} from './GroupRow.tsx';
-import {InlineField} from './InlineField.tsx';
+import {ActionMenu} from './ActionMenu.tsx';
+import {GroupRow} from './GroupRow.tsx';
+import {
+  fileNameFor,
+  menuItemsFor,
+  renamedDoc,
+  renamedGroup,
+  targetKey,
+  type MenuItem,
+  type Surface,
+  type Target,
+} from './library-actions.ts';
+import {MoveDialog} from './MoveDialog.tsx';
+import {NameDialog} from './NameDialog.tsx';
+import {NewDocDialog} from './NewDocDialog.tsx';
 import {RootSection} from './RootSection.tsx';
 
 type LibraryPanelProps = {
@@ -41,32 +54,23 @@ type LibraryPanelProps = {
 /** A stable empty list, so a filtered render does not break `GroupRow`'s memo. */
 const NOTHING_COLLAPSED: readonly string[] = [];
 
-const HEADER_ACTION =
-  'rounded p-1 text-ink-600 transition-colors duration-100 hover:text-ink-200 focus:outline-none focus:ring-1 focus:ring-accent-muted';
+const HEADER_TARGET: Target = {kind: 'header'};
 
-/**
- * The filename a title becomes: lowercase, words joined by hyphens, `.md`.
- *
- * Anything that is not a letter, a digit or a hyphen goes, because the writer's
- * title is prose and this is a path. A title that survives none of that falls
- * back to `untitled`, which is a file they can rename rather than an error they
- * have to read.
- */
-export function fileNameFor(title: string): string {
-  const slug = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return `${slug.length === 0 ? 'untitled' : slug}.md`;
-}
+/** Gap between a ⋯ and the menu hanging under it, in pixels. */
+const MENU_GAP = 2;
 
 /**
  * The library: search, then the vault as the writer's own folders arrange it.
  *
- * Documents at the vault root come first, in a section with no name, because
+ * Documents at the vault root come first, in a section of their own, because
  * the root is not a group. `docs/model.md` keeps Root and Group as separate
  * rows for the same reason: a group is where a voice rule set lives, and the
  * root's rule set governs everything rather than one folder's worth.
+ *
+ * The tree is for getting around, so a row is a title and a click opens it.
+ * Every edit is raised from a row's ⋯, a right-click or the header's `+`, and
+ * finished in a modal when it needs anything typed or picked, so nothing opens
+ * inside the tree and pushes the rows the writer is looking at out of place.
  *
  * Groups start open. The flat list this replaced showed every document at once,
  * and a library that hides most of itself on first sight is a worse answer to
@@ -94,7 +98,7 @@ export function LibraryPanel({
   // would collide with a group named after the sentinel.
   const [collapsed, setCollapsed] = useState<readonly string[]>([]);
   const [rootOpen, setRootOpen] = useState(true);
-  const [editing, setEditing] = useState<Editing | undefined>(undefined);
+  const [surface, setSurface] = useState<Surface | undefined>(undefined);
 
   const tree = useMemo(
     function () {
@@ -130,63 +134,112 @@ export function LibraryPanel({
     });
   }, []);
 
-  const startNewGroup = useCallback(function () {
-    setEditing({kind: 'newGroup'});
+  const close = useCallback(function () {
+    setSurface(undefined);
   }, []);
 
-  const startNewDoc = useCallback(function () {
-    setEditing({kind: 'newDoc', group: undefined});
+  const openMenu = useCallback(function (
+    target: Target,
+    at: {x: number; y: number} | undefined,
+    trigger: HTMLElement,
+  ) {
+    const box = trigger.getBoundingClientRect();
+    const anchor = at ?? {x: box.left, y: box.bottom + MENU_GAP};
+    setSurface(function (current) {
+      // A second click on the ⋯ whose menu is up closes it, as any menu
+      // button does. A right-click always opens, at wherever it landed.
+      if (at === undefined && current?.kind === 'menu' && current.trigger === trigger) {
+        return undefined;
+      }
+      return {kind: 'menu', target, at: anchor, trigger};
+    });
   }, []);
 
-  const cancelEditing = useCallback(function () {
-    setEditing(undefined);
-  }, []);
+  const openHeaderMenu = useCallback(
+    function (event: MouseEvent<HTMLButtonElement>) {
+      openMenu(HEADER_TARGET, undefined, event.currentTarget);
+    },
+    [openMenu],
+  );
 
-  // Two handlers rather than one taking an optional kind: a document is named
-  // and kinded together, a group is only ever named, and a single callback
-  // serving both would have to carry a kind that two of its three callers have
-  // no way to supply.
-  const submitName = useCallback(
-    function (value: string) {
-      if (editing === undefined || editing.kind === 'newDoc') return;
-      setEditing(undefined);
-      // Exhaustive rather than an if-chain ending in a fallthrough: a further
-      // kind of naming field added later must not quietly fall through one of
-      // these two.
-      match(editing)
-        .with({kind: 'newGroup'}, function () {
-          // A path rather than a name, if that is what the writer typed: the
-          // Rust side makes every group above it that does not exist yet.
-          onCreateGroup(value as GroupPath);
+  const handleSelect = useCallback(
+    function (item: MenuItem) {
+      if (surface?.kind !== 'menu') return;
+      const {trigger} = surface;
+      match(item.command)
+        .with({kind: 'deleteDoc'}, function ({doc}) {
+          setSurface(undefined);
+          onDeleteDoc(doc.path);
         })
-        .with({kind: 'renameGroup'}, function ({group}) {
-          // Only the last segment is editable, so a rename stays a rename:
-          // moving a group somewhere else is a different gesture the panel does
-          // not offer yet.
-          const parent = group.split('/').slice(0, -1).join('/');
-          onRenameGroup(group, (parent === '' ? value : `${parent}/${value}`) as GroupPath);
+        .with({kind: 'deleteGroup'}, function ({group}) {
+          setSurface(undefined);
+          onDeleteGroup(group);
         })
+        .with(
+          {kind: P.union('renameDoc', 'renameGroup', 'moveDoc', 'newDoc', 'newGroup')},
+          function (modal) {
+            setSurface({...modal, trigger});
+          },
+        )
         .exhaustive();
     },
-    [editing, onCreateGroup, onRenameGroup],
+    [surface, onDeleteDoc, onDeleteGroup],
+  );
+
+  const submitRenameDoc = useCallback(
+    function (title: string) {
+      if (surface?.kind !== 'renameDoc') return;
+      setSurface(undefined);
+      const to = renamedDoc(surface.doc.path, title);
+      if (to !== undefined) onMoveDoc(surface.doc.path, to);
+    },
+    [surface, onMoveDoc],
+  );
+
+  const submitRenameGroup = useCallback(
+    function (name: string) {
+      if (surface?.kind !== 'renameGroup') return;
+      setSurface(undefined);
+      const to = renamedGroup(surface.group, name);
+      if (to !== undefined) onRenameGroup(surface.group, to);
+    },
+    [surface, onRenameGroup],
+  );
+
+  const submitNewGroup = useCallback(
+    function (value: string) {
+      setSurface(undefined);
+      // A path rather than a name, if that is what the writer typed: the Rust
+      // side makes every group above it that does not exist yet.
+      onCreateGroup(value as GroupPath);
+    },
+    [onCreateGroup],
+  );
+
+  const submitMove = useCallback(
+    function (group: GroupPath | undefined) {
+      if (surface?.kind !== 'moveDoc') return;
+      setSurface(undefined);
+      onMoveDoc(surface.doc.path, movedTo(surface.doc.path, group));
+    },
+    [surface, onMoveDoc],
   );
 
   const submitNewDoc = useCallback(
-    function (value: string, kind: DocKind) {
-      if (editing?.kind !== 'newDoc') return;
-      setEditing(undefined);
-      onCreateDoc(movedTo(fileNameFor(value), editing.group), value, kind);
+    function (title: string, kind: DocKind, group: GroupPath | undefined) {
+      setSurface(undefined);
+      onCreateDoc(movedTo(fileNameFor(title), group), title, kind);
     },
-    [editing, onCreateDoc],
+    [onCreateDoc],
   );
 
-  const naming = editing?.kind === 'newDoc' && editing.group === undefined;
   // While a query is running, every section is open. A filter that leaves its
   // own matches folded out of sight has not answered the question, and the
   // writer's own collapse state is still there when they clear the box.
   const filtering = deferred.trim().length > 0;
   const foldedShut = filtering ? NOTHING_COLLAPSED : collapsed;
   const rootShown = rootOpen || filtering;
+  const menuKey = surface?.kind === 'menu' ? targetKey(surface.target) : undefined;
 
   return (
     <aside className="flex h-full min-w-0 flex-col bg-ink-950">
@@ -201,21 +254,14 @@ export function LibraryPanel({
         </button>
         <button
           type="button"
-          aria-label="New group"
-          onClick={startNewGroup}
-          className={HEADER_ACTION}
+          aria-label="New"
+          aria-haspopup="menu"
+          aria-expanded={menuKey === targetKey(HEADER_TARGET)}
+          onClick={openHeaderMenu}
+          className="rounded p-1 text-ink-400 transition-colors duration-100 hover:bg-ink-800 hover:text-ink-100 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-muted"
         >
-          <FolderPlus size={13} aria-hidden />
+          <Plus size={14} aria-hidden />
         </button>
-        <button
-          type="button"
-          aria-label="New document"
-          onClick={startNewDoc}
-          className={HEADER_ACTION}
-        >
-          <FilePlus size={13} aria-hidden />
-        </button>
-        <span className="text-[11px] tabular-nums text-ink-600">{visible}</span>
       </div>
 
       <div className="relative px-3 py-2">
@@ -234,38 +280,25 @@ export function LibraryPanel({
         />
       </div>
 
-      {editing?.kind === 'newGroup' && (
-        <InlineField
-          label="Name of the new group"
-          placeholder="Group name, or a path like essays/2026"
-          onSubmit={submitName}
-          onCancel={cancelEditing}
-        />
-      )}
-
       <div className="flex-1 overflow-y-auto px-2 pb-3">
         {/* A group with nothing in it is still something to show: the writer
             just made it, and an empty state over the top would look like the
             create had failed. */}
-        {visible === 0 && tree.groups.length === 0 && !naming ? (
+        {visible === 0 && tree.groups.length === 0 ? (
           <p className="px-2 py-6 text-center text-[12px] text-ink-600">
             {docs.length === 0 ? 'No documents yet' : 'Nothing matches'}
           </p>
         ) : (
-          <ul className="space-y-0.5">
-            {(tree.root.length > 0 || naming) && (
+          <ul className="space-y-px">
+            {tree.root.length > 0 && (
               <RootSection
                 docs={tree.root}
                 openPath={openPath}
-                groups={groups}
                 open={rootShown}
-                naming={naming}
+                menuKey={menuKey}
                 onToggle={toggleRoot}
                 onOpen={onOpen}
-                onMove={onMoveDoc}
-                onDeleteDoc={onDeleteDoc}
-                onSubmit={submitNewDoc}
-                onCancel={cancelEditing}
+                onMenu={openMenu}
               />
             )}
 
@@ -275,28 +308,119 @@ export function LibraryPanel({
                   key={node.path}
                   node={node}
                   openPath={openPath}
-                  groups={groups}
                   collapsed={foldedShut}
-                  editing={editing}
+                  menuKey={menuKey}
                   onToggle={toggleGroup}
                   onOpen={onOpen}
-                  onMove={onMoveDoc}
-                  onDeleteDoc={onDeleteDoc}
-                  onDeleteGroup={onDeleteGroup}
-                  onEdit={setEditing}
-                  onSubmitName={submitName}
-                  onSubmitDoc={submitNewDoc}
+                  onMenu={openMenu}
                 />
               );
             })}
           </ul>
         )}
       </div>
+
+      {surface !== undefined &&
+        match(surface)
+          .with({kind: 'menu'}, function (menu) {
+            return (
+              // Keyed by row, so a right-click on another row while this one's
+              // menu is up opens a fresh menu rather than carrying the old
+              // one's caret position over to a different list.
+              <ActionMenu
+                key={targetKey(menu.target)}
+                label={menuLabel(menu.target)}
+                items={menuItemsFor(menu.target)}
+                at={menu.at}
+                trigger={menu.trigger}
+                onSelect={handleSelect}
+                onClose={close}
+              />
+            );
+          })
+          .with({kind: 'renameDoc'}, function ({doc, trigger}) {
+            return (
+              <NameDialog
+                title={`Rename ${doc.title}`}
+                fieldLabel="Title"
+                initial={doc.title}
+                submitLabel="Rename"
+                onSubmit={submitRenameDoc}
+                onClose={close}
+                returnFocus={trigger}
+              />
+            );
+          })
+          .with({kind: 'renameGroup'}, function ({group, trigger}) {
+            return (
+              <NameDialog
+                title={`Rename the group ${groupName(group)}`}
+                fieldLabel="Name"
+                initial={groupName(group)}
+                submitLabel="Rename"
+                onSubmit={submitRenameGroup}
+                onClose={close}
+                returnFocus={trigger}
+              />
+            );
+          })
+          .with({kind: 'newGroup'}, function ({trigger}) {
+            return (
+              <NameDialog
+                title="New group"
+                fieldLabel="Name"
+                initial=""
+                placeholder="Group name, or a path like essays/2026"
+                submitLabel="Create"
+                onSubmit={submitNewGroup}
+                onClose={close}
+                returnFocus={trigger}
+              />
+            );
+          })
+          .with({kind: 'moveDoc'}, function ({doc, trigger}) {
+            return (
+              <MoveDialog
+                doc={doc}
+                groups={groups}
+                onSubmit={submitMove}
+                onClose={close}
+                returnFocus={trigger}
+              />
+            );
+          })
+          .with({kind: 'newDoc'}, function ({group, trigger}) {
+            return (
+              <NewDocDialog
+                group={group}
+                groups={groups}
+                onSubmit={submitNewDoc}
+                onClose={close}
+                returnFocus={trigger}
+              />
+            );
+          })
+          .exhaustive()}
     </aside>
   );
 }
 
-/** Every document in the tree, however deep, for the count in the header. */
+/** Names a menu for a screen reader by the row it was raised on. */
+function menuLabel(target: Target): string {
+  return match(target)
+    .with({kind: 'doc'}, function ({doc}) {
+      return `Actions for ${doc.title}`;
+    })
+    .with({kind: 'group'}, function ({group}) {
+      return `Actions for the group ${group}`;
+    })
+    .with({kind: 'header'}, function () {
+      return 'New';
+    })
+    .exhaustive();
+}
+
+/** Every document in the tree, however deep, for the empty state. */
 function countDocs(nodes: readonly GroupNode[]): number {
   return nodes.reduce(function (total, node) {
     return total + node.docs.length + countDocs(node.children);
