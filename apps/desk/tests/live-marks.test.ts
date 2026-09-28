@@ -133,14 +133,21 @@ describe('liveMarkup', function () {
     expect(rendered(untouched(line))).toBe(ELSEWHERE + line);
   });
 
-  it('should leave the url raw when a link is written across a newline', function () {
-    const doc = ELSEWHERE + '[a](\nhttps://example.com)\n\nEnd.';
-    const state = stateOf(doc, {anchor: doc.length});
-    const {hidden} = liveMarkup(state);
+  const SPLIT_LINKS: {name: string; link: string}[] = [
+    {name: 'its url', link: '[a](\nhttps://example.com)'},
+    {name: 'its title', link: '[a](u "multi\nline")'},
+    {name: 'its text', link: '[two\nlines](https://example.com)'},
+  ];
 
-    for (const {from, to} of hidden) expect(state.doc.sliceString(from, to)).not.toContain('\n');
-    expect(rendered(state)).toContain('](\nhttps://example.com)');
-  });
+  for (const {name, link} of SPLIT_LINKS) {
+    it(`should leave the whole link raw when ${name} is written across a newline`, function () {
+      const doc = ELSEWHERE + link + '\n\nEnd.';
+      const state = stateOf(doc, {anchor: doc.length});
+
+      expect(rendered(state)).toBe(doc);
+      expect(liveMarkup(state).links).toEqual([]);
+    });
+  }
 
   it('should leave a fenced code block raw when the selection is on another line', function () {
     const doc = ELSEWHERE + '```\n**not bold**\n```';

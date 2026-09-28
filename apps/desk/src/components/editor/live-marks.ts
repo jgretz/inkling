@@ -54,10 +54,13 @@ function headingHides(state: EditorState, node: SyntaxNode): Span[] {
  * `[` and everything from `]` to the end, for an inline link with a URL.
  *
  * A reference link has no `URL` child and an empty text would leave nothing on
- * screen to click into, so both stay raw.
+ * screen to click into, so both stay raw. So does a link written across two
+ * lines: hiding it would join the lines on screen while the caret rule still
+ * reasons about them one at a time.
  */
-function linkParts(node: SyntaxNode): {hidden: Span[]; text: Span} | undefined {
+function linkParts(state: EditorState, node: SyntaxNode): {hidden: Span[]; text: Span} | undefined {
   if (node.getChild('URL') === null) return undefined;
+  if (state.doc.sliceString(node.from, node.to).includes('\n')) return undefined;
   const [open, close] = node.getChildren('LinkMark');
   if (open === undefined || close === undefined || close.from <= open.to) return undefined;
   return {
@@ -85,10 +88,6 @@ function touchedLines(state: EditorState): Set<number> {
 
 /**
  * Live's markup for `state`, read off the markdown syntax tree.
- *
- * A hide range whose text holds a line break is dropped, which leaves a link
- * written across two lines raw: hiding it would join the lines on screen while
- * the caret rule still reasons about them one at a time.
  */
 export function liveMarkup(state: EditorState): LiveMarkup {
   const candidates: Span[] = [];
@@ -117,7 +116,7 @@ export function liveMarkup(state: EditorState): LiveMarkup {
         return;
       }
       if (ref.name === 'Link') {
-        const parts = linkParts(ref.node);
+        const parts = linkParts(state, ref.node);
         if (parts === undefined) return;
         candidates.push(...parts.hidden);
         links.push(parts.text);
@@ -127,7 +126,7 @@ export function liveMarkup(state: EditorState): LiveMarkup {
 
   const touched = touchedLines(state);
   const hidden = candidates.filter(function ({from, to}) {
-    if (to <= from || state.doc.sliceString(from, to).includes('\n')) return false;
+    if (to <= from) return false;
     return !touched.has(state.doc.lineAt(from).number);
   });
 
