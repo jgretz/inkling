@@ -19,16 +19,17 @@ type DocumentBarProps = {
 };
 
 /**
- * The strip above the document, with the mode switch in its middle.
+ * The strip above the document: the left slot at one end, the mode switch at
+ * the other.
  *
- * A grid with equal outer tracks rather than a centered flex row, so the switch
- * stays over the middle of the document column whatever the left slot holds.
+ * The gap between them is what gives as the column narrows. A centred switch
+ * collided with the formatting toolbar long before the column ran out of room.
  */
 export function DocumentBar({mode, onShow, children}: DocumentBarProps) {
   return (
-    <header className="grid h-9 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-b border-ink-800 bg-ink-950 px-2">
+    <header className="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-ink-800 bg-ink-950 px-2">
       <div className="flex min-w-0 items-center gap-0.5">{children}</div>
-      <div role="group" aria-label="Document mode" className="flex items-center gap-0.5">
+      <div role="group" aria-label="Document mode" className="flex shrink-0 items-center gap-0.5">
         {DOC_MODES.map(function (m) {
           const {label, hint, Icon} = MODE_BUTTON[m];
           return (
@@ -46,7 +47,6 @@ export function DocumentBar({mode, onShow, children}: DocumentBarProps) {
           );
         })}
       </div>
-      <div />
     </header>
   );
 }
