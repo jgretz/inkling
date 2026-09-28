@@ -1,4 +1,4 @@
-import {useCallback, useEffect, type ComponentProps} from 'react';
+import {useCallback, useEffect, useRef, useState, type ComponentProps} from 'react';
 import {
   isToggleEditKey,
   isToggleReadKey,
@@ -7,13 +7,20 @@ import {
   toggleRead,
   type DocMode,
 } from '../../lib/doc-mode.ts';
-import {EditorPanel} from '../editor/EditorPanel.tsx';
+import {EditorPanel, type EditorHandle} from '../editor/EditorPanel.tsx';
+import type {FormatName} from '../editor/format.ts';
 import {FindingsStrip} from '../findings/FindingsStrip.tsx';
 import {PreviewPanel} from '../preview/PreviewPanel.tsx';
 import {DocumentBar} from './DocumentBar.tsx';
+import {FormatToolbar} from './FormatToolbar.tsx';
 import type {ModeUpdate} from './use-reveal.ts';
 
-type DocumentPanelProps = Omit<ComponentProps<typeof EditorPanel>, 'hidden'> &
+const NO_FORMATS: ReadonlySet<FormatName> = Object.freeze(new Set<FormatName>());
+
+type DocumentPanelProps = Omit<
+  ComponentProps<typeof EditorPanel>,
+  'hidden' | 'ref' | 'onActiveFormats'
+> &
   ComponentProps<typeof FindingsStrip> & {
     mode: DocMode;
     onMode: ModeUpdate;
@@ -65,6 +72,12 @@ export function DocumentPanel({
     [onMode],
   );
 
+  const handle = useRef<EditorHandle>(null);
+  const [active, setActive] = useState(NO_FORMATS);
+  const format = useCallback(function (name: FormatName) {
+    handle.current?.format(name);
+  }, []);
+
   const show = useCallback(
     function (target: DocMode) {
       onMode(function (state) {
@@ -76,9 +89,17 @@ export function DocumentPanel({
 
   return (
     <>
-      <DocumentBar mode={mode} onShow={show} />
+      <DocumentBar mode={mode} onShow={show}>
+        {mode !== 'read' && <FormatToolbar active={active} onFormat={format} />}
+      </DocumentBar>
       <div className="min-h-0 flex-1">
-        <EditorPanel {...editor} findings={findings} hidden={mode === 'read'} />
+        <EditorPanel
+          {...editor}
+          ref={handle}
+          onActiveFormats={setActive}
+          findings={findings}
+          hidden={mode === 'read'}
+        />
         {mode === 'read' && <PreviewPanel source={editor.source} />}
       </div>
       <FindingsStrip

@@ -308,3 +308,46 @@ describe('EditorPanel modes', function () {
     expect(view.state.selection.main.head).toBe(0);
   });
 });
+
+describe('EditorPanel format keys', function () {
+  const PROSE = 'A word here.';
+
+  /** Presses `key` with the platform's Mod on the editor, the caret inside `word`. */
+  function press(init: {key: string; keyCode: number; shiftKey?: boolean}): string {
+    const {view} = mount({source: PROSE, editMode: 'live'});
+    act(function () {
+      view.dispatch({selection: {anchor: 4}});
+    });
+
+    act(function () {
+      view.contentDOM.dispatchEvent(
+        new KeyboardEvent('keydown', {...init, [MOD]: true, bubbles: true, cancelable: true}),
+      );
+    });
+
+    return view.state.doc.toString();
+  }
+
+  it('should italicise the word rather than select its parent syntax when Mod-i is pressed', function () {
+    const doc = press({key: 'i', keyCode: 73});
+
+    expect(doc).toBe('A _word_ here.');
+    expect(doc).not.toContain('**');
+  });
+
+  it('should bold the word when Mod-b is pressed', function () {
+    expect(press({key: 'b', keyCode: 66})).toBe('A **word** here.');
+  });
+
+  it('should link the word when Mod-k is pressed', function () {
+    expect(press({key: 'k', keyCode: 75})).toBe('A [word]() here.');
+  });
+
+  it('should strike the word through when Mod-Shift-x is pressed', function () {
+    expect(press({key: 'X', keyCode: 88, shiftKey: true})).toBe('A ~~word~~ here.');
+  });
+
+  it('should make the word inline code when Mod-Shift-c is pressed', function () {
+    expect(press({key: 'C', keyCode: 67, shiftKey: true})).toBe('A `word` here.');
+  });
+});

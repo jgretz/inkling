@@ -1,5 +1,5 @@
 import {memo} from 'react';
-import type {ReactNode} from 'react';
+import type {MouseEvent, ReactNode} from 'react';
 
 type ToggleProps = {
   active: boolean;
@@ -7,14 +7,33 @@ type ToggleProps = {
   /** The hover, when it has more to say than the label. */
   hint?: string;
   onClick: () => void;
+  /**
+   * Whether pressing the button leaves focus where it was. A formatting button
+   * needs this: the press would otherwise move focus, and the selection with it,
+   * out of the editor before the command reads it.
+   */
+  holdFocus?: boolean;
   children: ReactNode;
 };
 
-export const Toggle = memo(function Toggle({active, label, hint, onClick, children}: ToggleProps) {
+/** One function for every button, so `memo` sees the same prop on every render. */
+function keepFocus(event: MouseEvent) {
+  event.preventDefault();
+}
+
+export const Toggle = memo(function Toggle({
+  active,
+  label,
+  hint,
+  onClick,
+  holdFocus = false,
+  children,
+}: ToggleProps) {
   return (
     <button
       type="button"
       onClick={onClick}
+      onMouseDown={holdFocus ? keepFocus : undefined}
       aria-pressed={active}
       aria-label={label}
       title={hint ?? label}

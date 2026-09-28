@@ -80,6 +80,13 @@ which puts the syntax back on screen; nothing navigates. The one edit Live makes
 is the writer's own: clicking a checkbox writes `[x]` or `[ ]` into the marker
 as a single undo step, and leaves the caret where it was.
 
+Formatting follows the same rule. The toolbar above Live and Source and the
+Command keys in the editor run pure `EditorState` transforms from
+`components/editor/format*.ts`. Each is one isolated undo step over the raw
+markdown, touching only the selection or the lines it covers, so no offset
+outside that text moves. The toolbar reaches the view only through
+`EditorHandle.format`.
+
 The frontmatter fold (`components/editor/frontmatter-fold.ts`) draws the block
 with `components/document/TagChips.tsx`, the same chips the Read view shows
 above the prose. The parser reads the block as markdown, so Live draws nothing
