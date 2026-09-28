@@ -26,7 +26,7 @@ import {
   askRestoreRevision,
 } from './lib/ask-first.ts';
 import {copyRichText, systemClipboard} from './lib/clipboard.ts';
-import type {DocMode} from './lib/doc-mode.ts';
+import {showMode, type DocMode, type ModeState} from './lib/doc-mode.ts';
 import {daemonToken, initDaemonToken, refreshDaemonToken} from './lib/daemon-token.ts';
 import {createDispatchTransport, type TokenAccess} from './lib/dispatch-transport.ts';
 import {
@@ -245,16 +245,16 @@ export function App() {
     });
   }, []);
 
-  const updateDocMode = useCallback(function (update: (mode: DocMode) => DocMode) {
+  const updateDocMode = useCallback(function (update: (state: ModeState) => ModeState) {
     setLayout(function (current) {
-      return {...current, docMode: update(current.docMode)};
+      return {...current, ...update({docMode: current.docMode, editMode: current.editMode})};
     });
   }, []);
 
   const handleDocMode = useCallback(
     function (mode: DocMode) {
-      updateDocMode(function () {
-        return mode;
+      updateDocMode(function (state) {
+        return showMode(state, mode);
       });
     },
     [updateDocMode],
@@ -853,6 +853,7 @@ export function App() {
           <div style={{minWidth: FLOOR.document}} className="flex flex-1 flex-col">
             <DocumentPanel
               mode={layout.docMode}
+              editMode={layout.editMode}
               onMode={updateDocMode}
               path={workspace.open.path}
               source={draft}

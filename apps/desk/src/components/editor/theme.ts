@@ -4,11 +4,11 @@ import {tags} from '@lezer/highlight';
 import type {Extension} from '@codemirror/state';
 
 /**
- * The editor's look. It deliberately does not resemble a code editor: the prose
- * is set as reading type, in the Read view's serif and on the Read view's
- * measure, so one document does not change voice between modes. Markdown syntax is
- * dimmed rather than coloured, so the eye lands on the prose and the markers
- * stay legible without competing with it. Monospace is kept for code alone.
+ * The editor's look in every mode. It deliberately does not resemble a code
+ * editor: markdown syntax is dimmed rather than coloured, so the eye lands on
+ * the prose and the markers stay legible without competing with it. Size, face
+ * and measure are left to the two surfaces below, so the surface a mode installs
+ * is the only rule that sets them.
  */
 const paint = EditorView.theme(
   {
@@ -16,21 +16,13 @@ const paint = EditorView.theme(
       color: 'var(--color-ink-100)',
       backgroundColor: 'var(--color-ink-900)',
       height: '100%',
-      fontSize: '18px',
     },
     '.cm-scroller': {
-      fontFamily: 'var(--font-prose)',
-      // 28px at 18px, and unitless so the larger headings get proportional
-      // leading rather than a fixed 28px that would crowd them.
-      lineHeight: '1.556',
       padding: '2rem 0',
       overflow: 'auto',
     },
     '.cm-content': {
       caretColor: 'var(--color-accent)',
-      // `.cm-content` is border-box, so the `+ 3rem` pays for the side padding
-      // and leaves a 62ch text column, the Read view's measure.
-      maxWidth: 'calc(62ch + 3rem)',
       margin: '0 auto',
       padding: '0 1.5rem',
     },
@@ -88,9 +80,13 @@ const paint = EditorView.theme(
 );
 
 const highlight = HighlightStyle.define([
-  {tag: tags.heading1, fontSize: '1.5em', fontWeight: '600', color: 'var(--color-ink-50)'},
-  {tag: tags.heading2, fontSize: '1.25em', fontWeight: '600', color: 'var(--color-ink-50)'},
-  {tag: [tags.heading3, tags.heading4], fontWeight: '600', color: 'var(--color-ink-50)'},
+  // No sizes here: Live sizes the whole heading line, and a size on the text
+  // span as well would compound with it.
+  {
+    tag: [tags.heading1, tags.heading2, tags.heading3, tags.heading4],
+    fontWeight: '600',
+    color: 'var(--color-ink-50)',
+  },
   {tag: tags.strong, fontWeight: '700', color: 'var(--color-ink-50)'},
   {tag: tags.emphasis, fontStyle: 'italic', color: 'var(--color-ink-100)'},
   {tag: tags.strikethrough, textDecoration: 'line-through', color: 'var(--color-ink-400)'},
@@ -110,3 +106,34 @@ const highlight = HighlightStyle.define([
 ]);
 
 export const inklingTheme: Extension = [paint, syntaxHighlighting(highlight)];
+
+/**
+ * Live's surface: the prose set as reading type, in the Read view's serif and on
+ * the Read view's measure, so one document does not change voice between Live
+ * and Read.
+ */
+export const proseSurface: Extension = EditorView.theme({
+  '&': {fontSize: '18px'},
+  '.cm-scroller': {
+    fontFamily: 'var(--font-prose)',
+    // 28px at 18px, and unitless so the larger headings get proportional
+    // leading rather than a fixed 28px that would crowd them.
+    lineHeight: '1.556',
+  },
+  // `.cm-content` is border-box, so the `+ 3rem` pays for the side padding and
+  // leaves a 62ch text column, the Read view's measure.
+  '.cm-content': {maxWidth: 'calc(62ch + 3rem)'},
+  '.cm-live-h1': {fontSize: '1.5em'},
+  '.cm-live-h2': {fontSize: '1.25em'},
+  '.cm-live-link': {color: 'var(--color-accent)'},
+});
+
+/**
+ * Source's surface: every character the writer typed, in monospace on a wider
+ * measure, because in Source the markdown itself is what is being edited.
+ */
+export const sourceSurface: Extension = EditorView.theme({
+  '&': {fontSize: '15px'},
+  '.cm-scroller': {fontFamily: 'var(--font-mono)', lineHeight: '1.7'},
+  '.cm-content': {maxWidth: 'calc(72ch + 3rem)'},
+});

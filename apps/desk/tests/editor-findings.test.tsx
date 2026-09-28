@@ -52,6 +52,7 @@ function Harness({
     <div className="flex min-w-0 flex-1 flex-col">
       <div className="min-h-0 flex-1">
         <EditorPanel
+          editMode="source"
           path={path}
           source={source}
           onChange={function () {}}
@@ -201,4 +202,46 @@ describe('findings in the editor', function () {
     expect(clean.container.firstElementChild?.children.length).toBe(1);
     expect(marked.container.firstElementChild?.children.length).toBe(2);
   });
+});
+
+describe('findings in live', function () {
+  const BOLD = 'First line.\n\nSome **bold** words.';
+  const firstStar = BOLD.indexOf('**');
+
+  function mountLive(findings: readonly Finding[]) {
+    const {container} = render(
+      <EditorPanel
+        editMode="live"
+        path="drafts/a.md"
+        source={BOLD}
+        onChange={function () {}}
+        onSelect={function () {}}
+        onSave={function () {}}
+        onFocus={function () {}}
+        findings={findings}
+        marksOn
+        reveal={undefined}
+        hidden={false}
+      />,
+    );
+    const view = EditorView.findFromDOM(container as HTMLElement);
+    if (view === null) throw new Error('the editor view did not mount');
+    return {container, view};
+  }
+
+  const RANGES = [
+    {name: 'inside both runs of markers', start: firstStar + 1, end: firstStar + 7},
+    {name: 'at the first star and past the last', start: firstStar, end: firstStar + 8},
+  ];
+
+  for (const {name, start, end} of RANGES) {
+    it(`should underline the visible word when a finding runs ${name}`, function () {
+      const finding: Finding = {...flagged('em-dash'), range: {start, end}};
+      const {container, view} = mountLive([finding]);
+
+      const drawn = marks(container as HTMLElement);
+      expect(drawn.map((mark) => mark.textContent).join('')).toBe('bold');
+      expect(view.contentDOM.textContent).not.toContain('**');
+    });
+  }
 });

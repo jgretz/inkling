@@ -8,6 +8,7 @@ import PenLine from 'lucide-react/dist/esm/icons/pen-line';
 import Pin from 'lucide-react/dist/esm/icons/pin';
 import SpellCheck from 'lucide-react/dist/esm/icons/spell-check';
 import Sparkles from 'lucide-react/dist/esm/icons/sparkles';
+import Type from 'lucide-react/dist/esm/icons/type';
 import type {DocMode} from '../../lib/doc-mode.ts';
 import type {FrontmatterChoice} from '../../lib/export.ts';
 import type {LayoutSettings, ToggleKey} from '../../lib/settings.ts';
@@ -173,9 +174,19 @@ export function TitleBar({
         </Toggle>
         <div role="group" aria-label="Document mode" className="flex items-center">
           <Toggle
+            active={layout.docMode === 'live'}
+            label="Live"
+            hint="Live (⌘⇧E switches to Source)"
+            onClick={function () {
+              onDocMode('live');
+            }}
+          >
+            <Type size={15} />
+          </Toggle>
+          <Toggle
             active={layout.docMode === 'source'}
             label="Source"
-            hint="Source (⌘E toggles)"
+            hint="Source (⌘⇧E switches to Live)"
             onClick={function () {
               onDocMode('source');
             }}

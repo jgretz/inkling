@@ -1,5 +1,11 @@
 import {useEffect, type ComponentProps} from 'react';
-import {isToggleReadKey, toggleRead, type DocMode} from '../../lib/doc-mode.ts';
+import {
+  isToggleEditKey,
+  isToggleReadKey,
+  toggleEditMode,
+  toggleRead,
+  type DocMode,
+} from '../../lib/doc-mode.ts';
 import {EditorPanel} from '../editor/EditorPanel.tsx';
 import {FindingsStrip} from '../findings/FindingsStrip.tsx';
 import {PreviewPanel} from '../preview/PreviewPanel.tsx';
@@ -18,10 +24,11 @@ type DocumentPanelProps = Omit<ComponentProps<typeof EditorPanel>, 'hidden'> &
  * view is never rebuilt by a switch: the document, its undo history, its caret
  * and its marks are all where they were on the way back.
  *
- * Command-E is heard on the window rather than in the editor, because it has to
- * work from the chat and with nothing focused, and in Read the editor cannot
- * hear anything. The panel is mounted exactly when a document is open, which is
- * exactly when the key means something.
+ * Command-E (Read and back) and Command-Shift-E (Live and Source) are heard on
+ * the window rather than in the editor, because they have to work from the chat
+ * and with nothing focused, and in Read the editor cannot hear anything. The
+ * panel is mounted exactly when a document is open, which is exactly when the
+ * keys mean something.
  */
 export function DocumentPanel({
   mode,
@@ -36,9 +43,14 @@ export function DocumentPanel({
   useEffect(
     function () {
       function handleKey(event: KeyboardEvent) {
-        if (!isToggleReadKey(event)) return;
+        const update = isToggleReadKey(event)
+          ? toggleRead
+          : isToggleEditKey(event)
+            ? toggleEditMode
+            : undefined;
+        if (update === undefined) return;
         event.preventDefault();
-        onMode(toggleRead);
+        onMode(update);
       }
       window.addEventListener('keydown', handleKey);
       return function () {

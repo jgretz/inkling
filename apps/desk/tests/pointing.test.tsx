@@ -135,6 +135,7 @@ function Harness({quotes, onChange = noop, onSave = noop}: HarnessProps) {
   return (
     <div>
       <EditorPanel
+        editMode="source"
         path="drafts/a.md"
         source={source}
         onChange={handleChange}
