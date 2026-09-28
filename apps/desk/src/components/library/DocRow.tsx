@@ -1,53 +1,34 @@
-import {memo, useCallback} from 'react';
-import type {ChangeEvent} from 'react';
-import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
-import {groupOf, movedTo, type DocPath, type DocSummary, type GroupPath} from '@inkling/vault';
+import {memo, useCallback, useMemo, useRef} from 'react';
+import type {MouseEvent} from 'react';
+import type {DocPath, DocSummary} from '@inkling/vault';
+import type {Target} from './library-actions.ts';
+import {MoreButton, type OpenMenu} from './MoreButton.tsx';
 
 type DocRowProps = {
   doc: DocSummary;
   active: boolean;
-  /** Every group in the vault, which is where this document may move to. */
-  groups: readonly GroupPath[];
+  /** True while this row's own menu is up. */
+  menuOpen: boolean;
   onOpen: (path: DocPath) => void;
-  onMove: (from: DocPath, to: DocPath) => void;
-  /** Raises the delete. The confirmation is put further up, in `App.tsx`. */
-  onDelete: (path: DocPath) => void;
+  onMenu: OpenMenu;
 };
 
-/** Short relative time. Anything past a week reads better as a date. */
-export function relativeTime(iso: string, now: number = Date.now()): string {
-  const then = Date.parse(iso);
-  if (Number.isNaN(then)) return '';
-  const minutes = Math.round((now - then) / 60000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.round(hours / 24);
-  if (days < 7) return `${days}d`;
-  return new Date(then).toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
-}
-
 /**
- * One document, as a button that opens it plus controls that move and delete it.
+ * One document, as its title and nothing else.
  *
- * The move is a `select` rather than a drag: a writer moving a piece between
- * groups is picking a destination by name, the whole list of destinations is
- * already known, and a native select is reachable by keyboard and testable
- * without a pointer.
- *
- * The delete is last, past the select, so the whole move control sits between
- * it and the button that opens the document. Nothing destructive shares an edge
- * with the gesture a writer makes all day.
+ * Everything that changes the document rather than opening it is behind the ⋯
+ * or a right-click, so the gesture a writer makes all day shares its row with
+ * nothing destructive.
  */
-export const DocRow = memo(function DocRow({
-  doc,
-  active,
-  groups,
-  onOpen,
-  onMove,
-  onDelete,
-}: DocRowProps) {
+export const DocRow = memo(function DocRow({doc, active, menuOpen, onOpen, onMenu}: DocRowProps) {
+  const more = useRef<HTMLButtonElement>(null);
+  const target = useMemo(
+    function (): Target {
+      return {kind: 'doc', doc};
+    },
+    [doc],
+  );
+
   const handleClick = useCallback(
     function () {
       onOpen(doc.path);
@@ -55,69 +36,35 @@ export const DocRow = memo(function DocRow({
     [doc.path, onOpen],
   );
 
-  const handleMove = useCallback(
-    function (event: ChangeEvent<HTMLSelectElement>) {
-      const group = event.target.value;
-      onMove(doc.path, movedTo(doc.path, group === '' ? undefined : (group as GroupPath)));
+  const handleContextMenu = useCallback(
+    function (event: MouseEvent) {
+      event.preventDefault();
+      if (more.current !== null) onMenu(target, {x: event.clientX, y: event.clientY}, more.current);
     },
-    [doc.path, onMove],
-  );
-
-  const handleDelete = useCallback(
-    function () {
-      onDelete(doc.path);
-    },
-    [doc.path, onDelete],
+    [target, onMenu],
   );
 
   return (
-    <div className="group/row flex items-center">
+    <div className="group/row relative" onContextMenu={handleContextMenu}>
       <button
         type="button"
         onClick={handleClick}
         aria-current={active ? 'true' : undefined}
-        className={`min-w-0 flex-1 rounded-md px-2 py-1.5 text-left transition-colors duration-100 ${
-          active ? 'bg-ink-700' : 'hover:bg-ink-800'
+        className={`block w-full truncate rounded-md px-2 py-1 text-left text-[13px] transition-colors duration-100 ${
+          active ? 'bg-ink-700 text-ink-100' : 'text-ink-200 group-hover/row:bg-ink-800'
         }`}
       >
-        <div className="truncate text-[13px] text-ink-100">{doc.title}</div>
-        <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-ink-400">
-          <span className="tabular-nums">{relativeTime(doc.updatedAt)}</span>
-          <span aria-hidden>·</span>
-          <span className="tabular-nums">{doc.words.toLocaleString()}w</span>
-          {doc.kind !== undefined && (
-            <>
-              <span aria-hidden>·</span>
-              <span>{doc.kind}</span>
-            </>
-          )}
-        </div>
+        {doc.title}
       </button>
-
-      <select
-        value={groupOf(doc.path) ?? ''}
-        onChange={handleMove}
-        aria-label={`Move ${doc.title} to a group`}
-        className="selectable ml-1 shrink-0 rounded-md bg-transparent px-1 py-1 text-[11px] text-ink-600 opacity-0 transition-opacity duration-100 focus:opacity-100 focus:outline-none focus:ring-1 focus:ring-accent-muted group-hover/row:opacity-100"
-      >
-        <option value="">No group</option>
-        {groups.map(function (group) {
-          return (
-            <option key={group} value={group}>
-              {group}
-            </option>
-          );
-        })}
-      </select>
-
-      <button
-        type="button"
-        aria-label={`Delete ${doc.title}`}
-        onClick={handleDelete}
-        className="shrink-0 rounded p-1 text-ink-600 opacity-0 transition-opacity duration-100 hover:text-ink-200 focus:opacity-100 focus:outline-none focus:ring-1 focus:ring-accent-muted group-hover/row:opacity-100"
-      >
-        <Trash2 size={12} aria-hidden />
-      </button>
+      <MoreButton
+        ref={more}
+        label={`Actions for ${doc.title}`}
+        target={target}
+        shown={active || menuOpen}
+        expanded={menuOpen}
+        rowActive={active}
+        onMenu={onMenu}
+      />
     </div>
   );
 });

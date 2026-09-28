@@ -40,6 +40,23 @@
   --motion-micro: 100ms;
   --motion-standard: 200ms;
   --motion-page: 300ms;
+
+  --animate-menu-in: menu-in var(--motion-micro) ease-out;
+  --animate-dialog-in: dialog-in var(--motion-standard) ease-out;
+
+  @keyframes menu-in {
+    from {
+      opacity: 0;
+      transform: translateY(-2px);
+    }
+  }
+
+  @keyframes dialog-in {
+    from {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+  }
 }
 
 @layer base {

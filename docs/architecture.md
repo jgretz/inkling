@@ -105,8 +105,12 @@ they are editing chrome over the source, not an output, and nothing leaves the
 app through them.
 
 The library shows the vault as the writer's own folders arrange it: documents at
-the root first, in an unnamed section, then a group per directory, nested as
-deep as they go. The library and the agent toggle from the title bar. The
+the root first, in a "No group" section, then a group per directory, nested as
+deep as they go, with documents sorted by title. The tree is for getting around:
+a row is a title, and clicking it opens the document. Every edit (rename, move,
+new document, new group, delete) comes from a row's ⋯ menu, a right-click or the
+header's `+`, and completes in a modal (`components/shell/Dialog.tsx`) rather
+than inside the tree. The library and the agent toggle from the title bar. The
 document's mode is the switch at the right of the bar above the document
 (`components/document/DocumentBar.tsx`), or Command-E (Read and back) and
 Command-Shift-E (Live and Source). Each boundary is a draggable splitter; the
