@@ -55,6 +55,11 @@ type EditorPanelProps = {
   /** Whether findings are underlined. The strip lists them either way. */
   marksOn: boolean;
   reveal: Reveal | undefined;
+  /**
+   * Whether the editor is out of sight. Hidden rather than unmounted, so the
+   * view, its undo history and its caret outlive a trip to Read.
+   */
+  hidden: boolean;
 };
 
 /**
@@ -79,6 +84,7 @@ export function EditorPanel({
   findings,
   marksOn,
   reveal,
+  hidden,
 }: EditorPanelProps) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -179,6 +185,24 @@ export function EditorPanel({
     [findings, marksOn],
   );
 
+  // Before the reveal below, which shows the editor and focuses it in one
+  // commit: the view must be measurable again by the time it scrolls.
+  useEffect(
+    function () {
+      const instance = view.current;
+      if (instance === null) return;
+      if (!hidden) {
+        instance.requestMeasure();
+        return;
+      }
+      // WebKit leaves focus where it was when a button is clicked, so without
+      // this the caret stays live in a document nobody can see and every
+      // keystroke lands in it.
+      if (instance.hasFocus) instance.contentDOM.blur();
+    },
+    [hidden],
+  );
+
   useEffect(
     function () {
       const instance = view.current;
@@ -217,6 +241,7 @@ export function EditorPanel({
   return (
     <div
       ref={host}
+      hidden={hidden}
       onFocusCapture={onFocus}
       className="selectable h-full min-w-0 overflow-hidden bg-ink-900"
     />

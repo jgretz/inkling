@@ -40,6 +40,7 @@ function mount() {
       findings={[]}
       marksOn
       reveal={undefined}
+      hidden={false}
     />,
   );
   const view = EditorView.findFromDOM(result.container as HTMLElement);

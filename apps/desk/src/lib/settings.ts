@@ -1,4 +1,5 @@
 import type {VaultPath} from '@inkling/vault';
+import {isDocMode, type DocMode} from './doc-mode.ts';
 import type {TurnPin} from './turn.ts';
 
 /**
@@ -21,8 +22,12 @@ export type Settings = {
 
 export type LayoutSettings = {
   libraryOpen: boolean;
-  previewOpen: boolean;
   chatOpen: boolean;
+  /**
+   * Which view of the open document the document panel shows. Source until
+   * Live exists, which becomes the default then.
+   */
+  docMode: DocMode;
   /** Whether voice findings are underlined in the editor. */
   marksOn: boolean;
   /**
@@ -32,24 +37,22 @@ export type LayoutSettings = {
   turnPin: TurnPin;
   /** Height of the agent's message box, in pixels. */
   composerHeight: number;
-  /** Panel widths in pixels; the editor takes whatever is left. */
+  /** Panel widths in pixels; the document takes whatever is left. */
   libraryWidth: number;
-  previewWidth: number;
   chatWidth: number;
 };
 
 /** Everything the title bar can flip. */
-export type ToggleKey = 'libraryOpen' | 'previewOpen' | 'chatOpen' | 'marksOn';
+export type ToggleKey = 'libraryOpen' | 'chatOpen' | 'marksOn';
 
 export const DEFAULT_LAYOUT: LayoutSettings = {
   libraryOpen: true,
-  previewOpen: true,
   chatOpen: true,
+  docMode: 'source',
   marksOn: true,
   turnPin: undefined,
   composerHeight: 96,
   libraryWidth: 240,
-  previewWidth: 420,
   chatWidth: 380,
 };
 
@@ -90,6 +93,14 @@ function asPin(value: unknown): TurnPin {
 }
 
 /**
+ * A mode the panel knows, or the default for anything else, including a mode a
+ * newer build wrote that this one has never heard of.
+ */
+function asDocMode(value: unknown): DocMode {
+  return isDocMode(value) ? value : DEFAULT_LAYOUT.docMode;
+}
+
+/**
  * Reads whatever the settings file held into a fully populated `Settings`.
  *
  * Every field falls back independently. A settings file written by an older
@@ -105,13 +116,12 @@ export function parseSettings(raw: unknown): Settings {
     lastExportDir: asString(record['lastExportDir']),
     layout: {
       libraryOpen: asBoolean(layout['libraryOpen'], DEFAULT_LAYOUT.libraryOpen),
-      previewOpen: asBoolean(layout['previewOpen'], DEFAULT_LAYOUT.previewOpen),
       chatOpen: asBoolean(layout['chatOpen'], DEFAULT_LAYOUT.chatOpen),
+      docMode: asDocMode(layout['docMode']),
       marksOn: asBoolean(layout['marksOn'], DEFAULT_LAYOUT.marksOn),
       composerHeight: asWidth(layout['composerHeight'], DEFAULT_LAYOUT.composerHeight),
       turnPin: asPin(layout['turnPin']),
       libraryWidth: asWidth(layout['libraryWidth'], DEFAULT_LAYOUT.libraryWidth),
-      previewWidth: asWidth(layout['previewWidth'], DEFAULT_LAYOUT.previewWidth),
       chatWidth: asWidth(layout['chatWidth'], DEFAULT_LAYOUT.chatWidth),
     },
   };

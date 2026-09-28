@@ -26,6 +26,7 @@ import {
   askRestoreRevision,
 } from './lib/ask-first.ts';
 import {copyRichText, systemClipboard} from './lib/clipboard.ts';
+import type {DocMode} from './lib/doc-mode.ts';
 import {daemonToken, initDaemonToken, refreshDaemonToken} from './lib/daemon-token.ts';
 import {createDispatchTransport, type TokenAccess} from './lib/dispatch-transport.ts';
 import {
@@ -55,28 +56,28 @@ import {Splitter} from './components/shell/Splitter.tsx';
 import {RevisionsPanel} from './components/shell/RevisionsPanel.tsx';
 import {EmptyState} from './components/shell/EmptyState.tsx';
 import {LibraryPanel} from './components/library/LibraryPanel.tsx';
-import {PreviewPanel} from './components/preview/PreviewPanel.tsx';
-import {EditorPanel, type Reveal} from './components/editor/EditorPanel.tsx';
-import {FindingsStrip, type DismissedFinding} from './components/findings/FindingsStrip.tsx';
+import {DocumentPanel} from './components/document/DocumentPanel.tsx';
+import {useReveal} from './components/document/use-reveal.ts';
+import type {DismissedFinding} from './components/findings/FindingsStrip.tsx';
 import {ChatPanel} from './components/chat/ChatPanel.tsx';
 import type {ReferenceControls} from './components/chat/ContextStrip.tsx';
 
 /**
  * How narrow each column may be squeezed before the window runs out of room.
  *
- * The three side panels hold a width the writer dragged them to and the editor
+ * The two side panels hold a width the writer dragged them to and the document
  * takes what is left, so a window narrower than the sum used to push the agent
  * panel out past the right edge, where the root's `overflow-hidden` cut its
  * token counts and its buttons in half. The panels give way instead, in
- * proportion to the widths they were given, and stop here. The four floors
+ * proportion to the widths they were given, and stop here. The three floors
  * total less than the window's own 960px minimum, so the row always fits.
  *
- * The editor's floor is deliberately low. It is the column with no toggle of
+ * The document's floor is deliberately low. It is the column with no toggle of
  * its own, so it is the one a writer squeezes to nothing without meaning to,
  * and this is only the width at which it stops disappearing: enough to see
  * that it is there and to find its handle, not a width to write at.
  */
-const FLOOR = {library: 160, preview: 200, chat: 240, editor: 160};
+const FLOOR = {library: 160, chat: 240, document: 160};
 
 /** No document open, so no rule set governs anything. Held still for the memos. */
 const NO_CASCADE = Object.freeze({sets: [], problems: []});
@@ -244,6 +245,33 @@ export function App() {
     });
   }, []);
 
+  const updateDocMode = useCallback(function (update: (mode: DocMode) => DocMode) {
+    setLayout(function (current) {
+      return {...current, docMode: update(current.docMode)};
+    });
+  }, []);
+
+  const handleDocMode = useCallback(
+    function (mode: DocMode) {
+      updateDocMode(function () {
+        return mode;
+      });
+    },
+    [updateDocMode],
+  );
+
+  // Read is not a place focus can be, so arriving there ends the editor's claim
+  // to it. The chat's claim stands: a turn handed to the agent stays handed.
+  useEffect(
+    function () {
+      if (layout.docMode !== 'read') return;
+      setLastFocus(function (current) {
+        return current === 'editor' ? undefined : current;
+      });
+    },
+    [layout.docMode],
+  );
+
   const resize = useCallback(function (key: keyof LayoutSettings, width: number) {
     setLayout(function (current) {
       return {...current, [key]: width};
@@ -253,12 +281,6 @@ export function App() {
   const resizeLibrary = useCallback(
     function (width: number) {
       resize('libraryWidth', width);
-    },
-    [resize],
-  );
-  const resizePreview = useCallback(
-    function (width: number) {
-      resize('previewWidth', width);
     },
     [resize],
   );
@@ -422,7 +444,7 @@ export function App() {
 
   const {dismissals, dismiss, restore} = useSuppressions(openPath, dataReady);
   const {kept, suppressed} = useFindings(draft, voice, dismissals);
-  const [reveal, setReveal] = useState<Reveal | undefined>(undefined);
+  const {reveal, show} = useReveal(updateDocMode);
 
   const sessionState = useCallback(async function (sessionId: string) {
     const known = await DAEMON.getSession(sessionId);
@@ -542,14 +564,12 @@ export function App() {
     ],
   );
 
-  // The counter increments on every pick because the editor honours one reveal
-  // per counter value. Without it, picking the same finding twice would be the
-  // same request and the second click would move nothing.
-  const handlePick = useCallback(function (finding: Finding) {
-    setReveal(function (current) {
-      return {range: finding.range, seq: (current?.seq ?? 0) + 1};
-    });
-  }, []);
+  const handlePick = useCallback(
+    function (finding: Finding) {
+      show(finding.range);
+    },
+    [show],
+  );
 
   const handleRestore = useCallback(
     function (entry: DismissedFinding) {
@@ -729,19 +749,21 @@ export function App() {
    * Revealing sets the editor selection, so the passage becomes the writer's
    * selection for the next turn, and the focus the reveal takes makes it the
    * writer's turn. Both by the rules already in `turn.ts` and `EditorPanel`
-   * rather than by anything decided here.
+   * rather than by anything decided here. A pointer followed while reading
+   * returns to Source first, since a selection is only visible in the editor.
    */
-  const handlePoint = useCallback(function (pointer: Pointer) {
-    const found = resolvePointer(draftRef.current, pointer);
-    if (!found.ok) {
-      setAgentError(found.reason);
-      return;
-    }
-    setAgentError(undefined);
-    setReveal(function (current) {
-      return {range: found.range, seq: (current?.seq ?? 0) + 1, mark: true};
-    });
-  }, []);
+  const handlePoint = useCallback(
+    function (pointer: Pointer) {
+      const found = resolvePointer(draftRef.current, pointer);
+      if (!found.ok) {
+        setAgentError(found.reason);
+        return;
+      }
+      setAgentError(undefined);
+      show(found.range, true);
+    },
+    [show],
+  );
 
   const handlePin = useCallback(function () {
     setLayout(function (current) {
@@ -771,6 +793,7 @@ export function App() {
         save={workspace.open?.save}
         layout={layout}
         onToggle={handleToggle}
+        onDocMode={handleDocMode}
         turn={indicatorFor(mode, landing)}
         pinned={layout.turnPin !== undefined}
         onPin={handlePin}
@@ -827,44 +850,25 @@ export function App() {
             }
           />
         ) : (
-          <>
-            {layout.previewOpen && (
-              <>
-                <div style={{width: layout.previewWidth, minWidth: FLOOR.preview}}>
-                  <PreviewPanel source={draft} />
-                </div>
-                <Splitter
-                  size={layout.previewWidth}
-                  onResize={resizePreview}
-                  side="left"
-                  label="Resize the preview"
-                />
-              </>
-            )}
-
-            <div style={{minWidth: FLOOR.editor}} className="flex flex-1 flex-col">
-              <div className="min-h-0 flex-1">
-                <EditorPanel
-                  path={workspace.open.path}
-                  source={draft}
-                  onChange={editDraft}
-                  onSelect={setSelection}
-                  onSave={workspace.saveNow}
-                  onFocus={handleEditorFocus}
-                  findings={kept}
-                  marksOn={layout.marksOn}
-                  reveal={reveal}
-                />
-              </div>
-              <FindingsStrip
-                findings={kept}
-                onPick={handlePick}
-                suppressed={suppressed}
-                onDismiss={dismiss}
-                onRestore={handleRestore}
-              />
-            </div>
-          </>
+          <div style={{minWidth: FLOOR.document}} className="flex flex-1 flex-col">
+            <DocumentPanel
+              mode={layout.docMode}
+              onMode={updateDocMode}
+              path={workspace.open.path}
+              source={draft}
+              onChange={editDraft}
+              onSelect={setSelection}
+              onSave={workspace.saveNow}
+              onFocus={handleEditorFocus}
+              findings={kept}
+              marksOn={layout.marksOn}
+              reveal={reveal}
+              onPick={handlePick}
+              suppressed={suppressed}
+              onDismiss={dismiss}
+              onRestore={handleRestore}
+            />
+          </div>
         )}
 
         {layout.chatOpen && (

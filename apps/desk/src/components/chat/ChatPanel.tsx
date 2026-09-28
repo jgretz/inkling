@@ -291,7 +291,7 @@ const Reference = memo(function Reference({pointer, role, onPoint}: ReferencePro
 /**
  * The conversation. Owns its own history rather than lifting it into the
  * workspace: a chat is about a document but is not part of it, and nothing in
- * the editor or preview should re-render because a reply streamed in.
+ * the document panel should re-render because a reply streamed in.
  */
 export function ChatPanel({
   transport,

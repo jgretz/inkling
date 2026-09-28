@@ -5,8 +5,8 @@ import type {Extension} from '@codemirror/state';
 
 /**
  * The editor's look. It deliberately does not resemble a code editor: the prose
- * is set as reading type, in the preview's serif and on the preview's measure,
- * so one document does not speak in two voices side by side. Markdown syntax is
+ * is set as reading type, in the Read view's serif and on the Read view's
+ * measure, so one document does not change voice between modes. Markdown syntax is
  * dimmed rather than coloured, so the eye lands on the prose and the markers
  * stay legible without competing with it. Monospace is kept for code alone.
  */
@@ -29,7 +29,7 @@ const paint = EditorView.theme(
     '.cm-content': {
       caretColor: 'var(--color-accent)',
       // `.cm-content` is border-box, so the `+ 3rem` pays for the side padding
-      // and leaves a 62ch text column, the preview's measure.
+      // and leaves a 62ch text column, the Read view's measure.
       maxWidth: 'calc(62ch + 3rem)',
       margin: '0 auto',
       padding: '0 1.5rem',

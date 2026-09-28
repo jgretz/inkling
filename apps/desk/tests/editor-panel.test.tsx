@@ -53,6 +53,7 @@ function panel(props: PanelProps) {
       findings={[]}
       marksOn
       reveal={undefined}
+      hidden={false}
     />
   );
 }
