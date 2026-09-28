@@ -143,10 +143,28 @@ describe('the document mode switch', function () {
     return button.getAttribute('aria-pressed');
   }
 
-  it('should mark Source pressed when the document is in source', function () {
+  it('should list Live, Source and Read in that order', function () {
+    const group = bar().getByRole('group', {name: 'Document mode'});
+    const labels = [...group.querySelectorAll('button')].map(function (button) {
+      return button.getAttribute('aria-label');
+    });
+
+    expect(labels).toEqual(['Live', 'Source', 'Read']);
+  });
+
+  it('should mark Live pressed by default', function () {
     const view = bar();
 
+    expect(pressed(view, 'Live')).toBe('true');
+    expect(pressed(view, 'Source')).toBe('false');
+    expect(pressed(view, 'Read')).toBe('false');
+  });
+
+  it('should mark Source pressed when the document is in source', function () {
+    const view = bar({layout: {...DEFAULT_LAYOUT, docMode: 'source', editMode: 'source'}});
+
     expect(pressed(view, 'Source')).toBe('true');
+    expect(pressed(view, 'Live')).toBe('false');
     expect(pressed(view, 'Read')).toBe('false');
   });
 
@@ -154,7 +172,22 @@ describe('the document mode switch', function () {
     const view = bar({layout: {...DEFAULT_LAYOUT, docMode: 'read'}});
 
     expect(pressed(view, 'Read')).toBe('true');
+    expect(pressed(view, 'Live')).toBe('false');
     expect(pressed(view, 'Source')).toBe('false');
+  });
+
+  it('should ask for live when Live is clicked', function () {
+    const asked: DocMode[] = [];
+    const view = bar({
+      layout: {...DEFAULT_LAYOUT, docMode: 'read'},
+      onDocMode(mode) {
+        asked.push(mode);
+      },
+    });
+
+    fireEvent.click(view.getByLabelText('Live'));
+
+    expect(asked).toEqual(['live']);
   });
 
   it('should ask for read when Read is clicked', function () {

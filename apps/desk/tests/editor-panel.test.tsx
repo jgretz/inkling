@@ -4,8 +4,10 @@ import {act, fireEvent, render} from '@testing-library/react';
 import {undo} from '@codemirror/commands';
 import {EditorView} from '@codemirror/view';
 import {resolveAnchor} from '@inkling/voice';
+import type {EditMode} from '../src/lib/doc-mode.ts';
 import type {Pointer} from '../src/lib/pointer.ts';
-import {EditorPanel} from '../src/components/editor/EditorPanel.tsx';
+import {EditorPanel, type Reveal} from '../src/components/editor/EditorPanel.tsx';
+import {liveMarkup} from '../src/components/editor/live-marks.ts';
 
 autoCleanup();
 
@@ -39,6 +41,8 @@ type PanelProps = {
   onSelect?: (selection: Pointer | undefined) => void;
   onSave?: () => void;
   onFocus?: () => void;
+  editMode?: EditMode;
+  reveal?: Reveal;
 };
 
 function panel(props: PanelProps) {
@@ -52,8 +56,9 @@ function panel(props: PanelProps) {
       onFocus={props.onFocus ?? function () {}}
       findings={[]}
       marksOn
-      reveal={undefined}
+      reveal={props.reveal}
       hidden={false}
+      editMode={props.editMode ?? 'source'}
     />
   );
 }
@@ -207,5 +212,67 @@ describe('EditorPanel', function () {
     });
 
     expect(view.state.doc.toString()).toBe('The ending is rather good.');
+  });
+});
+
+describe('EditorPanel modes', function () {
+  const BOLD = 'First line.\n\nSome **bold** words.';
+
+  it('should keep the same view, the selection and the undo history across live, source and live', function () {
+    const {container, view, rerender} = mount({source: 'First line.', editMode: 'live'});
+
+    act(function () {
+      view.dispatch({changes: {from: 11, insert: ' Second.'}, selection: {anchor: 5}});
+    });
+
+    act(function () {
+      rerender(panel({source: 'First line. Second.', editMode: 'source'}));
+    });
+    act(function () {
+      rerender(panel({source: 'First line. Second.', editMode: 'live'}));
+    });
+
+    expect(EditorView.findFromDOM(container as HTMLElement)).toBe(view);
+    expect(view.state.selection.main.anchor).toBe(5);
+
+    act(function () {
+      undo(view);
+    });
+    expect(view.state.doc.toString()).toBe('First line.');
+  });
+
+  it('should hide the markers of an untouched line in live and draw them in source', function () {
+    const {view, rerender} = mount({source: BOLD, editMode: 'live'});
+
+    expect(view.contentDOM.textContent).toContain('Some bold words.');
+    expect(view.contentDOM.textContent).not.toContain('**');
+
+    act(function () {
+      rerender(panel({source: BOLD, editMode: 'source'}));
+    });
+
+    expect(view.contentDOM.textContent).toContain('Some **bold** words.');
+  });
+
+  it('should draw the markers of the line a reveal selects in live', function () {
+    const {view, rerender} = mount({source: BOLD, editMode: 'live'});
+    const start = BOLD.indexOf('**') + 1;
+    const lineStart = BOLD.indexOf('Some');
+
+    act(function () {
+      rerender(
+        panel({
+          source: BOLD,
+          editMode: 'live',
+          reveal: {range: {start, end: start + 6}, seq: 1},
+        }),
+      );
+    });
+
+    const onSelectedLine = liveMarkup(view.state).hidden.filter(function ({from}) {
+      return from >= lineStart;
+    });
+    expect(onSelectedLine).toEqual([]);
+    expect(view.contentDOM.textContent).toContain('**bold**');
   });
 });

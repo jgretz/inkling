@@ -3,6 +3,7 @@ import {afterEach, beforeEach, describe, expect, it} from 'bun:test';
 import {render} from '@testing-library/react';
 import {EditorView} from '@codemirror/view';
 import {EditorPanel} from '../src/components/editor/EditorPanel.tsx';
+import type {EditMode} from '../src/lib/doc-mode.ts';
 
 autoCleanup();
 
@@ -28,11 +29,12 @@ afterEach(function () {
   fonts = undefined;
 });
 
-function mount() {
+function mount(editMode: EditMode = 'live', source = SOURCE) {
   const result = render(
     <EditorPanel
+      editMode={editMode}
       path="drafts/a.md"
-      source={SOURCE}
+      source={source}
       onChange={function () {}}
       onSelect={function () {}}
       onSave={function () {}}
@@ -66,7 +68,7 @@ function style(element: Element) {
   return getComputedStyle(element);
 }
 
-describe('the editor typography', function () {
+describe('the editor typography in live', function () {
   it('should set the body in the prose serif rather than monospace', function () {
     const family = style(mount().scrollDOM).fontFamily;
 
@@ -108,5 +110,50 @@ describe('the editor typography', function () {
     const padding = parseFloat(content.paddingLeft) + parseFloat(content.paddingRight);
 
     expect(content.maxWidth).toBe(`calc(62ch + ${padding}px)`);
+  });
+});
+
+describe('the editor typography in source', function () {
+  it('should set the body in monospace rather than the prose serif', function () {
+    const family = style(mount('source').scrollDOM).fontFamily;
+
+    expect(family).toContain('Probe Mono');
+    expect(family).not.toContain('Probe Serif');
+  });
+
+  it('should size the body at 15px on a 1.7 line', function () {
+    const view = mount('source');
+
+    expect(style(view.dom).fontSize).toBe('15px');
+    expect(style(view.scrollDOM).lineHeight).toBe('1.7');
+  });
+
+  it('should hold the text column to 72ch', function () {
+    const content = style(mount('source').contentDOM);
+    const padding = parseFloat(content.paddingLeft) + parseFloat(content.paddingRight);
+
+    expect(content.maxWidth).toBe(`calc(72ch + ${padding}px)`);
+  });
+});
+
+describe('headings in live', function () {
+  const HEADINGS = 'Body first.\n\n# A title\n\n## A section';
+
+  function lineHolding(text: string, editMode: EditMode) {
+    const line = holding(mount(editMode, HEADINGS), text).closest('.cm-line');
+    if (line === null) throw new Error(`no line holds "${text}"`);
+    return line;
+  }
+
+  it('should set a level-one heading line with its own class', function () {
+    expect(lineHolding('A title', 'live').classList.contains('cm-live-h1')).toBe(true);
+  });
+
+  it('should set a level-two heading line with its own class', function () {
+    expect(lineHolding('A section', 'live').classList.contains('cm-live-h2')).toBe(true);
+  });
+
+  it('should leave heading lines unclassed in source', function () {
+    expect(lineHolding('A title', 'source').classList.contains('cm-live-h1')).toBe(false);
   });
 });

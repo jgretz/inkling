@@ -1,5 +1,5 @@
 import type {VaultPath} from '@inkling/vault';
-import {isDocMode, type DocMode} from './doc-mode.ts';
+import {isDocMode, isEditMode, type DocMode, type EditMode} from './doc-mode.ts';
 import type {TurnPin} from './turn.ts';
 
 /**
@@ -23,11 +23,13 @@ export type Settings = {
 export type LayoutSettings = {
   libraryOpen: boolean;
   chatOpen: boolean;
-  /**
-   * Which view of the open document the document panel shows. Source until
-   * Live exists, which becomes the default then.
-   */
+  /** Which view of the open document the document panel shows. */
   docMode: DocMode;
+  /**
+   * The editing mode Read returns to. Persisted so Command-E after a restart
+   * still goes back to the mode the writer left. Equal to `docMode` outside Read.
+   */
+  editMode: EditMode;
   /** Whether voice findings are underlined in the editor. */
   marksOn: boolean;
   /**
@@ -48,7 +50,8 @@ export type ToggleKey = 'libraryOpen' | 'chatOpen' | 'marksOn';
 export const DEFAULT_LAYOUT: LayoutSettings = {
   libraryOpen: true,
   chatOpen: true,
-  docMode: 'source',
+  docMode: 'live',
+  editMode: 'live',
   marksOn: true,
   turnPin: undefined,
   composerHeight: 96,
@@ -101,6 +104,15 @@ function asDocMode(value: unknown): DocMode {
 }
 
 /**
+ * The editing mode Read returns to. Outside Read it is `docMode` itself, so a
+ * hand-edited file whose two fields disagree normalises to the mode on screen.
+ */
+function asEditMode(value: unknown, docMode: DocMode): EditMode {
+  if (isEditMode(docMode)) return docMode;
+  return isEditMode(value) ? value : DEFAULT_LAYOUT.editMode;
+}
+
+/**
  * Reads whatever the settings file held into a fully populated `Settings`.
  *
  * Every field falls back independently. A settings file written by an older
@@ -110,6 +122,7 @@ function asDocMode(value: unknown): DocMode {
 export function parseSettings(raw: unknown): Settings {
   const record = asRecord(raw);
   const layout = asRecord(record['layout']);
+  const docMode = asDocMode(layout['docMode']);
   return {
     vault: asString(record['vault']) as VaultPath | undefined,
     lastDoc: asString(record['lastDoc']),
@@ -117,7 +130,8 @@ export function parseSettings(raw: unknown): Settings {
     layout: {
       libraryOpen: asBoolean(layout['libraryOpen'], DEFAULT_LAYOUT.libraryOpen),
       chatOpen: asBoolean(layout['chatOpen'], DEFAULT_LAYOUT.chatOpen),
-      docMode: asDocMode(layout['docMode']),
+      docMode,
+      editMode: asEditMode(layout['editMode'], docMode),
       marksOn: asBoolean(layout['marksOn'], DEFAULT_LAYOUT.marksOn),
       composerHeight: asWidth(layout['composerHeight'], DEFAULT_LAYOUT.composerHeight),
       turnPin: asPin(layout['turnPin']),

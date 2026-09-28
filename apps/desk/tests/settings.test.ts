@@ -47,17 +47,49 @@ describe('parseSettings', function () {
     expect('previewWidth' in layout).toBe(false);
   });
 
-  // Not `'live'`: that one is coming, and a fixture that later becomes valid
-  // would stop testing the fallback without failing.
-  it('should fall back to source when docMode holds a mode it does not know', function () {
-    expect(parseSettings({layout: {docMode: 'split'}}).layout.docMode).toBe('source');
-    expect(parseSettings({layout: {docMode: 'wysiwyg'}}).layout.docMode).toBe('source');
-    expect(parseSettings({layout: {docMode: true}}).layout.docMode).toBe('source');
-    expect(parseSettings({layout: {chatOpen: false}}).layout.docMode).toBe('source');
+  it('should open in live when the file has never been written', function () {
+    expect(parseSettings(undefined).layout.docMode).toBe('live');
+    expect(parseSettings(undefined).layout.editMode).toBe('live');
+  });
+
+  it('should fall back to live when docMode holds a mode it does not know', function () {
+    expect(parseSettings({layout: {docMode: 'split'}}).layout.docMode).toBe('live');
+    expect(parseSettings({layout: {docMode: 'wysiwyg'}}).layout.docMode).toBe('live');
+    expect(parseSettings({layout: {docMode: true}}).layout.docMode).toBe('live');
+    expect(parseSettings({layout: {chatOpen: false}}).layout.docMode).toBe('live');
   });
 
   it('should keep a docMode it knows', function () {
+    expect(parseSettings({layout: {docMode: 'source'}}).layout.docMode).toBe('source');
     expect(parseSettings({layout: {docMode: 'read'}}).layout.docMode).toBe('read');
+    expect(parseSettings({layout: {docMode: 'live'}}).layout.docMode).toBe('live');
+  });
+
+  it('should take the editMode from docMode when docMode is an editing mode', function () {
+    expect(parseSettings({layout: {docMode: 'source'}}).layout.editMode).toBe('source');
+    expect(parseSettings({layout: {docMode: 'source', editMode: 'live'}}).layout.editMode).toBe(
+      'source',
+    );
+    expect(parseSettings({layout: {docMode: 'live', editMode: 'source'}}).layout.editMode).toBe(
+      'live',
+    );
+  });
+
+  it('should keep the stored editMode when docMode is read', function () {
+    expect(parseSettings({layout: {docMode: 'read', editMode: 'source'}}).layout.editMode).toBe(
+      'source',
+    );
+    expect(parseSettings({layout: {docMode: 'read', editMode: 'live'}}).layout.editMode).toBe(
+      'live',
+    );
+  });
+
+  it('should fall back to live when docMode is read and editMode is missing or unknown', function () {
+    expect(parseSettings({layout: {docMode: 'read'}}).layout.editMode).toBe('live');
+    expect(parseSettings({layout: {docMode: 'read', editMode: 'read'}}).layout.editMode).toBe(
+      'live',
+    );
+    expect(parseSettings({layout: {docMode: 'read', editMode: 7}}).layout.editMode).toBe('live');
   });
 
   it('should turn voice marks on for a settings file written before they existed', function () {

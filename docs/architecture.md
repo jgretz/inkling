@@ -51,28 +51,46 @@ Three columns, left to right.
 
 The document panel has a mode, persisted with the layout:
 
-- **Source**: the raw markdown in CodeMirror 6.
+- **Live**, the default: the markdown in CodeMirror 6, with the markers of
+  headings, emphasis, strikethrough, inline code and links hidden on every line
+  the selection does not touch, headings set at size, and prose in the Read
+  view's serif and measure.
+- **Source**: the raw markdown in CodeMirror 6, in monospace, every character
+  shown.
 - **Read**: the document rendered by `DocMarkdown`, which is what a rich-text
   copy puts on the clipboard. An export writes the markdown itself.
-- **Live**: coming in 7.2, CodeMirror decorations that hide the markdown markers.
 
-There is one `EditorView` per open document. Read hides it rather than
-unmounting it, so the document, its undo history, its caret and its findings
-survive every switch. Picking a finding or following a pointer while in Read
-returns to Source first, since a selection is only visible in the editor.
+There is one `EditorView` per open document. Live and Source are one compartment
+of it, swapped by `reconfigure` rather than by building another view, and Read
+hides it rather than unmounting it, so the document, its undo history, its caret
+and its findings survive every switch. The layout also persists the last editing
+mode, which is where Read returns to. Picking a finding or following a pointer
+while in Read returns to the last editing mode first, since a selection is only
+visible in the editor.
 
-The Read view's pipeline is the app's only one. `components/preview/DocMarkdown.tsx`
+Live never rewrites the writer's markdown. `components/editor/live-marks.ts`
+reads the markers off the syntax tree and hides them with CodeMirror
+decorations, so every offset a finding, a pointer or a reveal holds is still an
+offset into the text on disk, and the caret's line always shows the markers it
+is editing. Clicking a link places the caret in its text like any other word,
+which puts the syntax back on screen; nothing navigates.
+
+`DocMarkdown` is the app's only rendering pipeline: the Read view and the
+clipboard both go through it. `components/preview/DocMarkdown.tsx`
 is the single file that names `react-markdown` and configures `remark-gfm`, and
 `lib/rich-text.tsx` renders that same component with a map of inline-style
 overrides to produce the HTML that goes on the clipboard. A plugin added for the
 Read view is on the clipboard the same day, and what the writer reads on screen
-cannot drift from what a mail client receives.
+cannot drift from what a mail client receives. Live's decorations are exempt:
+they are editing chrome over the source, not an output, and nothing leaves the
+app through them.
 
 The library shows the vault as the writer's own folders arrange it: documents at
 the root first, in an unnamed section, then a group per directory, nested as
 deep as they go. The library and the agent toggle from the title bar, the
-document's mode is the switch beside them or Command-E, and each boundary is a
-draggable splitter; the widths persist across restarts.
+document's mode is the switch beside them, Command-E (Read and back) or
+Command-Shift-E (Live and Source), and each boundary is a draggable splitter;
+the widths persist across restarts.
 
 ## State
 

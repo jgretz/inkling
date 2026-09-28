@@ -1,12 +1,14 @@
-import {useEffect, useRef} from 'react';
-import {EditorState, type Extension} from '@codemirror/state';
+import {useEffect, useRef, useState} from 'react';
+import {Compartment, EditorState, type Extension} from '@codemirror/state';
 import {EditorView, drawSelection, highlightActiveLine, keymap} from '@codemirror/view';
 import {defaultKeymap, history, historyKeymap} from '@codemirror/commands';
 import {markdown, markdownLanguage} from '@codemirror/lang-markdown';
 import type {Finding, Range} from '@inkling/voice';
+import type {EditMode} from '../../lib/doc-mode.ts';
 import {pointerAt, type Pointer} from '../../lib/pointer.ts';
-import {inklingTheme} from './theme.ts';
+import {inklingTheme, proseSurface, sourceSurface} from './theme.ts';
 import {setFindings, voiceFindings} from './findings-marks.ts';
+import {liveMarks} from './live-marks.ts';
 import {agentPoint, clearPoint, setPoint} from './point-mark.ts';
 
 /**
@@ -30,6 +32,12 @@ export type Reveal = {
    * entry they clicked already names it, and the underline is already there.
    */
   mark?: boolean;
+};
+
+/** What each editing mode adds to the view on top of what every mode shares. */
+const MODE_EXTENSIONS: Record<EditMode, Extension> = {
+  live: [liveMarks(), proseSurface],
+  source: sourceSurface,
 };
 
 type EditorPanelProps = {
@@ -60,10 +68,15 @@ type EditorPanelProps = {
    * view, its undo history and its caret outlive a trip to Read.
    */
   hidden: boolean;
+  /**
+   * Live or Source. Swapped inside the one view rather than by building
+   * another, so the document, its undo history and its caret survive a switch.
+   */
+  editMode: EditMode;
 };
 
 /**
- * The raw markdown editor.
+ * The markdown editor, in Live or Source.
  *
  * CodeMirror owns its own DOM, so React's job here is only to create the view
  * once per document and push external changes in. Three rules keep the two
@@ -85,6 +98,7 @@ export function EditorPanel({
   marksOn,
   reveal,
   hidden,
+  editMode,
 }: EditorPanelProps) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -99,6 +113,14 @@ export function EditorPanel({
   // when two documents happen to hold identical text.
   const marks = useRef({findings, marksOn});
   marks.current = {findings, marksOn};
+
+  // Read at creation for the same reason: a new view starts in the mode on
+  // screen, and the effect below only hears later switches.
+  const mode = useRef(editMode);
+  mode.current = editMode;
+  const [modeSlot] = useState(function () {
+    return new Compartment();
+  });
 
   useEffect(
     function () {
@@ -134,6 +156,7 @@ export function EditorPanel({
         EditorView.lineWrapping,
         markdown({base: markdownLanguage, codeLanguages: []}),
         inklingTheme,
+        modeSlot.of(MODE_EXTENSIONS[mode.current]),
         voiceFindings(),
         // Before the default keymap, so its Escape binding is offered the key
         // first and declines it whenever no passage is painted.
@@ -172,6 +195,15 @@ export function EditorPanel({
       instance.dispatch({changes: {from: 0, to: current.length, insert: source}});
     },
     [source],
+  );
+
+  useEffect(
+    function () {
+      const instance = view.current;
+      if (instance === null) return;
+      instance.dispatch({effects: modeSlot.reconfigure(MODE_EXTENSIONS[editMode])});
+    },
+    [editMode, modeSlot],
   );
 
   // Declared after the `source` sync above so the document is already current
