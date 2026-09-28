@@ -28,7 +28,7 @@ const DERIVED: Record<FocusRegion, TurnMode> = {
 /**
  * Whose turn it is now.
  *
- * A pin wins outright: a writer reading the preview still wants the agent
+ * A pin wins outright: a writer reading in Read still wants the agent
  * working, and nothing about focus can say so. With nothing pinned and no focus
  * yet, the writer's turn is the answer, because the mode that asks first is the
  * one you should get by default.

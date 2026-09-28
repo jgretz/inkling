@@ -30,11 +30,34 @@ describe('parseSettings', function () {
   });
 
   it('should degrade field by field rather than dropping a whole layout', function () {
-    const result = parseSettings({layout: {chatOpen: 'yes', chatWidth: -20, previewOpen: false}});
+    const result = parseSettings({layout: {chatOpen: 'yes', chatWidth: -20, libraryOpen: false}});
 
     expect(result.layout.chatOpen).toBe(DEFAULT_LAYOUT.chatOpen);
     expect(result.layout.chatWidth).toBe(DEFAULT_LAYOUT.chatWidth);
-    expect(result.layout.previewOpen).toBe(false);
+    expect(result.layout.libraryOpen).toBe(false);
+  });
+
+  it('should drop the preview fields when the file was written before the document panel', function () {
+    const {layout} = parseSettings({
+      layout: {...DEFAULT_LAYOUT, previewOpen: false, previewWidth: 500},
+    });
+
+    expect(layout).toEqual(DEFAULT_LAYOUT);
+    expect('previewOpen' in layout).toBe(false);
+    expect('previewWidth' in layout).toBe(false);
+  });
+
+  // Not `'live'`: that one is coming, and a fixture that later becomes valid
+  // would stop testing the fallback without failing.
+  it('should fall back to source when docMode holds a mode it does not know', function () {
+    expect(parseSettings({layout: {docMode: 'split'}}).layout.docMode).toBe('source');
+    expect(parseSettings({layout: {docMode: 'wysiwyg'}}).layout.docMode).toBe('source');
+    expect(parseSettings({layout: {docMode: true}}).layout.docMode).toBe('source');
+    expect(parseSettings({layout: {chatOpen: false}}).layout.docMode).toBe('source');
+  });
+
+  it('should keep a docMode it knows', function () {
+    expect(parseSettings({layout: {docMode: 'read'}}).layout.docMode).toBe('read');
   });
 
   it('should turn voice marks on for a settings file written before they existed', function () {

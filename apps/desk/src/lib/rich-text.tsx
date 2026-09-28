@@ -8,7 +8,7 @@ import {DocMarkdown, type Components} from '../components/preview/DocMarkdown.ts
  * The document as HTML a mail client will keep.
  *
  * Pure: no filesystem, no window, no clipboard. It renders the same
- * `DocMarkdown` the preview does, so the two can never disagree about what the
+ * `DocMarkdown` the Read view does, so the two can never disagree about what the
  * markdown means, and differs only in that every element is styled inline.
  * Mail clients drop a stylesheet and keep a `style` attribute, so a class name
  * would arrive as unstyled text.

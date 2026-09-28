@@ -8,9 +8,9 @@ Tauri 2 + React 19 + Vite 7 + Tailwind 4.
 
 ## The shape of the app
 
-Three panels over one document, left to right: the rendered markdown, the raw
-markdown editor, and an open conversation with an agent that can see both. A
-collapsible library sits left of the preview.
+Three panels, left to right: a collapsible library of the vault, one document
+panel showing the open document in Source (the raw markdown editor) or Read (the
+rendered markdown), and an open conversation with an agent that can see it.
 
 - [`docs/model.md`](./docs/model.md) is what inkling is built around.
 - [`docs/kinds.md`](./docs/kinds.md) is the four kinds a document can be.
@@ -59,5 +59,7 @@ collapsible library sits left of the preview.
   file that names a Tauri command.
 - `apps/desk/src/components/` is one directory per panel.
 - `packages/vault/` parses frontmatter and derives document summaries.
+- `packages/voice/` holds the voice detectors, the rule sets that tune them, and
+  `check`, which runs them over a draft.
 - Global engineering rules live in `~/.claude/rules/`; this file does not repeat
   them.

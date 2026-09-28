@@ -61,6 +61,7 @@ function Harness({
           findings={findings}
           marksOn={marksOn}
           reveal={reveal}
+          hidden={false}
         />
       </div>
       <FindingsStrip findings={findings} onPick={handlePick} />

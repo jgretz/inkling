@@ -8,7 +8,8 @@ apps/desk/            the Tauri desktop app
     lib/              state, settings, the Rust boundary, the agent boundary
     components/       one directory per panel
       library/        the document tree: groups, filter, create, rename, move
-      findings/       the voice findings strip, under the editor
+      document/       the document panel: its modes and the reveal path
+      findings/       the voice findings strip, under the document
   src-tauri/          the Rust half
     src/vault.rs      filesystem commands, path containment
     src/export.rs     one write outside the vault, where the writer pointed
@@ -38,28 +39,40 @@ declares no dependency, and names no `node:` builtin, which is what lets it run
 in the webview bundle and in a test with no daemon alike.
 `tests/package-purity.test.ts` there holds each of those three.
 
-## The three panels
+## The panels: Library, Document, Agent
 
-One document, three views of it, left to right.
+Three columns, left to right.
 
-| Panel   | What it shows                                          | Where it lives       |
-| ------- | ------------------------------------------------------ | -------------------- |
-| Preview | The document rendered, tracking the editor buffer live | `components/preview` |
-| Editor  | Raw markdown in CodeMirror 6                           | `components/editor`  |
-| Agent   | A conversation about the document, and what it carries | `components/chat`    |
+| Panel    | What it shows                                          | Where it lives                                                           |
+| -------- | ------------------------------------------------------ | ------------------------------------------------------------------------ |
+| Library  | The vault's documents and groups                       | `components/library`                                                     |
+| Document | The open document, in one mode at a time               | `components/document`, over `components/editor` and `components/preview` |
+| Agent    | A conversation about the document, and what it carries | `components/chat`                                                        |
 
-The preview's pipeline is the app's only one. `components/preview/DocMarkdown.tsx`
+The document panel has a mode, persisted with the layout:
+
+- **Source**: the raw markdown in CodeMirror 6.
+- **Read**: the document rendered by `DocMarkdown`, which is what a rich-text
+  copy puts on the clipboard. An export writes the markdown itself.
+- **Live**: coming in 7.2, CodeMirror decorations that hide the markdown markers.
+
+There is one `EditorView` per open document. Read hides it rather than
+unmounting it, so the document, its undo history, its caret and its findings
+survive every switch. Picking a finding or following a pointer while in Read
+returns to Source first, since a selection is only visible in the editor.
+
+The Read view's pipeline is the app's only one. `components/preview/DocMarkdown.tsx`
 is the single file that names `react-markdown` and configures `remark-gfm`, and
 `lib/rich-text.tsx` renders that same component with a map of inline-style
 overrides to produce the HTML that goes on the clipboard. A plugin added for the
-preview is on the clipboard the same day, and what the writer reads on screen
+Read view is on the clipboard the same day, and what the writer reads on screen
 cannot drift from what a mail client receives.
 
-A collapsible library sits left of the preview, showing the vault as the
-writer's own folders arrange it: documents at the root first, in an unnamed
-section, then a group per directory, nested as deep as they go. Each panel
-toggles from the title bar and each boundary is a draggable splitter; the widths
-persist across restarts.
+The library shows the vault as the writer's own folders arrange it: documents at
+the root first, in an unnamed section, then a group per directory, nested as
+deep as they go. The library and the agent toggle from the title bar, the
+document's mode is the switch beside them or Command-E, and each boundary is a
+draggable splitter; the widths persist across restarts.
 
 ## State
 

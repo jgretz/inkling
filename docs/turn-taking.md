@@ -17,8 +17,11 @@ editor the agent is not writing, and when focus is in the chat the writer is not
 typing prose. No read-only lock is needed, and none should be added.
 
 Derived is the default, not the whole story: a manual pin overrides it, because
-a writer reading the preview still wants the agent working. The indicator says
+a writer in the Read view still wants the agent working. The indicator says
 which is in play, and whether a pin put it there.
+
+Read is not a focus region. Entering it releases the editor's claim, and the
+derived turn falls back to the writer's unless focus was last in the chat.
 
 **The composer is neutral.** Focus landing in the message box is not a claim on
 the turn. A writer whose cursor is in the document types their question into the

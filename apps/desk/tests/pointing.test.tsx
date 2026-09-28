@@ -144,6 +144,7 @@ function Harness({quotes, onChange = noop, onSave = noop}: HarnessProps) {
         findings={NO_FINDINGS}
         marksOn
         reveal={reveal}
+        hidden={false}
       />
       <ChatPanel
         transport={transport}

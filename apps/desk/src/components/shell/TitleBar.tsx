@@ -1,12 +1,14 @@
 import {memo} from 'react';
 import type {ReactNode} from 'react';
 import BookOpen from 'lucide-react/dist/esm/icons/book-open';
+import Code from 'lucide-react/dist/esm/icons/code';
 import Library from 'lucide-react/dist/esm/icons/library';
 import MessageSquare from 'lucide-react/dist/esm/icons/message-square';
 import PenLine from 'lucide-react/dist/esm/icons/pen-line';
 import Pin from 'lucide-react/dist/esm/icons/pin';
 import SpellCheck from 'lucide-react/dist/esm/icons/spell-check';
 import Sparkles from 'lucide-react/dist/esm/icons/sparkles';
+import type {DocMode} from '../../lib/doc-mode.ts';
 import type {FrontmatterChoice} from '../../lib/export.ts';
 import type {LayoutSettings, ToggleKey} from '../../lib/settings.ts';
 import {indicatorLabel, type TurnIndicator} from '../../lib/turn.ts';
@@ -19,6 +21,8 @@ type TitleBarProps = {
   save: SaveState | undefined;
   layout: LayoutSettings;
   onToggle: (key: ToggleKey) => void;
+  /** Shows the open document in this mode. */
+  onDocMode: (mode: DocMode) => void;
   /** Whose turn it is, or that a write is in flight. See `lib/turn.ts`. */
   turn: TurnIndicator;
   /** Whether a manual pin, rather than the focus rule, put it there. */
@@ -61,18 +65,20 @@ const TURN_LABEL: Record<TurnIndicator, string> = {
 type ToggleProps = {
   active: boolean;
   label: string;
+  /** The hover, when it has more to say than the label. */
+  hint?: string;
   onClick: () => void;
   children: ReactNode;
 };
 
-const Toggle = memo(function Toggle({active, label, onClick, children}: ToggleProps) {
+const Toggle = memo(function Toggle({active, label, hint, onClick, children}: ToggleProps) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
       aria-label={label}
-      title={label}
+      title={hint ?? label}
       className={`rounded-md p-1.5 transition-colors duration-100 ${
         active ? 'bg-ink-700 text-ink-100' : 'text-ink-400 hover:bg-ink-800 hover:text-ink-200'
       }`}
@@ -93,6 +99,7 @@ export function TitleBar({
   save,
   layout,
   onToggle,
+  onDocMode,
   turn,
   pinned,
   onPin,
@@ -164,15 +171,28 @@ export function TitleBar({
         >
           <Library size={15} />
         </Toggle>
-        <Toggle
-          active={layout.previewOpen}
-          label="Toggle preview"
-          onClick={function () {
-            onToggle('previewOpen');
-          }}
-        >
-          <BookOpen size={15} />
-        </Toggle>
+        <div role="group" aria-label="Document mode" className="flex items-center">
+          <Toggle
+            active={layout.docMode === 'source'}
+            label="Source"
+            hint="Source (⌘E toggles)"
+            onClick={function () {
+              onDocMode('source');
+            }}
+          >
+            <Code size={15} />
+          </Toggle>
+          <Toggle
+            active={layout.docMode === 'read'}
+            label="Read"
+            hint="Read (⌘E toggles)"
+            onClick={function () {
+              onDocMode('read');
+            }}
+          >
+            <BookOpen size={15} />
+          </Toggle>
+        </div>
         <Toggle
           active={layout.chatOpen}
           label="Toggle agent"

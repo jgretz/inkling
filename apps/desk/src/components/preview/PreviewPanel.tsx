@@ -8,8 +8,8 @@ type PreviewPanelProps = {
 };
 
 /**
- * The rendered half. Reads the live editor buffer rather than the file on disk,
- * so the preview tracks keystrokes with no save in between.
+ * The Read view. Reads the live editor buffer rather than the file on disk, so
+ * it shows the latest keystroke with no save in between.
  *
  * The frontmatter block is parsed off before rendering: it is metadata, and
  * showing it as a horizontal rule followed by stray text is worse than hiding
