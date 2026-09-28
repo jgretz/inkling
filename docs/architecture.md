@@ -53,8 +53,11 @@ The document panel has a mode, persisted with the layout:
 
 - **Live**, the default: the markdown in CodeMirror 6, with the markers of
   headings, emphasis, strikethrough, inline code and links hidden on every line
-  the selection does not touch, headings set at size, and prose in the Read
-  view's serif and measure.
+  the selection does not touch, task markers drawn as checkboxes and thematic
+  breaks as rules on those same lines, headings set at size, list items given a
+  hanging indent, blockquotes a rule down the side, the frontmatter folded into
+  its tag chips until the selection enters it, and prose in the Read view's
+  serif and measure.
 - **Source**: the raw markdown in CodeMirror 6, in monospace, every character
   shown.
 - **Read**: the document rendered by `DocMarkdown`, which is what a rich-text
@@ -73,7 +76,16 @@ reads the markers off the syntax tree and hides them with CodeMirror
 decorations, so every offset a finding, a pointer or a reveal holds is still an
 offset into the text on disk, and the caret's line always shows the markers it
 is editing. Clicking a link places the caret in its text like any other word,
-which puts the syntax back on screen; nothing navigates.
+which puts the syntax back on screen; nothing navigates. The one edit Live makes
+is the writer's own: clicking a checkbox writes `[x]` or `[ ]` into the marker
+as a single undo step, and leaves the caret where it was.
+
+The frontmatter fold (`components/editor/frontmatter-fold.ts`) draws the block
+with `components/document/TagChips.tsx`, the same chips the Read view shows
+above the prose. The parser reads the block as markdown, so Live draws nothing
+else inside it. A document opens with the caret at the start of its body, in
+every mode, because a caret at 0 would sit inside the block and keep it open.
+Clicking the chips, or moving the caret up into the block, opens it as raw YAML.
 
 `DocMarkdown` is the app's only rendering pipeline: the Read view and the
 clipboard both go through it. `components/preview/DocMarkdown.tsx`

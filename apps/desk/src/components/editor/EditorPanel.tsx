@@ -8,6 +8,7 @@ import type {EditMode} from '../../lib/doc-mode.ts';
 import {pointerAt, type Pointer} from '../../lib/pointer.ts';
 import {inklingTheme, proseSurface, sourceSurface} from './theme.ts';
 import {setFindings, voiceFindings} from './findings-marks.ts';
+import {openingCaret} from './frontmatter-fold.ts';
 import {liveMarks} from './live-marks.ts';
 import {agentPoint, clearPoint, setPoint} from './point-mark.ts';
 
@@ -166,8 +167,11 @@ export function EditorPanel({
         keymap.of([...defaultKeymap, ...historyKeymap]),
       ];
 
+      const initial = EditorState.create({doc: source, extensions});
       const instance = new EditorView({
-        state: EditorState.create({doc: source, extensions}),
+        // A caret at 0 sits inside the frontmatter, which would keep Live's fold
+        // open on every open.
+        state: initial.update({selection: {anchor: openingCaret(initial.doc.toString())}}).state,
         parent,
       });
       view.current = instance;
@@ -190,9 +194,9 @@ export function EditorPanel({
     function () {
       const instance = view.current;
       if (instance === null) return;
-      const current = instance.state.doc.toString();
-      if (current === source) return;
-      instance.dispatch({changes: {from: 0, to: current.length, insert: source}});
+      const {doc} = instance.state;
+      if (doc.eq(instance.state.toText(source))) return;
+      instance.dispatch({changes: {from: 0, to: doc.length, insert: source}});
     },
     [source],
   );

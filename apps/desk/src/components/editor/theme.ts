@@ -126,6 +126,31 @@ export const proseSurface: Extension = EditorView.theme({
   '.cm-live-h1': {fontSize: '1.5em'},
   '.cm-live-h2': {fontSize: '1.25em'},
   '.cm-live-link': {color: 'var(--color-accent)'},
+  '.cm-live-task': {
+    accentColor: 'var(--color-accent)',
+    cursor: 'pointer',
+    margin: '0 0.25em 0 0',
+    verticalAlign: 'middle',
+  },
+  '.cm-live-rule': {
+    display: 'inline-block',
+    width: '100%',
+    verticalAlign: 'middle',
+    borderTop: '1px solid var(--color-ink-700)',
+  },
+  // Named with `.cm-line` so it outranks the shared theme's `.cm-line` padding.
+  '.cm-line.cm-live-quote': {
+    borderLeft: '2px solid var(--color-ink-700)',
+    paddingLeft: '0.75em',
+  },
+  '.cm-line.cm-live-list': {
+    paddingLeft: 'var(--live-indent)',
+    textIndent: 'calc(-1 * var(--live-indent))',
+  },
+  '.cm-line.cm-live-quote.cm-live-list': {
+    paddingLeft: 'calc(0.75em + var(--live-indent))',
+  },
+  '.cm-live-frontmatter': {padding: '0.25rem 0 0.75rem', cursor: 'text'},
 });
 
 /**

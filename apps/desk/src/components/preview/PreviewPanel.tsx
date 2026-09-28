@@ -1,5 +1,6 @@
 import {useMemo} from 'react';
 import {parseDoc} from '@inkling/vault';
+import {TagChips} from '../document/TagChips.tsx';
 import {DocMarkdown} from './DocMarkdown.tsx';
 
 type PreviewPanelProps = {
@@ -26,17 +27,8 @@ export function PreviewPanel({source}: PreviewPanelProps) {
   return (
     <section className="flex h-full min-w-0 flex-col bg-ink-900">
       {frontmatter.tags !== undefined && frontmatter.tags.length > 0 && (
-        <div className="flex shrink-0 flex-wrap gap-1.5 border-b border-ink-800 px-8 py-2">
-          {frontmatter.tags.map(function (tag) {
-            return (
-              <span
-                key={tag}
-                className="rounded-full bg-ink-800 px-2 py-0.5 text-[10px] uppercase tracking-wide text-ink-400"
-              >
-                {tag}
-              </span>
-            );
-          })}
+        <div className="shrink-0 border-b border-ink-800 px-8 py-2">
+          <TagChips tags={frontmatter.tags} />
         </div>
       )}
 

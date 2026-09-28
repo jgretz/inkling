@@ -1,5 +1,73 @@
 import {describe, expect, it} from 'bun:test';
-import {parseDoc, serializeDoc} from '../src/frontmatter.ts';
+import {frontmatterSpan, parseDoc, serializeDoc} from '../src/frontmatter.ts';
+
+const BOM = '\uFEFF';
+
+const READING_LIST = [
+  '---',
+  'title: Reading List',
+  'kind: note',
+  'tags:',
+  '  - reference',
+  '---',
+  '',
+  '# Reading List',
+].join('\n');
+
+/** The closing fence's line end in `source`, found by hand. */
+function closingEnd(source: string): number {
+  return source.indexOf('\n---', 1) + '\n---'.length;
+}
+
+const SPAN_FIXTURES: {
+  name: string;
+  source: string;
+  span: {from: number; to: number} | undefined;
+}[] = [
+  {
+    name: 'a reading-list document',
+    source: READING_LIST,
+    span: {from: 0, to: closingEnd(READING_LIST)},
+  },
+  {name: 'a file with no fence', source: '# Title\n\nSome prose.', span: undefined},
+  {name: 'an unterminated block', source: '---\ntitle: X\n\nBody.', span: undefined},
+  {
+    name: 'a block of malformed yaml',
+    source: '---\ntitle: [unclosed\n---\n\nBody.',
+    span: undefined,
+  },
+  {
+    name: 'a block holding a yaml scalar',
+    source: '---\njust words\n---\n\nBody.',
+    span: {from: 0, to: 18},
+  },
+  {name: 'an empty block', source: '---\n---\nBody.', span: {from: 0, to: 7}},
+  {
+    name: 'a leading byte-order mark',
+    source: `${BOM}---\ntitle: X\n---\nBody.`,
+    span: {from: 0, to: 17},
+  },
+  {
+    name: 'a closing fence with trailing spaces',
+    source: '---\ntitle: X\n---  \n\nBody.',
+    span: {from: 0, to: 18},
+  },
+  {name: 'a block closed on the last line', source: '---\ntitle: X\n---', span: {from: 0, to: 16}},
+  {name: 'a lone fence', source: '---', span: undefined},
+];
+
+describe('frontmatterSpan', function () {
+  for (const {name, source, span} of SPAN_FIXTURES) {
+    it(`should find the block's range when given ${name}`, function () {
+      expect(frontmatterSpan(source)).toEqual(span);
+    });
+
+    it(`should agree with parseDoc about whether ${name} has a block`, function () {
+      const unchanged = parseDoc(source).body === source.replace(/^\uFEFF/, '');
+      expect(frontmatterSpan(source) === undefined).toBe(unchanged);
+    });
+  }
+});
 
 describe('parseDoc', function () {
   it('should return the whole file as body when there is no fence', function () {
