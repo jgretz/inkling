@@ -7,6 +7,7 @@ import {resolveAnchor} from '@inkling/voice';
 import type {EditMode} from '../src/lib/doc-mode.ts';
 import type {Pointer} from '../src/lib/pointer.ts';
 import {EditorPanel, type Reveal} from '../src/components/editor/EditorPanel.tsx';
+import {openingCaret} from '../src/components/editor/frontmatter-fold.ts';
 import {liveMarkup} from '../src/components/editor/live-marks.ts';
 
 autoCleanup();
@@ -274,5 +275,20 @@ describe('EditorPanel modes', function () {
     });
     expect(onSelectedLine).toEqual([]);
     expect(view.contentDOM.textContent).toContain('**bold**');
+  });
+
+  it('should open with the caret at the body start when the document has frontmatter', function () {
+    const source = '---\ntitle: A draft\ntags:\n  - a\n---\nThe body.';
+    const {container, view} = mount({source, editMode: 'live'});
+
+    expect(view.state.selection.main.head).toBe(openingCaret(source));
+    expect(view.state.selection.main.head).toBe(source.indexOf('The body.'));
+    expect(container.querySelector('.cm-live-frontmatter')).not.toBeNull();
+  });
+
+  it('should open with the caret at 0 when the document has no frontmatter', function () {
+    const {view} = mount({source: 'Just prose.', editMode: 'live'});
+
+    expect(view.state.selection.main.head).toBe(0);
   });
 });

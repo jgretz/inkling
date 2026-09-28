@@ -1,6 +1,8 @@
 import {StateField, type EditorState, type Extension, type Range} from '@codemirror/state';
 import {Decoration, EditorView, type DecorationSet} from '@codemirror/view';
 import {syntaxTree} from '@codemirror/language';
+import {foldField, frontmatterField} from './frontmatter-fold.ts';
+import {RuleWidget, TaskBox, taskClicks} from './live-widgets.ts';
 
 export type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -11,15 +13,25 @@ type SyntaxNode = ReturnType<typeof syntaxTree>['topNode'];
 
 /**
  * What Live does to a document, as plain data: the marker ranges it hides, the
- * heading lines it sets at size, and the link text it colours.
+ * heading lines it sets at size, the link text it colours, the task markers it
+ * draws as checkboxes, the thematic breaks it draws as rules, the quote lines it
+ * rules down the side, and the list lines it gives a hanging indent.
  *
- * Only `hidden` depends on the selection. Headings and links are styled on every
- * line, so a heading does not change size when the caret enters it.
+ * Only `hidden`, `tasks` and `rules` depend on the selection: each is left raw
+ * on a line the selection touches. Everything else is styled on every line, so
+ * a heading does not change size and a list item does not shift when the caret
+ * enters it.
  */
 export type LiveMarkup = {
   hidden: Span[];
   headings: {from: number; level: HeadingLevel}[];
   links: Span[];
+  tasks: (Span & {checked: boolean})[];
+  rules: Span[];
+  /** Line starts. */
+  quoteLines: number[];
+  /** A line start, and the width of its list marker plus the space after it in characters. */
+  listIndents: {from: number; indent: number}[];
 };
 
 const HEADING = /^ATXHeading([1-6])$/;
@@ -93,10 +105,41 @@ export function liveMarkup(state: EditorState): LiveMarkup {
   const candidates: Span[] = [];
   const headings: LiveMarkup['headings'] = [];
   const links: Span[] = [];
+  const taskCandidates: LiveMarkup['tasks'] = [];
+  const ruleCandidates: Span[] = [];
+  const quoteLines = new Set<number>();
+  const listIndents = new Map<number, number>();
+  const bodyFrom = state.field(frontmatterField).span?.to ?? 0;
 
   syntaxTree(state).iterate({
     enter(ref) {
+      // The parser reads a frontmatter block as markdown: its fences as rules,
+      // its tag list as a list. None of it is prose, so none of it is drawn.
+      if (ref.name !== 'Document' && ref.from < bodyFrom) return false;
       if (ref.name === 'Image') return false;
+      if (ref.name === 'TaskMarker') {
+        const checked = state.sliceDoc(ref.from + 1, ref.from + 2) !== ' ';
+        taskCandidates.push({from: ref.from, to: ref.to, checked});
+        return;
+      }
+      if (ref.name === 'HorizontalRule') {
+        ruleCandidates.push({from: ref.from, to: ref.to});
+        return;
+      }
+      if (ref.name === 'Blockquote') {
+        const last = state.doc.lineAt(ref.to).number;
+        for (let line = state.doc.lineAt(ref.from).number; line <= last; line += 1) {
+          quoteLines.add(state.doc.line(line).from);
+        }
+        return;
+      }
+      if (ref.name === 'ListMark') {
+        // Keyed by line so a nested list opened on its parent's line (`- - a`)
+        // leaves one indent, the inner one, which the tree visits last.
+        const line = state.doc.lineAt(ref.from);
+        listIndents.set(line.from, ref.to - line.from + 1);
+        return;
+      }
       const heading = HEADING.exec(ref.name);
       if (heading !== null) {
         // The line's start rather than the node's: a heading inside a quote or a
@@ -125,12 +168,24 @@ export function liveMarkup(state: EditorState): LiveMarkup {
   });
 
   const touched = touchedLines(state);
-  const hidden = candidates.filter(function ({from, to}) {
-    if (to <= from) return false;
+  function untouched({from}: Span): boolean {
     return !touched.has(state.doc.lineAt(from).number);
+  }
+  const hidden = candidates.filter(function (span) {
+    return span.to > span.from && untouched(span);
   });
 
-  return {hidden, headings, links};
+  return {
+    hidden,
+    headings,
+    links,
+    tasks: taskCandidates.filter(untouched),
+    rules: ruleCandidates.filter(untouched),
+    quoteLines: [...quoteLines],
+    listIndents: [...listIndents].map(function ([from, indent]) {
+      return {from, indent};
+    }),
+  };
 }
 
 const hide = Decoration.replace({});
@@ -144,9 +199,16 @@ const HEADING_LINES: Record<HeadingLevel, Decoration> = {
   6: Decoration.line({class: 'cm-live-h6'}),
 };
 
+const TASK_BOXES = {
+  checked: Decoration.replace({widget: new TaskBox(true)}),
+  unchecked: Decoration.replace({widget: new TaskBox(false)}),
+};
+const rule = Decoration.replace({widget: new RuleWidget()});
+const quote = Decoration.line({class: 'cm-live-quote'});
+
 /** `liveMarkup` as one sorted decoration set. */
 export function liveDecorations(state: EditorState): DecorationSet {
-  const {hidden, headings, links} = liveMarkup(state);
+  const {hidden, headings, links, tasks, rules, quoteLines, listIndents} = liveMarkup(state);
   const ranges: Range<Decoration>[] = [
     ...hidden.map(function ({from, to}) {
       return hide.range(from, to);
@@ -156,6 +218,20 @@ export function liveDecorations(state: EditorState): DecorationSet {
     }),
     ...links.map(function ({from, to}) {
       return link.range(from, to);
+    }),
+    ...tasks.map(function ({from, to, checked}) {
+      return (checked ? TASK_BOXES.checked : TASK_BOXES.unchecked).range(from, to);
+    }),
+    ...rules.map(function ({from, to}) {
+      return rule.range(from, to);
+    }),
+    ...quoteLines.map(function (from) {
+      return quote.range(from);
+    }),
+    ...listIndents.map(function ({from, indent}) {
+      return Decoration.line({
+        attributes: {style: `padding-left: ${indent}ch; text-indent: -${indent}ch`},
+      }).range(from);
     }),
   ];
   return Decoration.set(ranges, true);
@@ -179,7 +255,11 @@ const liveField = StateField.define<DecorationSet>({
   },
 });
 
-/** Live mode: markdown markers hidden on every line the selection does not touch. */
+/**
+ * Live mode: markdown markers hidden and block markup drawn on every line the
+ * selection does not touch, and the frontmatter folded into its tags until the
+ * selection enters it.
+ */
 export function liveMarks(): Extension {
-  return liveField;
+  return [frontmatterField, foldField, liveField, taskClicks];
 }

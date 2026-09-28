@@ -8,6 +8,7 @@ import type {EditMode} from '../../lib/doc-mode.ts';
 import {pointerAt, type Pointer} from '../../lib/pointer.ts';
 import {inklingTheme, proseSurface, sourceSurface} from './theme.ts';
 import {setFindings, voiceFindings} from './findings-marks.ts';
+import {openingCaret} from './frontmatter-fold.ts';
 import {liveMarks} from './live-marks.ts';
 import {agentPoint, clearPoint, setPoint} from './point-mark.ts';
 
@@ -167,7 +168,13 @@ export function EditorPanel({
       ];
 
       const instance = new EditorView({
-        state: EditorState.create({doc: source, extensions}),
+        // A caret at 0 sits inside the frontmatter, which would keep Live's fold
+        // open on every open.
+        state: EditorState.create({
+          doc: source,
+          selection: {anchor: openingCaret(source)},
+          extensions,
+        }),
         parent,
       });
       view.current = instance;

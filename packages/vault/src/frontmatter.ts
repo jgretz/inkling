@@ -83,6 +83,37 @@ export function parseDoc(source: string): ParsedDoc {
 }
 
 /**
+ * Where the block `parseDoc` strips sits in `source`: from 0, a leading BOM
+ * included, to the end of the closing fence line, its newline excluded.
+ * `undefined` exactly when `parseDoc` keeps the whole file as body.
+ *
+ * Walks line by line and stops at the closing fence rather than splitting the
+ * file, because the editor asks on every keystroke.
+ */
+export function frontmatterSpan(source: string): {from: number; to: number} | undefined {
+  const start = source.startsWith('\uFEFF') ? 1 : 0;
+  if (!source.startsWith(FENCE, start)) return undefined;
+
+  const blockStart = source.indexOf('\n', start) + 1;
+  if (blockStart === 0) return undefined;
+
+  for (let lineStart = blockStart; ;) {
+    const newline = source.indexOf('\n', lineStart);
+    const lineEnd = newline === -1 ? source.length : newline;
+    if (source.slice(lineStart, lineEnd).trimEnd() === FENCE) {
+      try {
+        parse(source.slice(blockStart, Math.max(blockStart, lineStart - 1)));
+      } catch {
+        return undefined;
+      }
+      return {from: 0, to: lineEnd};
+    }
+    if (newline === -1) return undefined;
+    lineStart = newline + 1;
+  }
+}
+
+/**
  * Renders frontmatter and body back into a file. A block with nothing in it is
  * omitted entirely, so a plain markdown file stays a plain markdown file.
  */

@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'bun:test';
 import {EditorSelection, EditorState} from '@codemirror/state';
 import {markdown, markdownLanguage} from '@codemirror/lang-markdown';
-import {liveMarkup} from '../src/components/editor/live-marks.ts';
+import {liveMarkup, liveMarks} from '../src/components/editor/live-marks.ts';
 
 /** The first line the caret sits on in every "untouched" case below. */
 const ELSEWHERE = 'Elsewhere.\n';
@@ -13,6 +13,7 @@ function stateOf(doc: string, selection: EditorSelection | {anchor: number; head
     extensions: [
       EditorState.allowMultipleSelections.of(true),
       markdown({base: markdownLanguage, codeLanguages: []}),
+      liveMarks(),
     ],
   });
 }
@@ -169,5 +170,78 @@ describe('liveMarkup', function () {
     const state = stateOf(doc, {anchor: 1, head: doc.indexOf('C') + 1});
 
     expect(rendered(state)).toBe('A **one**\nB **two**\nC **three**\nD four');
+  });
+
+  it('should report an unchecked and a checked task when the selection is on another line', function () {
+    const doc = ELSEWHERE + '- [ ] Write it\n- [x] Done\n- [X] Also';
+    const at = (marker: string, after = 0) => doc.indexOf(marker, after);
+
+    expect(liveMarkup(stateOf(doc, {anchor: 0})).tasks).toEqual([
+      {from: at('[ ]'), to: at('[ ]') + 3, checked: false},
+      {from: at('[x]'), to: at('[x]') + 3, checked: true},
+      {from: at('[X]'), to: at('[X]') + 3, checked: true},
+    ]);
+  });
+
+  it('should report no task and no rule when the caret is on their line', function () {
+    expect(liveMarkup(caretOn('- [ ] Write it')).tasks).toEqual([]);
+    expect(liveMarkup(caretOn('***')).rules).toEqual([]);
+  });
+
+  it('should report ***, --- and ___ as rules when they are thematic breaks', function () {
+    const doc = ELSEWHERE + '\n***\n\n---\n\n___';
+    const rules = ['***', '---', '___'].map(function (marker) {
+      const from = doc.indexOf(marker);
+      return {from, to: from + 3};
+    });
+
+    expect(liveMarkup(stateOf(doc, {anchor: 0})).rules).toEqual(rules);
+  });
+
+  it('should not report a setext underline as a rule', function () {
+    const state = stateOf(ELSEWHERE + '\nPara\n---', {anchor: 0});
+
+    expect(liveMarkup(state).rules).toEqual([]);
+  });
+
+  it('should report every blockquote line when the quote spans lines', function () {
+    const doc = ELSEWHERE + '\n> one\n> two';
+    const lines = [doc.indexOf('> one'), doc.indexOf('> two')];
+
+    expect(liveMarkup(stateOf(doc, {anchor: 0})).quoteLines).toEqual(lines);
+    expect(liveMarkup(stateOf(doc, {anchor: doc.length})).quoteLines).toEqual(lines);
+  });
+
+  it('should give a nested list item a deeper indent than its parent', function () {
+    const doc = ELSEWHERE + '\n- parent\n  - child';
+    const {listIndents} = liveMarkup(stateOf(doc, {anchor: 0}));
+
+    expect(listIndents).toEqual([
+      {from: doc.indexOf('- parent'), indent: 2},
+      {from: doc.indexOf('  - child'), indent: 4},
+    ]);
+    expect(liveMarkup(stateOf(doc, {anchor: doc.length})).listIndents).toEqual(listIndents);
+  });
+
+  const FRONTMATTER = '---\ntitle: _x_\ntags:\n  - a\n---\n\n***\nBody';
+  const CLOSING_END = FRONTMATTER.indexOf('\n\n***');
+
+  it('should report nothing inside the frontmatter when the caret is in the body', function () {
+    const markup = liveMarkup(stateOf(FRONTMATTER, {anchor: FRONTMATTER.length}));
+    const bodyRule = FRONTMATTER.indexOf('***');
+
+    expect(markup.rules).toEqual([{from: bodyRule, to: bodyRule + 3}]);
+    expect(markup.listIndents).toEqual([]);
+    expect(markup.hidden.filter(({from}) => from < CLOSING_END)).toEqual([]);
+  });
+
+  it('should leave frontmatter markers raw when the caret is inside the block', function () {
+    const state = stateOf(FRONTMATTER, {anchor: FRONTMATTER.indexOf('title')});
+    const markup = liveMarkup(state);
+    const bodyRule = FRONTMATTER.indexOf('***');
+
+    expect(rendered(state)).toBe(FRONTMATTER);
+    expect(markup.rules).toEqual([{from: bodyRule, to: bodyRule + 3}]);
+    expect(markup.listIndents).toEqual([]);
   });
 });
