@@ -152,7 +152,16 @@ describe('the rule and the quote', function () {
       (candidate) => candidate.textContent === '- An item',
     );
 
-    expect(line?.getAttribute('style')).toContain('padding-left: 2ch');
-    expect(line?.getAttribute('style')).toContain('text-indent: -2ch');
+    expect(line?.classList.contains('cm-live-list')).toBe(true);
+    expect(line?.getAttribute('style')).toContain('--live-indent: 2ch');
+  });
+
+  it('should keep both the quote and the list class on a list line inside a blockquote', function () {
+    const doc = 'Elsewhere.\n\n> - An item';
+    const view = editor(doc);
+    const line = view.contentDOM.querySelector('.cm-line.cm-live-quote');
+
+    expect(line?.classList.contains('cm-live-list')).toBe(true);
+    expect(line?.getAttribute('style')).not.toContain('padding-left');
   });
 });

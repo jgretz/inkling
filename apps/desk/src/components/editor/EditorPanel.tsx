@@ -167,14 +167,11 @@ export function EditorPanel({
         keymap.of([...defaultKeymap, ...historyKeymap]),
       ];
 
+      const initial = EditorState.create({doc: source, extensions});
       const instance = new EditorView({
         // A caret at 0 sits inside the frontmatter, which would keep Live's fold
         // open on every open.
-        state: EditorState.create({
-          doc: source,
-          selection: {anchor: openingCaret(source)},
-          extensions,
-        }),
+        state: initial.update({selection: {anchor: openingCaret(initial.doc.toString())}}).state,
         parent,
       });
       view.current = instance;
@@ -197,9 +194,9 @@ export function EditorPanel({
     function () {
       const instance = view.current;
       if (instance === null) return;
-      const current = instance.state.doc.toString();
-      if (current === source) return;
-      instance.dispatch({changes: {from: 0, to: current.length, insert: source}});
+      const {doc} = instance.state;
+      if (doc.eq(instance.state.toText(source))) return;
+      instance.dispatch({changes: {from: 0, to: doc.length, insert: source}});
     },
     [source],
   );

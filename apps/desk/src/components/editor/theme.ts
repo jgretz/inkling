@@ -143,6 +143,13 @@ export const proseSurface: Extension = EditorView.theme({
     borderLeft: '2px solid var(--color-ink-700)',
     paddingLeft: '0.75em',
   },
+  '.cm-line.cm-live-list': {
+    paddingLeft: 'var(--live-indent)',
+    textIndent: 'calc(-1 * var(--live-indent))',
+  },
+  '.cm-line.cm-live-quote.cm-live-list': {
+    paddingLeft: 'calc(0.75em + var(--live-indent))',
+  },
   '.cm-live-frontmatter': {padding: '0.25rem 0 0.75rem', cursor: 'text'},
 });
 

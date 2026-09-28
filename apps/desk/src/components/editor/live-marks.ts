@@ -230,7 +230,7 @@ export function liveDecorations(state: EditorState): DecorationSet {
     }),
     ...listIndents.map(function ({from, indent}) {
       return Decoration.line({
-        attributes: {style: `padding-left: ${indent}ch; text-indent: -${indent}ch`},
+        attributes: {class: 'cm-live-list', style: `--live-indent: ${indent}ch`},
       }).range(from);
     }),
   ];

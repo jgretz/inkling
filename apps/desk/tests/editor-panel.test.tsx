@@ -286,6 +286,22 @@ describe('EditorPanel modes', function () {
     expect(container.querySelector('.cm-live-frontmatter')).not.toBeNull();
   });
 
+  it('should open with the caret at the body start when the frontmatter has CRLF line endings', function () {
+    const {view} = mount({
+      source: '---\r\ntitle: X\r\ntags:\r\n  - a\r\n---\r\nThe body.',
+      editMode: 'live',
+    });
+
+    expect(view.state.selection.main.head).toBe(view.state.doc.toString().indexOf('The body.'));
+  });
+
+  it('should open with the caret at the body start when a CRLF body is shorter than its line breaks', function () {
+    const {view} = mount({source: '---\r\nt: X\r\n---\r\nAB', editMode: 'live'});
+
+    expect(view.state.doc.toString()).toBe('---\nt: X\n---\nAB');
+    expect(view.state.selection.main.head).toBe(13);
+  });
+
   it('should open with the caret at 0 when the document has no frontmatter', function () {
     const {view} = mount({source: 'Just prose.', editMode: 'live'});
 

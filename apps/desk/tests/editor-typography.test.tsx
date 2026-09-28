@@ -157,3 +157,26 @@ describe('headings in live', function () {
     expect(lineHolding('A title', 'source').classList.contains('cm-live-h1')).toBe(false);
   });
 });
+
+describe('list indents in live', function () {
+  const LISTS = 'Top.\n\n> - A quoted item\n> Quoted prose.\n\n- A plain item';
+
+  function lineHolding(text: string) {
+    const line = holding(mount('live', LISTS), text).closest('.cm-line');
+    if (line === null) throw new Error(`no line holds "${text}"`);
+    return line;
+  }
+
+  it('should hang a list line by its marker width', function () {
+    const line = style(lineHolding('A plain item'));
+
+    expect(line.paddingLeft).toBe('2ch');
+    expect(line.textIndent).toBe('calc(-1 * 2ch)');
+  });
+
+  it("should keep the quote's inset under a list line inside a blockquote", function () {
+    const quoted = style(lineHolding('Quoted prose.')).paddingLeft;
+
+    expect(style(lineHolding('A quoted item')).paddingLeft).toBe(`calc(${quoted} + 4ch)`);
+  });
+});
