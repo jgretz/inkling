@@ -9,7 +9,7 @@ export const EDIT_MODES = ['live', 'source'] as const;
 
 export type EditMode = (typeof EDIT_MODES)[number];
 
-/** Every way the panel can show one document, in the title bar's order. */
+/** Every way the panel can show one document, in the order the mode switch shows them. */
 export const DOC_MODES = [...EDIT_MODES, 'read'] as const;
 
 export type DocMode = (typeof DOC_MODES)[number];

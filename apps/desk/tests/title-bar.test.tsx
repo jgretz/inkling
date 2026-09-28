@@ -1,8 +1,7 @@
 import {autoCleanup} from './setup.ts';
 import {describe, expect, it} from 'bun:test';
 import {fireEvent, render} from '@testing-library/react';
-import type {DocMode} from '../src/lib/doc-mode.ts';
-import {DEFAULT_LAYOUT, type LayoutSettings} from '../src/lib/settings.ts';
+import {DEFAULT_LAYOUT} from '../src/lib/settings.ts';
 import {indicatorLabel, type TurnIndicator} from '../src/lib/turn.ts';
 import type {SaveState} from '../src/lib/workspace-state.ts';
 import {TitleBar} from '../src/components/shell/TitleBar.tsx';
@@ -26,29 +25,18 @@ type BarProps = {
   onPin?: () => void;
   docOpen?: boolean;
   save?: SaveState;
-  layout?: LayoutSettings;
-  onDocMode?: (mode: DocMode) => void;
 };
 
 function noop() {}
 
-function bar({
-  turn = 'writer',
-  pinned = false,
-  onPin = noop,
-  docOpen = true,
-  save,
-  layout = DEFAULT_LAYOUT,
-  onDocMode = noop,
-}: BarProps = {}) {
+function bar({turn = 'writer', pinned = false, onPin = noop, docOpen = true, save}: BarProps = {}) {
   return render(
     <TitleBar
       title="The piece"
       subtitle="vault"
       save={save}
-      layout={layout}
+      layout={DEFAULT_LAYOUT}
       onToggle={noop}
-      onDocMode={onDocMode}
       turn={turn}
       pinned={pinned}
       onPin={onPin}
@@ -135,95 +123,6 @@ describe('the document menu in the bar', function () {
   });
 });
 
-describe('the document mode switch', function () {
-  function pressed(view: ReturnType<typeof bar>, label: string): string | null {
-    const group = view.getByRole('group', {name: 'Document mode'});
-    const button = group.querySelector(`button[aria-label="${label}"]`);
-    if (button === null) throw new Error(`the switch has no ${label} button`);
-    return button.getAttribute('aria-pressed');
-  }
-
-  it('should list Live, Source and Read in that order', function () {
-    const group = bar().getByRole('group', {name: 'Document mode'});
-    const labels = [...group.querySelectorAll('button')].map(function (button) {
-      return button.getAttribute('aria-label');
-    });
-
-    expect(labels).toEqual(['Live', 'Source', 'Read']);
-  });
-
-  it('should mark Live pressed by default', function () {
-    const view = bar();
-
-    expect(pressed(view, 'Live')).toBe('true');
-    expect(pressed(view, 'Source')).toBe('false');
-    expect(pressed(view, 'Read')).toBe('false');
-  });
-
-  it('should mark Source pressed when the document is in source', function () {
-    const view = bar({layout: {...DEFAULT_LAYOUT, docMode: 'source', editMode: 'source'}});
-
-    expect(pressed(view, 'Source')).toBe('true');
-    expect(pressed(view, 'Live')).toBe('false');
-    expect(pressed(view, 'Read')).toBe('false');
-  });
-
-  it('should mark Read pressed when the document is in read', function () {
-    const view = bar({layout: {...DEFAULT_LAYOUT, docMode: 'read'}});
-
-    expect(pressed(view, 'Read')).toBe('true');
-    expect(pressed(view, 'Live')).toBe('false');
-    expect(pressed(view, 'Source')).toBe('false');
-  });
-
-  it('should ask for live when Live is clicked', function () {
-    const asked: DocMode[] = [];
-    const view = bar({
-      layout: {...DEFAULT_LAYOUT, docMode: 'read'},
-      onDocMode(mode) {
-        asked.push(mode);
-      },
-    });
-
-    fireEvent.click(view.getByLabelText('Live'));
-
-    expect(asked).toEqual(['live']);
-  });
-
-  it('should ask for read when Read is clicked', function () {
-    const asked: DocMode[] = [];
-    const view = bar({
-      onDocMode(mode) {
-        asked.push(mode);
-      },
-    });
-
-    fireEvent.click(view.getByLabelText('Read'));
-
-    expect(asked).toEqual(['read']);
-  });
-
-  it('should ask for source when Source is clicked', function () {
-    const asked: DocMode[] = [];
-    const view = bar({
-      layout: {...DEFAULT_LAYOUT, docMode: 'read'},
-      onDocMode(mode) {
-        asked.push(mode);
-      },
-    });
-
-    fireEvent.click(view.getByLabelText('Source'));
-
-    expect(asked).toEqual(['source']);
-  });
-
-  it('should offer no preview toggle', function () {
-    const view = bar();
-
-    expect(view.queryByLabelText('Toggle preview')).toBeNull();
-  });
-});
-
 /** What the bar renders for each state, so the test can find the element. */
 const SAVE_TEXT = {clean: 'Saved', dirty: 'Unsaved', saving: 'Saving\u2026'} as const;
 
@@ -280,5 +179,11 @@ describe('the control group', function () {
     });
 
     expect(loose).toEqual([]);
+  });
+
+  it('should offer no preview toggle', function () {
+    const view = bar();
+
+    expect(view.queryByLabelText('Toggle preview')).toBeNull();
   });
 });

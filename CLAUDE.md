@@ -9,8 +9,10 @@ Tauri 2 + React 19 + Vite 7 + Tailwind 4.
 ## The shape of the app
 
 Three panels, left to right: a collapsible library of the vault, one document
-panel showing the open document in Source (the raw markdown editor) or Read (the
-rendered markdown), and an open conversation with an agent that can see it.
+panel showing the open document in Live (the markdown with its markers hidden
+off the caret's line), Source (the raw markdown) or Read (the rendered
+markdown), switched from a bar above it, and an open conversation with an agent
+that can see it.
 
 - [`docs/model.md`](./docs/model.md) is what inkling is built around.
 - [`docs/kinds.md`](./docs/kinds.md) is the four kinds a document can be.
